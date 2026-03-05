@@ -15,7 +15,7 @@ import { LoggerMiddleware } from '../common/middleware/logger.middleware';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
+      envFilePath: `.env.${process.env.NODE_ENV || 'development.local'}`,
     }),
     DatabaseModule,
     AuthModule,
@@ -26,8 +26,8 @@ import { LoggerMiddleware } from '../common/middleware/logger.middleware';
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(LoggerMiddleware).forRoutes({
-      path: 'cats',
-      method: RequestMethod.GET,
+      path: '*',
+      method: RequestMethod.ALL,
     });
   }
 }

@@ -13,7 +13,7 @@ export const DRIZZLE = Symbol('DRIZZLE');
       provide: DRIZZLE,
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        const connectionString = config.get<string>('DATABASE_URL');
+        const connectionString = config.get<string>('DB_POOL_URL');
         const client = postgres(connectionString || '', { prepare: false }); // prepare: false es obligatorio con pooler
         return drizzle(client, { schema });
       },
