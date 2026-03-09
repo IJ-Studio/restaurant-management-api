@@ -26,6 +26,7 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/schedule": "^6.1.1",
     "@nestjs/typeorm": "^11.0.0",
+    "@supabase/supabase-js": "^2.99.0",
     "dotenv": "^17.3.1",
     "drizzle-orm": "^0.45.1",
     "googleapis": "^171.4.0",
