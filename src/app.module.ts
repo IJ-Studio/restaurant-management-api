@@ -17,7 +17,7 @@ import { BackupsModule } from './backups/backups.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: `.env.${process.env.NODE_ENV || 'development.local'}`,
+      envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
     }),
     // ─── ACTIVA EL MOTOR DE CRON ──────────────────────────────────────────
     ScheduleModule.forRoot(), // Esto es vital para que el decorador @Cron funcione
