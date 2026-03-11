@@ -1,5 +1,9 @@
 {
+<<<<<<< HEAD
   "id": "ed61e608-5428-454e-89ac-4801b51aeb81",
+=======
+  "id": "73ab06fb-7282-401e-b3b7-31bfb7b69a5c",
+>>>>>>> feat/connection
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -27,6 +31,7 @@
           "notNull": true,
           "default": 0
         },
+<<<<<<< HEAD
         "drive_file_id": {
           "name": "drive_file_id",
           "type": "varchar(255)",
@@ -39,6 +44,8 @@
           "primaryKey": false,
           "notNull": false
         },
+=======
+>>>>>>> feat/connection
         "type": {
           "name": "type",
           "type": "varchar(10)",
@@ -129,8 +136,13 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
+<<<<<<< HEAD
         "roles_name_key": {
           "name": "roles_name_key",
+=======
+        "roles_name_unique": {
+          "name": "roles_name_unique",
+>>>>>>> feat/connection
           "nullsNotDistinct": false,
           "columns": [
             "name"
@@ -181,12 +193,25 @@
           "primaryKey": false,
           "notNull": true
         },
+        "role_id": {
+          "name": "role_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "verified": {
           "name": "verified",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         },
         "login_attempts": {
           "name": "login_attempts",
@@ -223,19 +248,6 @@
           "notNull": true,
           "default": 0
         },
-        "role_id": {
-          "name": "role_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "is_active": {
-          "name": "is_active",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -245,7 +257,21 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "users_role_id_roles_id_fk": {
+          "name": "users_role_id_roles_id_fk",
+          "tableFrom": "users",
+          "tableTo": "roles",
+          "columnsFrom": [
+            "role_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "users_email_unique": {
