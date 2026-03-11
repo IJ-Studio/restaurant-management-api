@@ -54,8 +54,6 @@ export const backups = pgTable('backups', {
   id: serial('id').primaryKey(),
   name: varchar('name', { length: 255 }).notNull(),
   sizeBytes: bigint('size_bytes', { mode: 'number' }).default(0).notNull(),
-  driveFileId: varchar('drive_file_id', { length: 255 }),
-  driveUrl: text('drive_url'),
   type: varchar('type', { length: 10 }).default('manual').notNull(), // 'auto' | 'manual'
   status: varchar('status', { length: 10 }).default('ok').notNull(), // 'ok' | 'error'
   errorMessage: text('error_message'),

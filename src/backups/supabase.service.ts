@@ -3,8 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 @Injectable()
-export class GoogleDriveService {
-  // Mantengo el nombre para no cambiar BackupsService ni BackupsModule
+export class SupabaseService {
   private readonly supabase: SupabaseClient;
   private readonly bucket: string;
 
