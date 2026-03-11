@@ -4,7 +4,6 @@ import { DRIZZLE } from '../database/database.module';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../database/schema';
 import { backups } from '../database/schema';
-import { GoogleDriveService } from './google-drive.service';
 import { desc, eq } from 'drizzle-orm';
 
 @Injectable()
@@ -12,8 +11,7 @@ export class BackupsService {
   private readonly logger = new Logger(BackupsService.name);
 
   constructor(
-    @Inject(DRIZZLE) private db: PostgresJsDatabase<typeof schema>,
-    private drive: GoogleDriveService,
+    @Inject(DRIZZLE) private db: PostgresJsDatabase<typeof schema>
   ) {}
 
   // ── Exporta todas las tablas a JSON ────────────────────────────────────────
@@ -51,20 +49,12 @@ export class BackupsService {
         0,
       );
 
-      // 2. Subir a Google Drive
-      const { fileId, webViewLink } = await this.drive.uploadFile(
-        `${name}.json`,
-        json,
-      );
-
       // 3. Guardar registro en BD
       const [record] = await this.db
         .insert(backups)
         .values({
           name,
           sizeBytes,
-          driveFileId: fileId,
-          driveUrl: webViewLink,
           type,
           status: 'ok',
           tables: Object.keys(data.tables),
@@ -75,7 +65,6 @@ export class BackupsService {
       this.logger.log(`Backup creado: ${name} (${sizeBytes} bytes)`);
       return record;
     } catch (error) {
-      // Guardar el error en BD
       const [record] = await this.db
         .insert(backups)
         .values({
@@ -95,7 +84,6 @@ export class BackupsService {
     }
   }
 
-  // ── Obtener historial ───────────────────────────────────────────────────────
   async getBackups() {
     return this.db
       .select()
@@ -104,7 +92,6 @@ export class BackupsService {
       .limit(20);
   }
 
-  // ── Eliminar backup ─────────────────────────────────────────────────────────
   async deleteBackup(id: number) {
     const [backup] = await this.db
       .select()
@@ -112,13 +99,6 @@ export class BackupsService {
       .where(eq(backups.id, id));
 
     if (!backup) throw new Error('Backup no encontrado');
-
-    // Eliminar de Drive si existe
-    if (backup.driveFileId) {
-      await this.drive.deleteFile(backup.driveFileId).catch(() => {
-        this.logger.warn(`No se pudo eliminar de Drive: ${backup.driveFileId}`);
-      });
-    }
 
     await this.db.delete(backups).where(eq(backups.id, id));
     return { deleted: id };

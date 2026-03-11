@@ -30,6 +30,7 @@ lerna-debug.log*
 
 # IDE - VSCode
 .vscode/*
+.vscode/
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
@@ -37,11 +38,10 @@ lerna-debug.log*
 
 # dotenv environment variable files
 .env
-.env.development.local
 .env.test.local
 .env.production.local
 .env.local
-
+.env.development
 # temp directory
 .temp
 .tmp
