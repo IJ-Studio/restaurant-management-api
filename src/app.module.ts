@@ -12,6 +12,7 @@ import { AuthModule } from './auth/auth.module';
 import { DatabaseModule } from './database/database.module';
 import { LoggerMiddleware } from '../common/middleware/logger.middleware';
 import { BackupsModule } from './backups/backups.module';
+import { PlatillosModule } from './platillos/platillos.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { BackupsModule } from './backups/backups.module';
     // ──────────────────────────────────────────────────────────────────────
     DatabaseModule,
     AuthModule,
+    PlatillosModule,
     BackupsModule, // Tu módulo de backups para el restaurante
   ],
   controllers: [AppController],
