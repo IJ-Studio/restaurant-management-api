@@ -6,7 +6,7 @@ async function bootstrap() {
   app.enableCors({
     origin:[
       'https://el-quijote.vercel.app',
-      'http://localhost:3001',
+      'http://localhost:3000',
     ]
   });
   await app.listen(process.env.PORT ?? 10000, '0.0.0.0');

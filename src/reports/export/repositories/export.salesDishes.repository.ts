@@ -12,13 +12,13 @@ export class ExportSalesDishesRepository {
     endDate: string;
     limit?: number;
   }): Promise<ExportRow[]> {
-    const { limit } = params;
+    const { startDate, endDate, limit } = params; // ← desestructurar todo
 
     const { data, error } = await this.db
       .getClient()
       .from('v_ventas_platillo')
       .select('*')
-      .order('veces_ordenado', { ascending: false }) // <-- cambiar a snake_case
+      .order('veces_ordenado', { ascending: false })
       .limit(limit ?? 100);
 
     if (error) throw error;
