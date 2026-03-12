@@ -26,12 +26,15 @@ export class ExportService {
         ? await this.salesRepo.getSalesByDish({ startDate, endDate, limit })
         : await this.salesRepo.getSalesByDay({ startDate, endDate, limit });
 
-    // 2) Elegimos adaptador y generamos archivo (Buffer + metadata)
-    const adapter = this.getAdapter(format);
+    // Log para confirmar que data llega con contenido
+    this.logger.debug(`Rows fetched: ${data.length} (type: ${type}, format: ${format})`);
 
+    // 2) Elegimos adaptador y generamos archivo
+    const adapter = this.getAdapter(format);
     const filename = this.buildFilename(type, format, startDate, endDate);
 
-    return adapter.export(data, { filename });
+    // El PDF retorna una Promise, los demás no — usar await es seguro en ambos casos
+    return await adapter.export(data, { filename });
   }
 
   private getAdapter(format: ExportFormat) {
@@ -47,8 +50,12 @@ export class ExportService {
     }
   }
 
-  private buildFilename(type: ExportType, format: ExportFormat, start: string, end: string) {
-    // Nombre amigable para descarga
+  private buildFilename(
+    type: ExportType,
+    format: ExportFormat,
+    start: string,
+    end: string,
+  ) {
     const base = type === ExportType.DISHES ? 'ventas-platillos' : 'ventas-por-dia';
     return `${base}_${start}_${end}.${format}`;
   }

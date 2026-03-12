@@ -14,15 +14,26 @@ export class CsvAdapter {
     if (!data.length) {
       return {
         buffer: Buffer.from('', 'utf-8'),
-        contentType: 'text/csv',
+        contentType: 'text/csv; charset=utf-8',
         filename: options.filename,
       };
     }
+
     const columns = Object.keys(data[0]);
-    const csv = stringify(data, { header: true, columns });
+
+    // Serializar correctamente valores numéricos y nulos
+    const csv = stringify(data, {
+      header: true,
+      columns,
+      cast: {
+        object: (value) => (value === null ? '' : String(value)),
+      },
+    });
+
+    // Agregar BOM para que Excel abra bien con caracteres especiales
     return {
-      buffer: Buffer.from(csv, 'utf-8'),
-      contentType: 'text/csv',
+      buffer: Buffer.from('\uFEFF' + csv, 'utf-8'),
+      contentType: 'text/csv; charset=utf-8',
       filename: options.filename,
     };
   }
