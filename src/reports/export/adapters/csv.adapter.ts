@@ -10,8 +10,18 @@ export interface ExportResult {
 
 @Injectable()
 export class CsvAdapter {
+  private filterOutId(data: ExportRow[]): ExportRow[] {
+    return data.map(row => {
+      const filtered = { ...row };
+      delete filtered.id;
+      return filtered;
+    });
+  }
+
   export(data: ExportRow[], options: { filename: string }): ExportResult {
-    if (!data.length) {
+    const filteredData = this.filterOutId(data);
+
+    if (!filteredData.length) {
       return {
         buffer: Buffer.from('', 'utf-8'),
         contentType: 'text/csv; charset=utf-8',
@@ -19,10 +29,10 @@ export class CsvAdapter {
       };
     }
 
-    const columns = Object.keys(data[0]);
+    const columns = Object.keys(filteredData[0]);
 
     // Serializar correctamente valores numéricos y nulos
-    const csv = stringify(data, {
+    const csv = stringify(filteredData, {
       header: true,
       columns,
       cast: {

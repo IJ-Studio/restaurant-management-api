@@ -60,8 +60,22 @@ export class PlatillosController {
     return res.send(json);
   }
 
-  @Get('export/excel')
+  @Get('export/dishes/excel')
   async exportExcel(
+    @Query() query: any,
+    @Res() res: Response,
+  ) {
+    const platillos = await this.platillosService.getAllPlatillos();
+
+    const { buffer, filename, contentType } = await this.exportService.exportPlatillos(platillos);
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+
+  @Get('export/sales/excel')
+  async exportSalesExcel(
     @Query() query: any,
     @Res() res: Response,
   ) {
