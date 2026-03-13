@@ -4,7 +4,8 @@ import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { DatabaseModule } from './database/database.module';
 import { BackupsModule } from './backups/backups.module';
-import { ReportsModule } from './reports/reports.module'; 
+import { ReportsModule } from './reports/reports.module';
+import { PlatillosModule } from './platillos/platillos.module';
 
 @Module({
   imports: [
@@ -16,7 +17,8 @@ import { ReportsModule } from './reports/reports.module';
     DatabaseModule,
     AuthModule,
     BackupsModule,
-    ReportsModule, // <-- agregar
+    ReportsModule,
+    PlatillosModule,
   ],
   controllers: [],
   providers: [],
