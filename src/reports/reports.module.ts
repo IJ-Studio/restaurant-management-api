@@ -17,5 +17,6 @@ import { PdfAdapter } from './export/adapters/pdf.adapter';
     XlsxAdapter,
     PdfAdapter,
   ],
+  exports: [ExportService],
 })
 export class ReportsModule {}
