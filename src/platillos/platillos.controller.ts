@@ -12,6 +12,8 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { PlatillosService } from './platillos.service';
+import { ExportService } from '../reports/export/export.service';
+import { ExportFormat, ExportType } from '../reports/export/dto/queryDTO';
 
 type UploadedCsvFile = {
   originalname: string;
@@ -20,7 +22,10 @@ type UploadedCsvFile = {
 
 @Controller('platillos')
 export class PlatillosController {
-  constructor(private readonly platillosService: PlatillosService) {}
+  constructor(
+    private readonly platillosService: PlatillosService,
+    private readonly exportService: ExportService,
+  ) {}
 
   @Get('template.json')
   async downloadTemplateJson(@Res() res: Response) {
@@ -53,6 +58,22 @@ export class PlatillosController {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     return res.send(json);
+  }
+
+  @Get('export/excel')
+  async exportExcel(
+    @Query() query: any,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename, contentType } = await this.exportService.export({
+      ...query,
+      format: ExportFormat.XLSX,
+      type: ExportType.DISHES,
+    });
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 
   @Get('schema')
