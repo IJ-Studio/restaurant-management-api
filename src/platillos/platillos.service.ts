@@ -283,7 +283,11 @@ export class PlatillosService {
     normalizedRows: Array<Record<string, unknown>>,
     mode: 'insert' | 'upsert',
   ) {
-    const canUpsert = mode === 'upsert' && headers.includes('id');
+    const hasId = headers.includes('id');
+    const hasCodigo = headers.includes('codigo');
+    const canUpsert = mode === 'upsert' && (hasId || hasCodigo);
+    const conflictColumn = hasId ? 'id' : 'codigo';
+
     const targetColumns = headers;
     const columnIdentifiers = targetColumns.map((c) => sql.identifier(c));
 
@@ -297,10 +301,10 @@ export class PlatillosService {
 
     const conflictSql = canUpsert
       ? sql`
-          on conflict (${sql.identifier('id')}) do update set
+          on conflict (${sql.identifier(conflictColumn)}) do update set
           ${sql.join(
             targetColumns
-              .filter((c) => c !== 'id')
+              .filter((c) => c !== conflictColumn)
               .map(
                 (c) =>
                   sql`${sql.identifier(c)} = ${sql.raw('excluded')}.${sql.identifier(c)}`,
@@ -473,7 +477,9 @@ function castJsonValue(value: unknown, column: ColumnMeta): unknown {
 }
 
 function valueToSql(value: unknown) {
-  return value === DB_DEFAULT ? sql.raw('default') : sql`${value}`;
+  if (value === DB_DEFAULT) return sql.raw('default');
+  if (value === undefined || value === null) return sql.raw('NULL');
+  return sql`${value}`;
 }
 
 function parseJsonPayload(body: unknown): Array<Record<string, unknown>> {

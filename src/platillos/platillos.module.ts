@@ -5,6 +5,7 @@ import { PlatillosService } from './platillos.service';
 @Module({
   controllers: [PlatillosController],
   providers: [PlatillosService],
+  exports: [PlatillosService],
 })
 export class PlatillosModule {}
 
