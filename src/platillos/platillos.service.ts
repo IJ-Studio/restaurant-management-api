@@ -96,7 +96,10 @@ export class PlatillosService {
     );
 
     const rows = rowsResult as unknown as Array<Record<string, unknown>>;
-    const csv = toCsv([columnNames], rows.map((r) => columnNames.map((c) => r[c])));
+    const csv = toCsv(
+      [columnNames],
+      rows.map((r) => columnNames.map((c) => r[c])),
+    );
     return {
       filename: `${this.tableName}_${new Date().toISOString().slice(0, 10)}.csv`,
       csv,
@@ -177,7 +180,8 @@ export class PlatillosService {
     const colByName = new Map(columns.map((c) => [c.column_name, c] as const));
 
     const records = parseJsonPayload(body);
-    if (records.length === 0) return { inserted: 0, updated: 0, message: 'JSON vacío' };
+    if (records.length === 0)
+      return { inserted: 0, updated: 0, message: 'JSON vacío' };
     if (records.length > 2000) {
       throw new BadRequestException('JSON demasiado grande (máx 2000 filas)');
     }
@@ -321,7 +325,10 @@ export class PlatillosService {
     const result = await this.db.execute<Record<string, unknown>>(
       sql`
         insert into ${sql.identifier(this.tableSchema)}.${sql.identifier(this.tableName)}
-        (${sql.join(columnIdentifiers.map((c) => sql`${c}`), sql`, `)})
+        (${sql.join(
+          columnIdentifiers.map((c) => sql`${c}`),
+          sql`, `,
+        )})
         values ${valuesSql}
         ${conflictSql}
         ${returningSql}
@@ -467,7 +474,10 @@ function castJsonValue(value: unknown, column: ColumnMeta): unknown {
     return value;
   }
   if (
-    (type === 'json' || type === 'jsonb' || udt === 'json' || udt === 'jsonb') &&
+    (type === 'json' ||
+      type === 'jsonb' ||
+      udt === 'json' ||
+      udt === 'jsonb') &&
     typeof value === 'object'
   ) {
     return value;
