@@ -6,6 +6,7 @@ import { DatabaseModule } from './database/database.module';
 import { BackupsModule } from './backups/backups.module';
 import { ReportsModule } from './reports/reports.module';
 import { PlatillosModule } from './platillos/platillos.module';
+import { ImportModule } from './reports/import/import.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { PlatillosModule } from './platillos/platillos.module';
     AuthModule,
     BackupsModule,
     ReportsModule,
+    ImportModule,
     PlatillosModule,
   ],
   controllers: [],
