@@ -96,7 +96,10 @@ export class PlatillosService {
     );
 
     const rows = rowsResult as unknown as Array<Record<string, unknown>>;
-    const csv = toCsv([columnNames], rows.map((r) => columnNames.map((c) => r[c])));
+    const csv = toCsv(
+      [columnNames],
+      rows.map((r) => columnNames.map((c) => r[c])),
+    );
     return {
       filename: `${this.tableName}_${new Date().toISOString().slice(0, 10)}.csv`,
       csv,
@@ -177,7 +180,8 @@ export class PlatillosService {
     const colByName = new Map(columns.map((c) => [c.column_name, c] as const));
 
     const records = parseJsonPayload(body);
-    if (records.length === 0) return { inserted: 0, updated: 0, message: 'JSON vacío' };
+    if (records.length === 0)
+      return { inserted: 0, updated: 0, message: 'JSON vacío' };
     if (records.length > 2000) {
       throw new BadRequestException('JSON demasiado grande (máx 2000 filas)');
     }
@@ -283,7 +287,11 @@ export class PlatillosService {
     normalizedRows: Array<Record<string, unknown>>,
     mode: 'insert' | 'upsert',
   ) {
-    const canUpsert = mode === 'upsert' && headers.includes('id');
+    const hasId = headers.includes('id');
+    const hasCodigo = headers.includes('codigo');
+    const canUpsert = mode === 'upsert' && (hasId || hasCodigo);
+    const conflictColumn = hasId ? 'id' : 'codigo';
+
     const targetColumns = headers;
     const columnIdentifiers = targetColumns.map((c) => sql.identifier(c));
 
@@ -297,10 +305,10 @@ export class PlatillosService {
 
     const conflictSql = canUpsert
       ? sql`
-          on conflict (${sql.identifier('id')}) do update set
+          on conflict (${sql.identifier(conflictColumn)}) do update set
           ${sql.join(
             targetColumns
-              .filter((c) => c !== 'id')
+              .filter((c) => c !== conflictColumn)
               .map(
                 (c) =>
                   sql`${sql.identifier(c)} = ${sql.raw('excluded')}.${sql.identifier(c)}`,
@@ -317,7 +325,10 @@ export class PlatillosService {
     const result = await this.db.execute<Record<string, unknown>>(
       sql`
         insert into ${sql.identifier(this.tableSchema)}.${sql.identifier(this.tableName)}
-        (${sql.join(columnIdentifiers.map((c) => sql`${c}`), sql`, `)})
+        (${sql.join(
+          columnIdentifiers.map((c) => sql`${c}`),
+          sql`, `,
+        )})
         values ${valuesSql}
         ${conflictSql}
         ${returningSql}
@@ -463,7 +474,10 @@ function castJsonValue(value: unknown, column: ColumnMeta): unknown {
     return value;
   }
   if (
-    (type === 'json' || type === 'jsonb' || udt === 'json' || udt === 'jsonb') &&
+    (type === 'json' ||
+      type === 'jsonb' ||
+      udt === 'json' ||
+      udt === 'jsonb') &&
     typeof value === 'object'
   ) {
     return value;
@@ -473,7 +487,9 @@ function castJsonValue(value: unknown, column: ColumnMeta): unknown {
 }
 
 function valueToSql(value: unknown) {
-  return value === DB_DEFAULT ? sql.raw('default') : sql`${value}`;
+  if (value === DB_DEFAULT) return sql.raw('default');
+  if (value === undefined || value === null) return sql.raw('NULL');
+  return sql`${value}`;
 }
 
 function parseJsonPayload(body: unknown): Array<Record<string, unknown>> {
