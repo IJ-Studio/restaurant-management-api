@@ -4,6 +4,14 @@ import PDFDocument from 'pdfkit';
 
 @Injectable()
 export class PdfAdapter {
+  private filterOutId(data: ExportRow[]): ExportRow[] {
+    return data.map(row => {
+      const filtered = { ...row };
+      delete filtered.id;
+      return filtered;
+    });
+  }
+
   export(
     data: ExportRow[],
     options: { filename: string },
@@ -13,6 +21,8 @@ export class PdfAdapter {
     filename: string;
   }> {
     return new Promise((resolve, reject) => {
+      const filteredData = this.filterOutId(data);
+
       const doc = new PDFDocument({ margin: 40, size: 'A4' });
       const chunks: Buffer[] = [];
 
@@ -41,14 +51,14 @@ export class PdfAdapter {
         .text(`Generado: ${new Date().toLocaleString('es-MX')}`, { align: 'center' });
       doc.moveDown(2);
 
-      if (!data.length) {
+      if (!filteredData.length) {
         doc.fontSize(12).text('No hay datos para mostrar.');
         doc.end();
         return;
       }
 
       // ============ Tabla ============
-      const columns = Object.keys(data[0]);
+      const columns = Object.keys(filteredData[0]);
       const colWidth = Math.min(100, (doc.page.width - 80) / columns.length);
 
       // Header de tabla
@@ -69,7 +79,7 @@ export class PdfAdapter {
 
       // Filas de datos
       doc.font('Helvetica').fontSize(8).fillColor('#333333');
-      data.forEach((row, rowIdx) => {
+      filteredData.forEach((row, rowIdx) => {
         // Si nos quedamos sin espacio, agregar nueva página
         if (doc.y > doc.page.height - 60) {
           doc.addPage();

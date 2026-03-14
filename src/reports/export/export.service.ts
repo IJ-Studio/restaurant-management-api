@@ -37,6 +37,20 @@ export class ExportService {
     return await adapter.export(data, { filename });
   }
 
+  async exportPlatillos(data: any[]) {
+    // Filtrar IDs antes de exportar
+    const filteredData = data.map(row => {
+      const filtered = { ...row };
+      delete filtered.id;
+      return filtered;
+    });
+
+    const adapter = this.getAdapter(ExportFormat.XLSX);
+    const filename = `platillos_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+    return await adapter.export(filteredData, { filename });
+  }
+
   private getAdapter(format: ExportFormat) {
     switch (format) {
       case ExportFormat.CSV:

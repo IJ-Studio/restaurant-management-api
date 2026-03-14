@@ -213,6 +213,71 @@ export class PlatillosService {
     return this.insertRows(headers, normalizedRows, mode);
   }
 
+  async importExcel(buffer: Buffer, mode: 'insert' | 'upsert') {
+    const ExcelJS = require('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer);
+
+    const sheet = workbook.worksheets[0];
+    if (!sheet) throw new BadRequestException('El archivo Excel está vacío');
+
+    const headerRow = sheet.getRow(1);
+    const headers: string[] = [];
+
+    headerRow.eachCell((cell: any) => {
+      if (cell.value) headers.push(String(cell.value).trim());
+    });
+
+    if (headers.length === 0) {
+      throw new BadRequestException('El Excel no tiene encabezados');
+    }
+
+    const { columns } = await this.getSchema();
+    const colByName = new Map(columns.map((c) => [c.column_name, c] as const));
+
+    // Validar que todas las columnas existan
+    for (const h of headers) {
+      if (!colByName.has(h)) {
+        throw new BadRequestException(`Columna desconocida en Excel: ${h}`);
+      }
+    }
+
+    const normalizedRows: Array<Record<string, unknown>> = [];
+
+    sheet.eachRow((row: any, rowNumber: number) => {
+      if (rowNumber === 1) return; // Skip header
+
+      const record: Record<string, unknown> = {};
+      let hasContent = false;
+
+      headers.forEach((header, colIndex) => {
+        const cellValue = row.getCell(colIndex + 1).value;
+
+        if (cellValue !== null && cellValue !== undefined && cellValue !== '') {
+          hasContent = true;
+          try {
+            record[header] = castJsonValue(cellValue, colByName.get(header)!);
+          } catch (e: any) {
+            const msg = e?.message ? String(e.message) : 'valor inválido';
+            throw new BadRequestException(
+              `Fila ${rowNumber}, columna "${header}": ${msg}`,
+            );
+          }
+        }
+      });
+
+      if (hasContent) {
+        normalizedRows.push(record);
+      }
+    });
+
+    if (normalizedRows.length === 0) {
+      throw new BadRequestException('El Excel no contiene datos válidos');
+    }
+
+    return this.insertRows(headers, normalizedRows, mode);
+  }
+
   private async insertRows(
     headers: string[],
     normalizedRows: Array<Record<string, unknown>>,
@@ -314,6 +379,22 @@ export class PlatillosService {
       if (!out.includes(c)) out.push(c);
     }
     return out;
+  }
+
+  async getAllPlatillos() {
+    const { columns } = await this.getSchema();
+    const columnNames = columns.map((c) => c.column_name);
+
+    const selectColumns = sql.join(
+      columnNames.map((c) => sql`${sql.identifier(c)}`),
+      sql`, `,
+    );
+
+    const rowsResult = await this.db.execute<Record<string, unknown>>(
+      sql`select ${selectColumns} from ${sql.identifier(this.tableSchema)}.${sql.identifier(this.tableName)}`,
+    );
+
+    return rowsResult as unknown as Array<Record<string, unknown>>;
   }
 }
 
