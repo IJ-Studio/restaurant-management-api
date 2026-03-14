@@ -7,6 +7,7 @@ import { PlatillosService } from './platillos.service';
   imports: [ReportsModule],
   controllers: [PlatillosController],
   providers: [PlatillosService],
+  exports: [PlatillosService],
 })
 export class PlatillosModule {}
 
