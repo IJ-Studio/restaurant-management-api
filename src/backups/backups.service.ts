@@ -2,16 +2,18 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { DRIZZLE } from '../database/database.module';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import * as schema from '../database/schema';
-import { backups } from '../database/schema';
+import * as schema from '../database/schema/public.schema';
+import { backups } from '../database/schema/public.schema';
 import { desc, eq, sql } from 'drizzle-orm';
+import {DRIZZLE} from './../database/constants'
 @Injectable()
 export class BackupsService {
-  private readonly logger = new Logger(BackupsService.name);
+  // private readonly logger = new Logger(BackupsService.name);
 
-  constructor(    @Inject(DRIZZLE) private db: PostgresJsDatabase<typeof schema>  ) {}
+  constructor(
+    @Inject(DRIZZLE)
+    private db: PostgresJsDatabase<typeof schema>) {}
 
   // ── Exporta todas las tablas a JSON ────────────────────────────────────────
   private async exportAllTables() {
@@ -83,7 +85,7 @@ export class BackupsService {
         })
         .returning();
 
-      this.logger.log(`Backup creado: ${name} (${sizeBytes} bytes)`);
+      // this.logger.log(`Backup creado: ${name} (${sizeBytes} bytes)`);
       return record;
     } catch (error) {
       const [record] = await this.db
@@ -100,7 +102,7 @@ export class BackupsService {
         })
         .returning();
 
-      this.logger.error(`Error en backup: ${error}`);
+      // this.logger.error(`Error en backup: ${error}`);
       return record;
     }
   }
@@ -128,7 +130,8 @@ export class BackupsService {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   @Cron('0 23 * * *' as const)
   async scheduledBackup(): Promise<void> {
-    this.logger.log('Ejecutando backup automático...');
+    // this.logger.log('Ejecutando backup automático...');
     await this.createBackup('auto');
   }
 }
+
