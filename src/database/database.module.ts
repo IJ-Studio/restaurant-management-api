@@ -1,26 +1,9 @@
 import { Module, Global } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import * as schema from './schema';
-import { SupabaseService } from './database.service';
-
-export const DRIZZLE = Symbol('DRIZZLE');
-
+import { DrizzleProvider } from './drizzle.provider';
+import { SupabaseService } from './supabase.service';
 @Global()
 @Module({
-  providers: [
-    SupabaseService,
-    {
-      provide: DRIZZLE,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => {
-        const connectionString = config.get<string>('DB_POOL_URL');
-        const client = postgres(connectionString || '', { prepare: false });
-        return drizzle(client, { schema });
-      },
-    },
-  ],
-  exports: [SupabaseService, DRIZZLE], 
+  providers: [DrizzleProvider, SupabaseService],
+  exports: [DrizzleProvider, SupabaseService],
 })
 export class DatabaseModule {}
