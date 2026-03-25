@@ -1,12 +1,15 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from '@nestjs/config';
+
 import { AuthModule } from './auth/auth.module';
-import { DatabaseModule } from './database/database.module';
 import { BackupsModule } from './backups/backups.module';
 import { ReportsModule } from './reports/reports.module';
 import { PlatillosModule } from './platillos/platillos.module';
 import { ImportModule } from './reports/import/import.module';
+import { DatabaseModule } from './database/database.module';
+import { CacheModule } from './cache/cache.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -14,13 +17,15 @@ import { ImportModule } from './reports/import/import.module';
       isGlobal: true,
       envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
     }),
-    ScheduleModule.forRoot(),
     DatabaseModule,
+    CacheModule,
     AuthModule,
+    ScheduleModule.forRoot(),
     BackupsModule,
     ReportsModule,
     ImportModule,
     PlatillosModule,
+    UsersModule,
   ],
   controllers: [],
   providers: [],
