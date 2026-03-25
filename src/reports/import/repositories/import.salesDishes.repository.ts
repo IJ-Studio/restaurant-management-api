@@ -1,8 +1,8 @@
 import { Injectable, BadRequestException, Inject } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { DRIZZLE } from '../../../database/database.module';
-import * as schema from '../../../database/schema';
+import { DRIZZLE } from '../../../database/constants';
+import * as schema from '../../../database/schema/public.schema';
 
 export type SalesDishRow = Record<string, any>;
 
@@ -21,7 +21,10 @@ type ColumnMeta = {
 export class ImportSalesDishesRepository {
   constructor(@Inject(DRIZZLE) private db: PostgresJsDatabase<typeof schema>) {}
 
-  async importSalesByDish(data: SalesDishRow[], mode: 'insert' | 'upsert' = 'insert') {
+  async importSalesByDish(
+    data: SalesDishRow[],
+    mode: 'insert' | 'upsert' = 'insert',
+  ) {
     if (data.length === 0) {
       return { inserted: 0, updated: 0, skipped: 0 };
     }
@@ -53,7 +56,10 @@ export class ImportSalesDishesRepository {
     return result;
   }
 
-  async importSalesByDay(data: SalesDishRow[], mode: 'insert' | 'upsert' = 'insert') {
+  async importSalesByDay(
+    data: SalesDishRow[],
+    mode: 'insert' | 'upsert' = 'insert',
+  ) {
     if (data.length === 0) {
       return { inserted: 0, updated: 0, skipped: 0 };
     }
@@ -83,7 +89,10 @@ export class ImportSalesDishesRepository {
     return result;
   }
 
-  private async getTableColumns(schema: string, table: string): Promise<ColumnMeta[]> {
+  private async getTableColumns(
+    schema: string,
+    table: string,
+  ): Promise<ColumnMeta[]> {
     const result = await this.db.execute<ColumnMeta>(
       sql`
         select
@@ -198,7 +207,9 @@ export class ImportSalesDishesRepository {
 
       if (type === 'boolean') {
         const v = trimmed.toLowerCase();
-        return v === 'true' || v === 't' || v === '1' || v === 'yes' || v === 'si';
+        return (
+          v === 'true' || v === 't' || v === '1' || v === 'yes' || v === 'si'
+        );
       }
 
       if (
@@ -255,7 +266,10 @@ export class ImportSalesDishesRepository {
     }
 
     if (
-      (type === 'json' || type === 'jsonb' || udt === 'json' || udt === 'jsonb') &&
+      (type === 'json' ||
+        type === 'jsonb' ||
+        udt === 'json' ||
+        udt === 'jsonb') &&
       typeof value === 'object'
     ) {
       return value;
