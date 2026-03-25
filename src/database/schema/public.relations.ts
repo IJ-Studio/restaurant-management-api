@@ -1,19 +1,64 @@
 import { relations } from "drizzle-orm/relations";
-import { departamentos, puestos, empleados, users, horariosEmpleado, turnos, asistencias, vacaciones, nomina, evaluacionesDesempeno, capacitaciones, capacitacionesEmpleado, categoriasMenu, subcategoriasMenu, platillos, informacionNutricional, variantesPlatillo, gruposModificadores, modificadores, combos, combosItems, menusDelDia, menusDelDiaItems, alergenos, ingredientes, categoriasIngrediente, unidadesMedida, recetas, recetasIngredientes, ordenesCompra, proveedores, ordenesCompraItems, movimientosInventario, conteosInventario, conteosInventarioItems, areasSalon, mesas, estatusMesa, ordenes, clientes, reservaciones, direccionesCliente, programaLealtad, nivelesLealtad, cuentasLealtad, transaccionesLealtad, preferenciasCliente, historialEstatusOrden, ordenItems, estacionesCocina, ordenItemModificadores, comandas, pagos, metodosPago, facturas, cupones, cuponesUsos, reembolsos, cierresCaja, gastos, categoriasGasto, presupuestos, resenas, encuestasSatisfaccion, preguntasEncuesta, respuestasEncuesta, logsAuditoria, notificaciones, platillosAlergenos, platillosModificadores, categoriasEstacion, proveedoresIngredientes } from "../schema";
+import { platillos, ventas, categoriasMenu, subcategoriasMenu, informacionNutricional, empleados, nomina, variantesPlatillo, gruposModificadores, modificadores, departamentos, puestos, users, horariosEmpleado, turnos, asistencias, vacaciones, evaluacionesDesempeno, capacitaciones, capacitacionesEmpleado, alergenos, ingredientes, categoriasIngrediente, unidadesMedida, recetas, recetasIngredientes, ordenesCompra, proveedores, ordenesCompraItems, movimientosInventario, conteosInventario, conteosInventarioItems, areasSalon, mesas, programaLealtad, nivelesLealtad, clientes, direccionesCliente, categoriasGasto, presupuestos, gastos, metodosPago, ordenes, resenas, encuestasSatisfaccion, respuestasEncuesta, preguntasEncuesta, logsAuditoria, notificaciones, combos, combosItems, menusDelDia, menusDelDiaItems, preferenciasCliente, estacionesCocina, comandas, reservaciones, ordenItems, ordenItemModificadores, historialEstatusOrden, pagos, estatusMesa, cierresCaja, facturas, reembolsos, cupones, cuponesUsos, cuentasLealtad, transaccionesLealtad, platillosAlergenos, platillosModificadores, categoriasEstacion, proveedoresIngredientes } from "./public.schema";
 
-export const puestosRelations = relations(puestos, ({one, many}) => ({
-	departamento: one(departamentos, {
-		fields: [puestos.departamentoId],
-		references: [departamentos.id]
+export const ventasRelations = relations(ventas, ({one}) => ({
+	platillo: one(platillos, {
+		fields: [ventas.platilloId],
+		references: [platillos.id]
 	}),
-	empleados: many(empleados),
 }));
 
-export const departamentosRelations = relations(departamentos, ({many}) => ({
-	puestos: many(puestos),
+export const platillosRelations = relations(platillos, ({one, many}) => ({
+	ventas: many(ventas),
+	categoriasMenu: one(categoriasMenu, {
+		fields: [platillos.categoriaId],
+		references: [categoriasMenu.id]
+	}),
+	subcategoriasMenu: one(subcategoriasMenu, {
+		fields: [platillos.subcategoriaId],
+		references: [subcategoriasMenu.id]
+	}),
+	informacionNutricionals: many(informacionNutricional),
+	variantesPlatillos: many(variantesPlatillo),
+	recetas: many(recetas),
+	combosItems: many(combosItems),
+	menusDelDiaItems: many(menusDelDiaItems),
+	preferenciasClientes: many(preferenciasCliente),
+	ordenItems: many(ordenItems),
+	platillosAlergenos: many(platillosAlergenos),
+	platillosModificadores: many(platillosModificadores),
+}));
+
+export const categoriasMenuRelations = relations(categoriasMenu, ({many}) => ({
+	platillos: many(platillos),
+	subcategoriasMenus: many(subcategoriasMenu),
+	categoriasEstacions: many(categoriasEstacion),
+}));
+
+export const subcategoriasMenuRelations = relations(subcategoriasMenu, ({one, many}) => ({
+	platillos: many(platillos),
+	categoriasMenu: one(categoriasMenu, {
+		fields: [subcategoriasMenu.categoriaId],
+		references: [categoriasMenu.id]
+	}),
+}));
+
+export const informacionNutricionalRelations = relations(informacionNutricional, ({one}) => ({
+	platillo: one(platillos, {
+		fields: [informacionNutricional.platilloId],
+		references: [platillos.id]
+	}),
+}));
+
+export const nominaRelations = relations(nomina, ({one}) => ({
+	empleado: one(empleados, {
+		fields: [nomina.empleadoId],
+		references: [empleados.id]
+	}),
 }));
 
 export const empleadosRelations = relations(empleados, ({one, many}) => ({
+	nominas: many(nomina),
 	puesto: one(puestos, {
 		fields: [empleados.puestoId],
 		references: [puestos.id]
@@ -35,7 +80,6 @@ export const empleadosRelations = relations(empleados, ({one, many}) => ({
 	vacaciones_empleadoId: many(vacaciones, {
 		relationName: "vacaciones_empleadoId_empleados_id"
 	}),
-	nominas: many(nomina),
 	evaluacionesDesempenos_empleadoId: many(evaluacionesDesempeno, {
 		relationName: "evaluacionesDesempeno_empleadoId_empleados_id"
 	}),
@@ -45,20 +89,45 @@ export const empleadosRelations = relations(empleados, ({one, many}) => ({
 	capacitacionesEmpleados: many(capacitacionesEmpleado),
 }));
 
+export const variantesPlatilloRelations = relations(variantesPlatillo, ({one, many}) => ({
+	platillo: one(platillos, {
+		fields: [variantesPlatillo.platilloId],
+		references: [platillos.id]
+	}),
+	recetas: many(recetas),
+	ordenItems: many(ordenItems),
+}));
+
+export const modificadoresRelations = relations(modificadores, ({one, many}) => ({
+	gruposModificadore: one(gruposModificadores, {
+		fields: [modificadores.grupoId],
+		references: [gruposModificadores.id]
+	}),
+	ordenItemModificadores: many(ordenItemModificadores),
+}));
+
+export const gruposModificadoresRelations = relations(gruposModificadores, ({many}) => ({
+	modificadores: many(modificadores),
+	platillosModificadores: many(platillosModificadores),
+}));
+
+export const puestosRelations = relations(puestos, ({one, many}) => ({
+	departamento: one(departamentos, {
+		fields: [puestos.departamentoId],
+		references: [departamentos.id]
+	}),
+	empleados: many(empleados),
+}));
+
+export const departamentosRelations = relations(departamentos, ({many}) => ({
+	puestos: many(puestos),
+}));
+
 export const usersRelations = relations(users, ({many}) => ({
 	empleados: many(empleados),
 	ordenesCompras: many(ordenesCompra),
 	movimientosInventarios: many(movimientosInventario),
 	conteosInventarios: many(conteosInventario),
-	clientes: many(clientes),
-	reservaciones: many(reservaciones),
-	ordenes: many(ordenes),
-	historialEstatusOrdens: many(historialEstatusOrden),
-	pagos: many(pagos),
-	facturas: many(facturas),
-	cuponesUsos: many(cuponesUsos),
-	reembolsos: many(reembolsos),
-	cierresCajas: many(cierresCaja),
 	gastos_aprobadoPor: many(gastos, {
 		relationName: "gastos_aprobadoPor_users_id"
 	}),
@@ -74,6 +143,15 @@ export const usersRelations = relations(users, ({many}) => ({
 	respuestasEncuestas: many(respuestasEncuesta),
 	logsAuditorias: many(logsAuditoria),
 	notificaciones: many(notificaciones),
+	ordenes: many(ordenes),
+	historialEstatusOrdens: many(historialEstatusOrden),
+	pagos: many(pagos),
+	reservaciones: many(reservaciones),
+	cierresCajas: many(cierresCaja),
+	facturas: many(facturas),
+	reembolsos: many(reembolsos),
+	cuponesUsos: many(cuponesUsos),
+	clientes: many(clientes),
 }));
 
 export const horariosEmpleadoRelations = relations(horariosEmpleado, ({one}) => ({
@@ -117,13 +195,6 @@ export const vacacionesRelations = relations(vacaciones, ({one}) => ({
 	}),
 }));
 
-export const nominaRelations = relations(nomina, ({one}) => ({
-	empleado: one(empleados, {
-		fields: [nomina.empleadoId],
-		references: [empleados.id]
-	}),
-}));
-
 export const evaluacionesDesempenoRelations = relations(evaluacionesDesempeno, ({one}) => ({
 	empleado_empleadoId: one(empleados, {
 		fields: [evaluacionesDesempeno.empleadoId],
@@ -150,100 +221,6 @@ export const capacitacionesEmpleadoRelations = relations(capacitacionesEmpleado,
 
 export const capacitacionesRelations = relations(capacitaciones, ({many}) => ({
 	capacitacionesEmpleados: many(capacitacionesEmpleado),
-}));
-
-export const subcategoriasMenuRelations = relations(subcategoriasMenu, ({one, many}) => ({
-	categoriasMenu: one(categoriasMenu, {
-		fields: [subcategoriasMenu.categoriaId],
-		references: [categoriasMenu.id]
-	}),
-	platillos: many(platillos),
-}));
-
-export const categoriasMenuRelations = relations(categoriasMenu, ({many}) => ({
-	subcategoriasMenus: many(subcategoriasMenu),
-	platillos: many(platillos),
-	categoriasEstacions: many(categoriasEstacion),
-}));
-
-export const platillosRelations = relations(platillos, ({one, many}) => ({
-	categoriasMenu: one(categoriasMenu, {
-		fields: [platillos.categoriaId],
-		references: [categoriasMenu.id]
-	}),
-	subcategoriasMenu: one(subcategoriasMenu, {
-		fields: [platillos.subcategoriaId],
-		references: [subcategoriasMenu.id]
-	}),
-	informacionNutricionals: many(informacionNutricional),
-	variantesPlatillos: many(variantesPlatillo),
-	combosItems: many(combosItems),
-	menusDelDiaItems: many(menusDelDiaItems),
-	recetas: many(recetas),
-	preferenciasClientes: many(preferenciasCliente),
-	ordenItems: many(ordenItems),
-	platillosAlergenos: many(platillosAlergenos),
-	platillosModificadores: many(platillosModificadores),
-}));
-
-export const informacionNutricionalRelations = relations(informacionNutricional, ({one}) => ({
-	platillo: one(platillos, {
-		fields: [informacionNutricional.platilloId],
-		references: [platillos.id]
-	}),
-}));
-
-export const variantesPlatilloRelations = relations(variantesPlatillo, ({one, many}) => ({
-	platillo: one(platillos, {
-		fields: [variantesPlatillo.platilloId],
-		references: [platillos.id]
-	}),
-	recetas: many(recetas),
-	ordenItems: many(ordenItems),
-}));
-
-export const modificadoresRelations = relations(modificadores, ({one, many}) => ({
-	gruposModificadore: one(gruposModificadores, {
-		fields: [modificadores.grupoId],
-		references: [gruposModificadores.id]
-	}),
-	ordenItemModificadores: many(ordenItemModificadores),
-}));
-
-export const gruposModificadoresRelations = relations(gruposModificadores, ({many}) => ({
-	modificadores: many(modificadores),
-	platillosModificadores: many(platillosModificadores),
-}));
-
-export const combosItemsRelations = relations(combosItems, ({one}) => ({
-	combo: one(combos, {
-		fields: [combosItems.comboId],
-		references: [combos.id]
-	}),
-	platillo: one(platillos, {
-		fields: [combosItems.platilloId],
-		references: [platillos.id]
-	}),
-}));
-
-export const combosRelations = relations(combos, ({many}) => ({
-	combosItems: many(combosItems),
-	ordenItems: many(ordenItems),
-}));
-
-export const menusDelDiaItemsRelations = relations(menusDelDiaItems, ({one}) => ({
-	menusDelDia: one(menusDelDia, {
-		fields: [menusDelDiaItems.menuDiaId],
-		references: [menusDelDia.id]
-	}),
-	platillo: one(platillos, {
-		fields: [menusDelDiaItems.platilloId],
-		references: [platillos.id]
-	}),
-}));
-
-export const menusDelDiaRelations = relations(menusDelDia, ({many}) => ({
-	menusDelDiaItems: many(menusDelDiaItems),
 }));
 
 export const ingredientesRelations = relations(ingredientes, ({one, many}) => ({
@@ -393,29 +370,109 @@ export const mesasRelations = relations(mesas, ({one, many}) => ({
 		fields: [mesas.areaId],
 		references: [areasSalon.id]
 	}),
-	estatusMesas: many(estatusMesa),
-	reservaciones: many(reservaciones),
 	preferenciasClientes: many(preferenciasCliente),
 	ordenes: many(ordenes),
+	estatusMesas: many(estatusMesa),
+	reservaciones: many(reservaciones),
 }));
 
 export const areasSalonRelations = relations(areasSalon, ({many}) => ({
 	mesas: many(mesas),
 }));
 
-export const estatusMesaRelations = relations(estatusMesa, ({one}) => ({
-	mesa: one(mesas, {
-		fields: [estatusMesa.mesaId],
-		references: [mesas.id]
+export const nivelesLealtadRelations = relations(nivelesLealtad, ({one, many}) => ({
+	programaLealtad: one(programaLealtad, {
+		fields: [nivelesLealtad.programaId],
+		references: [programaLealtad.id]
 	}),
+	cuentasLealtads: many(cuentasLealtad),
+}));
+
+export const programaLealtadRelations = relations(programaLealtad, ({many}) => ({
+	nivelesLealtads: many(nivelesLealtad),
+}));
+
+export const direccionesClienteRelations = relations(direccionesCliente, ({one}) => ({
+	cliente: one(clientes, {
+		fields: [direccionesCliente.clienteId],
+		references: [clientes.id]
+	}),
+}));
+
+export const clientesRelations = relations(clientes, ({one, many}) => ({
+	direccionesClientes: many(direccionesCliente),
+	preferenciasClientes: many(preferenciasCliente),
+	ordenes: many(ordenes),
+	user: one(users, {
+		fields: [clientes.userId],
+		references: [users.id]
+	}),
+	cuentasLealtads: many(cuentasLealtad),
+}));
+
+export const presupuestosRelations = relations(presupuestos, ({one}) => ({
+	categoriasGasto: one(categoriasGasto, {
+		fields: [presupuestos.categoriaId],
+		references: [categoriasGasto.id]
+	}),
+}));
+
+export const categoriasGastoRelations = relations(categoriasGasto, ({many}) => ({
+	presupuestos: many(presupuestos),
+	gastos: many(gastos),
+}));
+
+export const gastosRelations = relations(gastos, ({one}) => ({
+	user_aprobadoPor: one(users, {
+		fields: [gastos.aprobadoPor],
+		references: [users.id],
+		relationName: "gastos_aprobadoPor_users_id"
+	}),
+	categoriasGasto: one(categoriasGasto, {
+		fields: [gastos.categoriaId],
+		references: [categoriasGasto.id]
+	}),
+	metodosPago: one(metodosPago, {
+		fields: [gastos.metodoPagoId],
+		references: [metodosPago.id]
+	}),
+	proveedore: one(proveedores, {
+		fields: [gastos.proveedorId],
+		references: [proveedores.id]
+	}),
+	user_registradoPor: one(users, {
+		fields: [gastos.registradoPor],
+		references: [users.id],
+		relationName: "gastos_registradoPor_users_id"
+	}),
+}));
+
+export const metodosPagoRelations = relations(metodosPago, ({many}) => ({
+	gastos: many(gastos),
+	pagos: many(pagos),
+}));
+
+export const resenasRelations = relations(resenas, ({one}) => ({
 	ordene: one(ordenes, {
-		fields: [estatusMesa.ordenId],
+		fields: [resenas.ordenId],
 		references: [ordenes.id]
+	}),
+	user_respondidoPor: one(users, {
+		fields: [resenas.respondidoPor],
+		references: [users.id],
+		relationName: "resenas_respondidoPor_users_id"
+	}),
+	user_userId: one(users, {
+		fields: [resenas.userId],
+		references: [users.id],
+		relationName: "resenas_userId_users_id"
 	}),
 }));
 
 export const ordenesRelations = relations(ordenes, ({one, many}) => ({
-	estatusMesas: many(estatusMesa),
+	resenas: many(resenas),
+	respuestasEncuestas: many(respuestasEncuesta),
+	comandas: many(comandas),
 	user: one(users, {
 		fields: [ordenes.atendidoPor],
 		references: [users.id]
@@ -432,75 +489,84 @@ export const ordenesRelations = relations(ordenes, ({one, many}) => ({
 		fields: [ordenes.reservacionId],
 		references: [reservaciones.id]
 	}),
-	historialEstatusOrdens: many(historialEstatusOrden),
 	ordenItems: many(ordenItems),
-	comandas: many(comandas),
+	historialEstatusOrdens: many(historialEstatusOrden),
 	pagos: many(pagos),
+	estatusMesas: many(estatusMesa),
 	facturas: many(facturas),
 	cuponesUsos: many(cuponesUsos),
-	resenas: many(resenas),
+}));
+
+export const respuestasEncuestaRelations = relations(respuestasEncuesta, ({one}) => ({
+	encuestasSatisfaccion: one(encuestasSatisfaccion, {
+		fields: [respuestasEncuesta.encuestaId],
+		references: [encuestasSatisfaccion.id]
+	}),
+	ordene: one(ordenes, {
+		fields: [respuestasEncuesta.ordenId],
+		references: [ordenes.id]
+	}),
+	user: one(users, {
+		fields: [respuestasEncuesta.userId],
+		references: [users.id]
+	}),
+}));
+
+export const encuestasSatisfaccionRelations = relations(encuestasSatisfaccion, ({many}) => ({
 	respuestasEncuestas: many(respuestasEncuesta),
+	preguntasEncuestas: many(preguntasEncuesta),
 }));
 
-export const clientesRelations = relations(clientes, ({one, many}) => ({
+export const preguntasEncuestaRelations = relations(preguntasEncuesta, ({one}) => ({
+	encuestasSatisfaccion: one(encuestasSatisfaccion, {
+		fields: [preguntasEncuesta.encuestaId],
+		references: [encuestasSatisfaccion.id]
+	}),
+}));
+
+export const logsAuditoriaRelations = relations(logsAuditoria, ({one}) => ({
 	user: one(users, {
-		fields: [clientes.userId],
+		fields: [logsAuditoria.userId],
 		references: [users.id]
 	}),
-	direccionesClientes: many(direccionesCliente),
-	cuentasLealtads: many(cuentasLealtad),
-	preferenciasClientes: many(preferenciasCliente),
-	ordenes: many(ordenes),
 }));
 
-export const reservacionesRelations = relations(reservaciones, ({one, many}) => ({
-	mesa: one(mesas, {
-		fields: [reservaciones.mesaId],
-		references: [mesas.id]
-	}),
+export const notificacionesRelations = relations(notificaciones, ({one}) => ({
 	user: one(users, {
-		fields: [reservaciones.userId],
+		fields: [notificaciones.userId],
 		references: [users.id]
 	}),
-	ordenes: many(ordenes),
 }));
 
-export const direccionesClienteRelations = relations(direccionesCliente, ({one}) => ({
-	cliente: one(clientes, {
-		fields: [direccionesCliente.clienteId],
-		references: [clientes.id]
+export const combosItemsRelations = relations(combosItems, ({one}) => ({
+	combo: one(combos, {
+		fields: [combosItems.comboId],
+		references: [combos.id]
+	}),
+	platillo: one(platillos, {
+		fields: [combosItems.platilloId],
+		references: [platillos.id]
 	}),
 }));
 
-export const nivelesLealtadRelations = relations(nivelesLealtad, ({one, many}) => ({
-	programaLealtad: one(programaLealtad, {
-		fields: [nivelesLealtad.programaId],
-		references: [programaLealtad.id]
-	}),
-	cuentasLealtads: many(cuentasLealtad),
+export const combosRelations = relations(combos, ({many}) => ({
+	combosItems: many(combosItems),
+	ordenItems: many(ordenItems),
 }));
 
-export const programaLealtadRelations = relations(programaLealtad, ({many}) => ({
-	nivelesLealtads: many(nivelesLealtad),
+export const menusDelDiaItemsRelations = relations(menusDelDiaItems, ({one}) => ({
+	menusDelDia: one(menusDelDia, {
+		fields: [menusDelDiaItems.menuDiaId],
+		references: [menusDelDia.id]
+	}),
+	platillo: one(platillos, {
+		fields: [menusDelDiaItems.platilloId],
+		references: [platillos.id]
+	}),
 }));
 
-export const cuentasLealtadRelations = relations(cuentasLealtad, ({one, many}) => ({
-	cliente: one(clientes, {
-		fields: [cuentasLealtad.clienteId],
-		references: [clientes.id]
-	}),
-	nivelesLealtad: one(nivelesLealtad, {
-		fields: [cuentasLealtad.nivelId],
-		references: [nivelesLealtad.id]
-	}),
-	transaccionesLealtads: many(transaccionesLealtad),
-}));
-
-export const transaccionesLealtadRelations = relations(transaccionesLealtad, ({one}) => ({
-	cuentasLealtad: one(cuentasLealtad, {
-		fields: [transaccionesLealtad.cuentaId],
-		references: [cuentasLealtad.id]
-	}),
+export const menusDelDiaRelations = relations(menusDelDia, ({many}) => ({
+	menusDelDiaItems: many(menusDelDiaItems),
 }));
 
 export const preferenciasClienteRelations = relations(preferenciasCliente, ({one}) => ({
@@ -518,13 +584,31 @@ export const preferenciasClienteRelations = relations(preferenciasCliente, ({one
 	}),
 }));
 
-export const historialEstatusOrdenRelations = relations(historialEstatusOrden, ({one}) => ({
+export const comandasRelations = relations(comandas, ({one}) => ({
+	estacionesCocina: one(estacionesCocina, {
+		fields: [comandas.estacionId],
+		references: [estacionesCocina.id]
+	}),
 	ordene: one(ordenes, {
-		fields: [historialEstatusOrden.ordenId],
+		fields: [comandas.ordenId],
 		references: [ordenes.id]
 	}),
+}));
+
+export const estacionesCocinaRelations = relations(estacionesCocina, ({many}) => ({
+	comandas: many(comandas),
+	ordenItems: many(ordenItems),
+	categoriasEstacions: many(categoriasEstacion),
+}));
+
+export const reservacionesRelations = relations(reservaciones, ({one, many}) => ({
+	ordenes: many(ordenes),
+	mesa: one(mesas, {
+		fields: [reservaciones.mesaId],
+		references: [mesas.id]
+	}),
 	user: one(users, {
-		fields: [historialEstatusOrden.userId],
+		fields: [reservaciones.userId],
 		references: [users.id]
 	}),
 }));
@@ -553,12 +637,6 @@ export const ordenItemsRelations = relations(ordenItems, ({one, many}) => ({
 	ordenItemModificadores: many(ordenItemModificadores),
 }));
 
-export const estacionesCocinaRelations = relations(estacionesCocina, ({many}) => ({
-	ordenItems: many(ordenItems),
-	comandas: many(comandas),
-	categoriasEstacions: many(categoriasEstacion),
-}));
-
 export const ordenItemModificadoresRelations = relations(ordenItemModificadores, ({one}) => ({
 	modificadore: one(modificadores, {
 		fields: [ordenItemModificadores.modificadorId],
@@ -570,14 +648,14 @@ export const ordenItemModificadoresRelations = relations(ordenItemModificadores,
 	}),
 }));
 
-export const comandasRelations = relations(comandas, ({one}) => ({
-	estacionesCocina: one(estacionesCocina, {
-		fields: [comandas.estacionId],
-		references: [estacionesCocina.id]
-	}),
+export const historialEstatusOrdenRelations = relations(historialEstatusOrden, ({one}) => ({
 	ordene: one(ordenes, {
-		fields: [comandas.ordenId],
+		fields: [historialEstatusOrden.ordenId],
 		references: [ordenes.id]
+	}),
+	user: one(users, {
+		fields: [historialEstatusOrden.userId],
+		references: [users.id]
 	}),
 }));
 
@@ -597,9 +675,22 @@ export const pagosRelations = relations(pagos, ({one, many}) => ({
 	reembolsos: many(reembolsos),
 }));
 
-export const metodosPagoRelations = relations(metodosPago, ({many}) => ({
-	pagos: many(pagos),
-	gastos: many(gastos),
+export const estatusMesaRelations = relations(estatusMesa, ({one}) => ({
+	mesa: one(mesas, {
+		fields: [estatusMesa.mesaId],
+		references: [mesas.id]
+	}),
+	ordene: one(ordenes, {
+		fields: [estatusMesa.ordenId],
+		references: [ordenes.id]
+	}),
+}));
+
+export const cierresCajaRelations = relations(cierresCaja, ({one}) => ({
+	user: one(users, {
+		fields: [cierresCaja.userId],
+		references: [users.id]
+	}),
 }));
 
 export const facturasRelations = relations(facturas, ({one}) => ({
@@ -610,6 +701,17 @@ export const facturasRelations = relations(facturas, ({one}) => ({
 	user: one(users, {
 		fields: [facturas.userId],
 		references: [users.id]
+	}),
+}));
+
+export const reembolsosRelations = relations(reembolsos, ({one}) => ({
+	user: one(users, {
+		fields: [reembolsos.aprobadoPor],
+		references: [users.id]
+	}),
+	pago: one(pagos, {
+		fields: [reembolsos.pagoId],
+		references: [pagos.id]
 	}),
 }));
 
@@ -632,116 +734,22 @@ export const cuponesRelations = relations(cupones, ({many}) => ({
 	cuponesUsos: many(cuponesUsos),
 }));
 
-export const reembolsosRelations = relations(reembolsos, ({one}) => ({
-	user: one(users, {
-		fields: [reembolsos.aprobadoPor],
-		references: [users.id]
+export const cuentasLealtadRelations = relations(cuentasLealtad, ({one, many}) => ({
+	cliente: one(clientes, {
+		fields: [cuentasLealtad.clienteId],
+		references: [clientes.id]
 	}),
-	pago: one(pagos, {
-		fields: [reembolsos.pagoId],
-		references: [pagos.id]
+	nivelesLealtad: one(nivelesLealtad, {
+		fields: [cuentasLealtad.nivelId],
+		references: [nivelesLealtad.id]
 	}),
+	transaccionesLealtads: many(transaccionesLealtad),
 }));
 
-export const cierresCajaRelations = relations(cierresCaja, ({one}) => ({
-	user: one(users, {
-		fields: [cierresCaja.userId],
-		references: [users.id]
-	}),
-}));
-
-export const gastosRelations = relations(gastos, ({one}) => ({
-	user_aprobadoPor: one(users, {
-		fields: [gastos.aprobadoPor],
-		references: [users.id],
-		relationName: "gastos_aprobadoPor_users_id"
-	}),
-	categoriasGasto: one(categoriasGasto, {
-		fields: [gastos.categoriaId],
-		references: [categoriasGasto.id]
-	}),
-	metodosPago: one(metodosPago, {
-		fields: [gastos.metodoPagoId],
-		references: [metodosPago.id]
-	}),
-	proveedore: one(proveedores, {
-		fields: [gastos.proveedorId],
-		references: [proveedores.id]
-	}),
-	user_registradoPor: one(users, {
-		fields: [gastos.registradoPor],
-		references: [users.id],
-		relationName: "gastos_registradoPor_users_id"
-	}),
-}));
-
-export const categoriasGastoRelations = relations(categoriasGasto, ({many}) => ({
-	gastos: many(gastos),
-	presupuestos: many(presupuestos),
-}));
-
-export const presupuestosRelations = relations(presupuestos, ({one}) => ({
-	categoriasGasto: one(categoriasGasto, {
-		fields: [presupuestos.categoriaId],
-		references: [categoriasGasto.id]
-	}),
-}));
-
-export const resenasRelations = relations(resenas, ({one}) => ({
-	ordene: one(ordenes, {
-		fields: [resenas.ordenId],
-		references: [ordenes.id]
-	}),
-	user_respondidoPor: one(users, {
-		fields: [resenas.respondidoPor],
-		references: [users.id],
-		relationName: "resenas_respondidoPor_users_id"
-	}),
-	user_userId: one(users, {
-		fields: [resenas.userId],
-		references: [users.id],
-		relationName: "resenas_userId_users_id"
-	}),
-}));
-
-export const preguntasEncuestaRelations = relations(preguntasEncuesta, ({one}) => ({
-	encuestasSatisfaccion: one(encuestasSatisfaccion, {
-		fields: [preguntasEncuesta.encuestaId],
-		references: [encuestasSatisfaccion.id]
-	}),
-}));
-
-export const encuestasSatisfaccionRelations = relations(encuestasSatisfaccion, ({many}) => ({
-	preguntasEncuestas: many(preguntasEncuesta),
-	respuestasEncuestas: many(respuestasEncuesta),
-}));
-
-export const respuestasEncuestaRelations = relations(respuestasEncuesta, ({one}) => ({
-	encuestasSatisfaccion: one(encuestasSatisfaccion, {
-		fields: [respuestasEncuesta.encuestaId],
-		references: [encuestasSatisfaccion.id]
-	}),
-	ordene: one(ordenes, {
-		fields: [respuestasEncuesta.ordenId],
-		references: [ordenes.id]
-	}),
-	user: one(users, {
-		fields: [respuestasEncuesta.userId],
-		references: [users.id]
-	}),
-}));
-
-export const logsAuditoriaRelations = relations(logsAuditoria, ({one}) => ({
-	user: one(users, {
-		fields: [logsAuditoria.userId],
-		references: [users.id]
-	}),
-}));
-
-export const notificacionesRelations = relations(notificaciones, ({one}) => ({
-	user: one(users, {
-		fields: [notificaciones.userId],
-		references: [users.id]
+export const transaccionesLealtadRelations = relations(transaccionesLealtad, ({one}) => ({
+	cuentasLealtad: one(cuentasLealtad, {
+		fields: [transaccionesLealtad.cuentaId],
+		references: [cuentasLealtad.id]
 	}),
 }));
 
