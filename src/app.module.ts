@@ -10,6 +10,7 @@ import { ImportModule } from './reports/import/import.module';
 import { DatabaseModule } from './database/database.module';
 import { CacheModule } from './cache/cache.module';
 import { UsersModule } from './users/users.module';
+import { MetricsModule } from './database/metrics/metrics.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { UsersModule } from './users/users.module';
     ImportModule,
     PlatillosModule,
     UsersModule,
+    MetricsModule,
   ],
   controllers: [],
   providers: [],
