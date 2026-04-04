@@ -329,36 +329,36 @@ export class MetricsService {
   //  Referencia: https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-USER-TABLES-VIEW
   // ══════════════════════════════════════════════════════════════════════════
   async getHotTables(): Promise<DBHotTableDto[]> {
-    try {
-      const result = await this.db.execute(sql`
-        SELECT
-          t.relname                                                     AS table_name,
-          COALESCE(t.seq_scan, 0)                                       AS seq_scan,
-          COALESCE(t.idx_scan, 0)                                       AS idx_scan,
-          COALESCE(t.seq_tup_read, 0) + COALESCE(t.idx_tup_fetch, 0)   AS tup_returned,
-          COALESCE(t.n_tup_ins, 0) + COALESCE(t.n_tup_upd, 0)
-            + COALESCE(t.n_tup_del, 0)                                 AS tup_modified,
-          COALESCE(t.seq_scan, 0) + COALESCE(t.idx_scan, 0)
-            + COALESCE(t.seq_tup_read, 0) + COALESCE(t.idx_tup_fetch, 0)
-            + COALESCE(t.n_tup_ins, 0) + COALESCE(t.n_tup_upd, 0)
-            + COALESCE(t.n_tup_del, 0)                                 AS total_ops,
-        LIMIT 20
-      `);
+    const result = await this.db.execute(sql`
+    SELECT
+      t.relname                                                       AS table_name,
+      COALESCE(t.seq_scan, 0)                                         AS seq_scan,
+      COALESCE(t.idx_scan, 0)                                         AS idx_scan,
+      COALESCE(t.seq_tup_read, 0) + COALESCE(t.idx_tup_fetch, 0)     AS tup_returned,
+      COALESCE(t.n_tup_ins, 0) + COALESCE(t.n_tup_upd, 0)
+        + COALESCE(t.n_tup_del, 0)                                   AS tup_modified,
+      COALESCE(t.seq_scan, 0) + COALESCE(t.idx_scan, 0)
+        + COALESCE(t.seq_tup_read, 0) + COALESCE(t.idx_tup_fetch, 0)
+        + COALESCE(t.n_tup_ins, 0) + COALESCE(t.n_tup_upd, 0)
+        + COALESCE(t.n_tup_del, 0)                                   AS total_ops,
+      ROUND(
+        pg_total_relation_size(t.relid)::numeric / 1024 / 1024,
+        3
+      )                                                               AS size_mb
+    FROM pg_stat_user_tables t
+    ORDER BY total_ops DESC
+    LIMIT 20
+  `);
 
-      return (result as any[]).map((row) => ({
-        tableName: row.table_name,
-        seqScan: parseInt(row.seq_scan ?? '0', 10),
-        idxScan: parseInt(row.idx_scan ?? '0', 10),
-        tupReturned: parseInt(row.tup_returned ?? '0', 10),
-        tupModified: parseInt(row.tup_modified ?? '0', 10),
-        totalOps: parseInt(row.total_ops ?? '0', 10),
-        sizeMB: parseFloat(row.size_mb ?? '0') || 0,
-      }));
-    } catch (error) {
-      this.logger.error('Error obteniendo hot tables:', error);
-      // Devolver array vacío en caso de error
-      return [];
-    }
+    return (result as any[]).map((row) => ({
+      tableName: row.table_name,
+      seqScan: parseInt(row.seq_scan ?? '0', 10),
+      idxScan: parseInt(row.idx_scan ?? '0', 10),
+      tupReturned: parseInt(row.tup_returned ?? '0', 10),
+      tupModified: parseInt(row.tup_modified ?? '0', 10),
+      totalOps: parseInt(row.total_ops ?? '0', 10),
+      sizeMB: parseFloat(row.size_mb ?? '0') || 0,
+    }));
   }
 
   // ══════════════════════════════════════════════════════════════════════════

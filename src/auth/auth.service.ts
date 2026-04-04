@@ -105,7 +105,6 @@ export class AuthService {
     const ttl = +(this.jwtConfiguration.accessTokenTtl || 3600);
 
     // ✅ Guardar tokenId en caché
-    console.log(`💾 Guardando en caché: user-${user.id} = ${tokenId}`);
     await this.cacheService.set(`user-${String(user.id)}`, tokenId, ttl);
 
     const accessToken = await this.jwtService.signAsync(
