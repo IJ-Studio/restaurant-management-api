@@ -45,32 +45,21 @@ export class JwtAuthGuard implements CanActivate {
         secret: this.jwtConfiguration.secret,
       });
 
-      console.log('✅ JWT válido:', payload);
-
       const cachedTokenId = await this.cacheService.get(`user-${payload.id}`);
 
-      console.log(`🔍 Buscando en caché: user-${payload.id}`);
-      console.log('🔍 TokenId en JWT:', payload.tokenId);
-      console.log('🔍 TokenId en caché:', cachedTokenId);
-
       if (!cachedTokenId) {
-        console.error('❌ Token no encontrado en caché');
         throw new UnauthorizedException('Token no encontrado o expirado');
       }
 
       if (cachedTokenId !== payload.tokenId) {
-        console.error('❌ TokenId no coincide');
         throw new UnauthorizedException('Token revocado');
       }
 
       (request as any)[REQUEST_USER_KEY] = payload;
       (request as any).user = payload;
 
-      console.log('✅ Usuario asignado a request.user:', (request as any).user);
-
       return true;
     } catch (error: any) {
-      console.error('❌ Error en Autorización:', error.message);
       throw new UnauthorizedException(error.message || 'Token inválido');
     }
   }
