@@ -1,8 +1,12 @@
+// import '@aikidosec/firewall';
 import { NestFactory } from '@nestjs/core';
+// import { ZenGuard } from './zen.guard';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // app.useGlobalGuards(new ZenGuard());
   app.enableCors({
     origin:[
       'https://el-quijote.vercel.app',
