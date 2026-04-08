@@ -5,6 +5,8 @@ import {
   IsNumber,
   IsOptional,
   MinLength,
+  Min,
+  Max,
 } from 'class-validator';
 
 export class CreateUserDto {
@@ -30,9 +32,13 @@ export class CreateUserDto {
   @IsNotEmpty()
   readonly password!: string;
 
-  @ApiProperty({ example: 2, description: '1=Admin, 2=Chef, 3=User' })
-  @IsOptional()
+  @ApiProperty({
+    example: 2,
+    description: '2=Cajero, 3=Mesero, 4=Cocina, 5=Cliente',
+  })
   @IsNumber()
+  @Min(2) // No permitir crear admins
+  @Max(5) // Roles válidos: 2-5
   readonly roleId?: number;
 
   @ApiProperty({ example: false })

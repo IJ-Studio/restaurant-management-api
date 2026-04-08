@@ -9,12 +9,16 @@ import {
   Patch,
   Post,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { REQUEST_USER_KEY } from 'src/common/constants';
 import { ActiveUserData } from 'src/common/interfaces/active-user-data.interface';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guards';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @ApiTags('users')
 @Controller('users')
@@ -23,6 +27,8 @@ export class UsersController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(1)
   async createUser(@Body() createUserDto: CreateUserDto, @Req() request: any) {
     const admin = request[REQUEST_USER_KEY] as ActiveUserData;
     return await this.usersService.createUser(
@@ -32,6 +38,8 @@ export class UsersController {
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(1)
   async getAllUsers(@Req() request: any) {
     const admin = request[REQUEST_USER_KEY] as ActiveUserData;
     return await this.usersService.getAllUsers(parseInt(admin.id));
@@ -58,6 +66,8 @@ export class UsersController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(1)
   async deleteUser(@Param('id') id: string, @Req() request: any) {
     const admin = request[REQUEST_USER_KEY] as ActiveUserData;
     return await this.usersService.deleteUser(parseInt(id), parseInt(admin.id));

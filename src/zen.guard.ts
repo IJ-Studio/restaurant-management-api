@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  CanActivate,
-  HttpException,
-  HttpStatus,
-} from '@nestjs/common';
+import { Injectable, CanActivate, HttpException, HttpStatus,} from '@nestjs/common';
 import { shouldBlockRequest } from '@aikidosec/firewall';
 
 @Injectable()

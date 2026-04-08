@@ -96,3 +96,113 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+
+```
+api_restaurant_management
+├─ .prettierrc
+├─ drizzle.config.ts
+├─ eslint.config.mjs
+├─ nest-cli.json
+├─ package-lock.json
+├─ package.json
+├─ pnpm-lock.yaml
+├─ pnpm-workspace.yaml
+├─ README.md
+├─ src
+│  ├─ app.module.ts
+│  ├─ auth
+│  │  ├─ auth.controller.ts
+│  │  ├─ auth.module.ts
+│  │  ├─ auth.service.ts
+│  │  ├─ bcrypt.service.ts
+│  │  ├─ dashboard.controller.ts
+│  │  ├─ decorators
+│  │  │  ├─ active-user.decorator.ts
+│  │  │  ├─ public.decorator.ts
+│  │  │  └─ roles.decorator.ts
+│  │  ├─ dto
+│  │  │  ├─ sign-in.dto.ts
+│  │  │  └─ sign-up.dto.ts
+│  │  └─ guards
+│  │     ├─ jwt-auth.guards.ts
+│  │     └─ roles.guard.ts
+│  ├─ backups
+│  │  ├─ backups.controller.ts
+│  │  ├─ backups.module.ts
+│  │  ├─ backups.service.ts
+│  │  ├─ google-drive.service.ts
+│  │  └─ supabase.service.ts
+│  ├─ cache
+│  │  ├─ cache.module.ts
+│  │  └─ cache.service.ts
+│  ├─ common
+│  │  ├─ config
+│  │  │  └─ jwt.config.ts
+│  │  ├─ constants
+│  │  │  ├─ index.ts
+│  │  │  └─ roles.ts
+│  │  ├─ decorators
+│  │  │  └─ match.decorator.ts
+│  │  └─ interfaces
+│  │     └─ active-user-data.interface.ts
+│  ├─ database
+│  │  ├─ constants.ts
+│  │  ├─ database.module.ts
+│  │  ├─ drizzle
+│  │  │  └─ migrations
+│  │  │     ├─ 0000_careful_gladiator.sql
+│  │  │     └─ meta
+│  │  │        ├─ 0000_snapshot.json
+│  │  │        └─ _journal.json
+│  │  ├─ drizzle.provider.ts
+│  │  ├─ metrics
+│  │  │  ├─ dto
+│  │  │  │  └─ metricsDTO.ts
+│  │  │  ├─ metrics.controller.ts
+│  │  │  ├─ metrics.module.ts
+│  │  │  └─ metrics.service.ts
+│  │  ├─ schema
+│  │  │  ├─ index.ts
+│  │  │  ├─ public.relations.ts
+│  │  │  └─ public.schema.ts
+│  │  └─ supabase.service.ts
+│  ├─ main.ts
+│  ├─ platillos
+│  │  ├─ platillos.controller.ts
+│  │  ├─ platillos.module.ts
+│  │  └─ platillos.service.ts
+│  ├─ reports
+│  │  ├─ export
+│  │  │  ├─ adapters
+│  │  │  │  ├─ csv.adapter.ts
+│  │  │  │  ├─ pdf.adapter.ts
+│  │  │  │  └─ xlsx.adapter.ts
+│  │  │  ├─ dto
+│  │  │  │  └─ queryDTO.ts
+│  │  │  ├─ export.controller.ts
+│  │  │  ├─ export.service.ts
+│  │  │  └─ repositories
+│  │  │     └─ export.salesDishes.repository.ts
+│  │  ├─ import
+│  │  │  ├─ adapters
+│  │  │  │  └─ xlsx.reader.adapter.ts
+│  │  │  ├─ dto
+│  │  │  │  └─ importDTO.ts
+│  │  │  ├─ import.controller.ts
+│  │  │  ├─ import.module.ts
+│  │  │  ├─ import.service.ts
+│  │  │  └─ repositories
+│  │  │     └─ import.salesDishes.repository.ts
+│  │  └─ reports.module.ts
+│  ├─ users
+│  │  ├─ dto
+│  │  │  └─ create-user.dto.ts
+│  │  ├─ users.controller.ts
+│  │  ├─ users.module.ts
+│  │  └─ users.service.ts
+│  └─ zen.guard.ts
+├─ tsconfig.build.json
+└─ tsconfig.json
+
+```
