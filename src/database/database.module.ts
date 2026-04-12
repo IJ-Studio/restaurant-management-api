@@ -13,12 +13,18 @@ export const DRIZZLE = Symbol('DRIZZLE');
       provide: DRIZZLE,
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        const connectionString = config.get<string>('DB_POOL_URL');
-        const client = postgres(connectionString || '', { prepare: false }); // prepare: false es obligatorio con pooler
+        const connectionString = config.get<string>('DB_POOL_URL') || config.get<string>('DATABASE_URL');
+        const dbSSL = config.get<string>('DATABASE_SSL') === 'true';
+
+        const client = postgres(connectionString || '', {
+          prepare: false,
+          ssl: dbSSL ? 'require' : false,
+        });
+
         return drizzle(client, { schema });
       },
     },
   ],
   exports: [DRIZZLE],
 })
-export class DatabaseModule {}
+export class DatabaseModule { }
