@@ -1,7 +1,7 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { DRIZZLE } from '../database/constants';
+import { DRIZZLE } from '../database/drizzle/constants';
 import * as schema from '../database/schema/public.schema';
 
 type ColumnMeta = {

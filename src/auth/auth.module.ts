@@ -6,7 +6,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { BcryptService } from './bcrypt.service';
-import { DashboardController } from './dashboard.controller';
+import { DashboardController } from '../roles/dashboard.controller';
 import { JwtAuthGuard } from './guards/jwt-auth.guards';
 
 import jwtConfig from 'src/common/config/jwt.config';

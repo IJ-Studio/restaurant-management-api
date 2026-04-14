@@ -3,10 +3,10 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import * as schema from '../database/schema/public.schema';
-import { backups } from '../database/schema/public.schema';
+import * as schema from '../../schema/public.schema';
+import { backups } from '../../schema/public.schema';
 import { desc, eq, sql } from 'drizzle-orm';
-import {DRIZZLE} from './../database/constants'
+import { DRIZZLE } from '../../drizzle/constants';
 @Injectable()
 export class BackupsService {
   // private readonly logger = new Logger(BackupsService.name);
