@@ -1,8 +1,13 @@
 ignoredBuiltDependencies:
+  - '@datadog/native-appsec'
+  - '@datadog/native-iast-taint-tracking'
+  - '@datadog/native-metrics'
+  - '@datadog/pprof'
   - '@nestjs/core'
   - '@scarf/scarf'
   - bcrypt
   - better-sqlite3
+  - dd-trace
   - unrs-resolver
 
 onlyBuiltDependencies:

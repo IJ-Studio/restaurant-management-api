@@ -2,7 +2,7 @@ import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import { InferSelectModel, eq } from 'drizzle-orm';
 
-import { DRIZZLE } from './../database/constants';
+import { DRIZZLE } from '../database/drizzle/constants';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from './../database/schema/public.schema';
 import { users } from './../database/schema/public.schema';

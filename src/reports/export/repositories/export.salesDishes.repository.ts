@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { SupabaseService } from '../../../database/supabase.service';
+import { SupabaseService } from '../../../database/supabase/supabase.service';
 
 export type ExportRow = Record<string, any>;
 

@@ -4,7 +4,7 @@ import {
   Inject,
   Injectable,
 } from '@nestjs/common';
-import { DRIZZLE } from '../database/constants';
+import { DRIZZLE } from '../database/drizzle/constants';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../database/schema/public.schema';
 import { users } from '../database/schema/public.schema';

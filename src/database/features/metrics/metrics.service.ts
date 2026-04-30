@@ -1,8 +1,8 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
-import { DRIZZLE } from '../constants';
+import { DRIZZLE } from '../../drizzle/constants';
 import { sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import type { Schema } from '../schema/index';
+import type { Schema } from '../../schema/index';
 import {
   DBCpuMetricsDto,
   DBRWRatioDto,

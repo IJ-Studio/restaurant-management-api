@@ -3,10 +3,10 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import * as schema from '../database/schema/public.schema';
-import { backups } from '../database/schema/public.schema';
+import * as schema from '../../schema/public.schema';
+import { backups } from '../../schema/public.schema';
 import { desc, eq, sql } from 'drizzle-orm';
-import {DRIZZLE} from './../database/constants'
+import { DRIZZLE } from '../../drizzle/constants';
 @Injectable()
 export class BackupsService {
   // private readonly logger = new Logger(BackupsService.name);
@@ -127,6 +127,21 @@ export class BackupsService {
     return { deleted: id };
   }
 
+  // ── Descargar backup ──────────────────────────────────────────────────────
+  // async downloadBackup(id: number) {
+    // const [backup] = await this.db
+      // .select()
+      // .from(backups)
+      // .where(eq(backups.id, id));
+
+    // if (!backup) throw new Error('Backup no encontrado');
+    // if (!backup.driveFileId) throw new Error('Este backup no tiene archivo en storage');
+
+    // const buffer = await this.drive.downloadFile(backup.driveFileId);
+    // return { buffer, name: backup.name };
+  // }
+
+  // ── Backup automático diario a las 23:00 ────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   @Cron('0 23 * * *' as const)
   async scheduledBackup(): Promise<void> {
