@@ -82,9 +82,154 @@ export class PlatillosService {
     };
   }
 
+  private async tryGetCategoriaJoin(columns: ColumnMeta[]) {
+    const platilloColumns = new Set(columns.map((c) => c.column_name));
+    if (!platilloColumns.has('categoria_id')) return null;
+    if (platilloColumns.has('categoria_nombre')) return null;
+
+    const getCols = async (tableName: string) => {
+      const colsResult = await this.db.execute<{ column_name: string }>(
+        sql`
+          select column_name
+          from information_schema.columns
+          where table_schema = ${this.tableSchema}
+            and table_name = ${tableName}
+        `,
+      );
+      return new Set(
+        (colsResult as unknown as Array<{ column_name: string }>).map(
+          (c) => c.column_name,
+        ),
+      );
+    };
+
+    const pick = (tableName: string, cols: Set<string>) => {
+      const keyColumn = cols.has('id')
+        ? 'id'
+        : cols.has('categoria_id')
+          ? 'categoria_id'
+          : null;
+      const nameColumn = cols.has('nombre')
+        ? 'nombre'
+        : cols.has('name')
+          ? 'name'
+          : null;
+      if (!keyColumn || !nameColumn) return null;
+
+      const iconColumn = cols.has('icono') ? 'icono' : cols.has('icon') ? 'icon' : undefined;
+      const orderColumn = cols.has('orden') ? 'orden' : cols.has('order') ? 'order' : undefined;
+      const activeColumn = cols.has('activa')
+        ? 'activa'
+        : cols.has('is_active')
+          ? 'is_active'
+          : undefined;
+      const descriptionColumn = cols.has('descripcion')
+        ? 'descripcion'
+        : cols.has('description')
+          ? 'description'
+          : undefined;
+
+      return {
+        tableName,
+        keyColumn,
+        nameColumn,
+        iconColumn,
+        orderColumn,
+        activeColumn,
+        descriptionColumn,
+      };
+    };
+
+    const preferredTables = ['categorias_menu', 'categorias'];
+    for (const tableName of preferredTables) {
+      const cols = await getCols(tableName);
+      const picked = pick(tableName, cols);
+      if (picked) return picked;
+    }
+
+    const candidatesResult = await this.db.execute<{ table_name: string }>(
+      sql`
+        select table_name
+        from information_schema.tables
+        where table_schema = ${this.tableSchema}
+          and table_type = 'BASE TABLE'
+          and table_name ilike ${'%categ%'}
+        order by table_name
+      `,
+    );
+    const candidates = candidatesResult as unknown as Array<{ table_name: string }>;
+
+    for (const row of candidates) {
+      const tableName = row.table_name;
+      if (!tableName) continue;
+      const cols = await getCols(tableName);
+      const picked = pick(tableName, cols);
+      if (picked) return picked;
+    }
+
+    return null;
+  }
+
   async exportCsv() {
     const { columns } = await this.getSchema();
     const columnNames = columns.map((c) => c.column_name);
+
+    const categoriaJoin = await this.tryGetCategoriaJoin(columns);
+    if (categoriaJoin) {
+      const selectParts = columnNames.map((c) => sql`p.${sql.identifier(c)}`);
+      selectParts.push(
+        sql`c.${sql.identifier(categoriaJoin.nameColumn)} as ${sql.identifier('categoria_nombre')}`,
+      );
+      if (categoriaJoin.iconColumn) {
+        selectParts.push(
+          sql`c.${sql.identifier(categoriaJoin.iconColumn)} as ${sql.identifier('categoria_icono')}`,
+        );
+      }
+      if (categoriaJoin.orderColumn) {
+        selectParts.push(
+          sql`c.${sql.identifier(categoriaJoin.orderColumn)} as ${sql.identifier('categoria_orden')}`,
+        );
+      }
+      if (categoriaJoin.activeColumn) {
+        selectParts.push(
+          sql`c.${sql.identifier(categoriaJoin.activeColumn)} as ${sql.identifier('categoria_activa')}`,
+        );
+      }
+      if (categoriaJoin.descriptionColumn) {
+        selectParts.push(
+          sql`c.${sql.identifier(categoriaJoin.descriptionColumn)} as ${sql.identifier('categoria_descripcion')}`,
+        );
+      }
+      const selectColumns = sql.join(selectParts, sql`, `);
+
+      const rowsResult = await this.db.execute<Record<string, unknown>>(
+        sql`
+          select
+            ${selectColumns}
+          from ${sql.identifier(this.tableSchema)}.${sql.identifier(this.tableName)} p
+          left join ${sql.identifier(this.tableSchema)}.${sql.identifier(categoriaJoin.tableName)} c
+            on c.${sql.identifier(categoriaJoin.keyColumn)} = p.${sql.identifier('categoria_id')}
+        `,
+      );
+
+      const rows = rowsResult as unknown as Array<Record<string, unknown>>;
+      const outColumns = [
+        ...columnNames,
+        'categoria_nombre',
+        ...(categoriaJoin.iconColumn ? ['categoria_icono'] : []),
+        ...(categoriaJoin.orderColumn ? ['categoria_orden'] : []),
+        ...(categoriaJoin.activeColumn ? ['categoria_activa'] : []),
+        ...(categoriaJoin.descriptionColumn ? ['categoria_descripcion'] : []),
+      ];
+      const csv = toCsv(
+        [outColumns],
+        rows.map((r) => outColumns.map((c) => r[c])),
+      );
+      return {
+        filename: `${this.tableName}_${new Date().toISOString().slice(0, 10)}.csv`,
+        csv,
+      };
+    }
 
     const selectColumns = sql.join(
       columnNames.map((c) => sql`${sql.identifier(c)}`),
@@ -109,6 +254,59 @@ export class PlatillosService {
   async exportJson() {
     const { columns } = await this.getSchema();
     const columnNames = columns.map((c) => c.column_name);
+
+    const categoriaJoin = await this.tryGetCategoriaJoin(columns);
+    if (categoriaJoin) {
+      const selectParts = columnNames.map((c) => sql`p.${sql.identifier(c)}`);
+      selectParts.push(
+        sql`c.${sql.identifier(categoriaJoin.nameColumn)} as ${sql.identifier('categoria_nombre')}`,
+      );
+      if (categoriaJoin.iconColumn) {
+        selectParts.push(
+          sql`c.${sql.identifier(categoriaJoin.iconColumn)} as ${sql.identifier('categoria_icono')}`,
+        );
+      }
+      if (categoriaJoin.orderColumn) {
+        selectParts.push(
+          sql`c.${sql.identifier(categoriaJoin.orderColumn)} as ${sql.identifier('categoria_orden')}`,
+        );
+      }
+      if (categoriaJoin.activeColumn) {
+        selectParts.push(
+          sql`c.${sql.identifier(categoriaJoin.activeColumn)} as ${sql.identifier('categoria_activa')}`,
+        );
+      }
+      if (categoriaJoin.descriptionColumn) {
+        selectParts.push(
+          sql`c.${sql.identifier(categoriaJoin.descriptionColumn)} as ${sql.identifier('categoria_descripcion')}`,
+        );
+      }
+      const selectColumns = sql.join(selectParts, sql`, `);
+
+      const rowsResult = await this.db.execute<Record<string, unknown>>(
+        sql`
+          select
+            ${selectColumns}
+          from ${sql.identifier(this.tableSchema)}.${sql.identifier(this.tableName)} p
+          left join ${sql.identifier(this.tableSchema)}.${sql.identifier(categoriaJoin.tableName)} c
+            on c.${sql.identifier(categoriaJoin.keyColumn)} = p.${sql.identifier('categoria_id')}
+        `,
+      );
+      const rows = rowsResult as unknown as Array<Record<string, unknown>>;
+
+      const payload = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        schema: this.tableSchema,
+        table: this.tableName,
+        rows: rows.map((r) => sanitizeRowForJson(r)),
+      };
+
+      return {
+        filename: `${this.tableName}_${new Date().toISOString().slice(0, 10)}.json`,
+        json: JSON.stringify(payload, bigintJsonReplacer, 2),
+      };
+    }
 
     const selectColumns = sql.join(
       columnNames.map((c) => sql`${sql.identifier(c)}`),

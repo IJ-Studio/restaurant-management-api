@@ -6,4 +6,4 @@ import { SupabaseService } from './supabase/supabase.service';
   providers: [DrizzleProvider, SupabaseService],
   exports: [DrizzleProvider, SupabaseService],
 })
-export class DatabaseModule {}
+export class DatabaseModule { }

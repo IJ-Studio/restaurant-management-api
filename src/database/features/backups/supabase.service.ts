@@ -50,6 +50,20 @@ export class SupabaseService {
     };
   }
 
+  async downloadFile(fileId: string): Promise<Buffer> {
+    const { data, error } = await this.supabase.storage
+      .from(this.bucket)
+      .download(fileId);
+
+    if (error || !data) {
+      throw new Error(`Error descargando backup de Supabase: ${error?.message ?? 'sin datos'}`);
+    }
+
+    // data es un Blob, lo convertimos a Buffer
+    const arrayBuffer = await data.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  }
+
   async deleteFile(fileId: string): Promise<void> {
     const { error } = await this.supabase.storage
       .from(this.bucket)
