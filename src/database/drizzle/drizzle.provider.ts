@@ -20,3 +20,4 @@ export const DrizzleProvider = {
     return drizzle(client, { schema });
   },
 };
+export type DrizzleDB = ReturnType<typeof drizzle>;

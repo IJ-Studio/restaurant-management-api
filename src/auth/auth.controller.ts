@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Get } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { AuthService } from './auth.service';
@@ -17,12 +17,17 @@ type User = InferSelectModel<typeof users>;
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // 👇 AGREGA ESTE ENDPOINT PARA RESPONDERLE AL AUTHPROVIDER
+  @Get('me')
+  async getMe(@ActiveUser() user: ActiveUserData) {
+    return { user };
+  }
+
   @Public()
   @Post('sign-up')
   async signUp(@Body() signUpDto: SignUpDto): Promise<User> {
     return await this.authService.SignUp(signUpDto);
   }
-
   @Public()
   @Post('sign-in')
   @HttpCode(HttpStatus.OK)

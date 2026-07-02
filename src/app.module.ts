@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'; // 👈 AGREGADO
+import { APP_GUARD } from '@nestjs/core'; // 👈 AGREGADO
 
+import { ReservationsModule } from './reservations/reservations.module';
 import { AuthModule } from './auth/auth.module';
 import { BackupsModule } from './database/features/backups/backups.module';
 import { ReportsModule } from './reports/reports.module';
@@ -20,9 +23,15 @@ import { MenuModule } from './menu/menu.module';
       // envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
       envFilePath: `.env`,
     }),
+    // ─── BLINDAJE CONTRA PETICIONES MASIVAS (RATE LIMITING) ───
+    ThrottlerModule.forRoot([{
+      ttl: 60000, // 1 minuto (en milisegundos)
+      limit: 40,  // Máximo 40 peticiones por minuto por cada IP / Cliente
+    }]),
     DatabaseModule,
     CacheModule,
     AuthModule,
+    ReservationsModule,
     ScheduleModule.forRoot(),
     BackupsModule,
     ReportsModule,
@@ -33,6 +42,12 @@ import { MenuModule } from './menu/menu.module';
     MenuModule,
   ],
   controllers: [],
-  providers: [],
+  providers: [
+    // ─── PROVEE EL GUARD DE FORMA GLOBAL PARA TODAS LAS RUTAS ───
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}
