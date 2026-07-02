@@ -1,35 +1,28 @@
-// import { PlatilloEntity } from '../interfaces/platillo.interface';
-// import { PlatilloResponseDto } from '../dto/platillo-response.dto';
+import { PlatilloResponseDto } from '../dto/platillo-response.dto';
 
-// export function platilloToResponseDto(
-//   platillo: PlatilloEntity,
-// ): PlatilloResponseDto {
-//   return {
-//     id: platillo.id,
-//     categoriaId: platillo.categoriaId,
-//     subcategoriaId: platillo.subcategoriaId,
-//     codigo: platillo.codigo,
-//     nombre: platillo.nombre,
-//     descripcion: platillo.descripcion,
-//     descripcionCorta: platillo.descripcionCorta,
-//     imagenUrl: platillo.imagenUrl,
-//     precio: Number(platillo.precio),
-//     precioCosto: platillo.precioCosto ? Number(platillo.precioCosto) : null,
-//     tiempoPreparacion: platillo.tiempoPreparacion,
-//     esVegetariano: platillo.esVegetariano,
-//     esVegano: platillo.esVegano,
-//     esSinGluten: platillo.esSinGluten,
-//     esPicante: platillo.esPicante,
-//     nivelPicante: platillo.nivelPicante,
-//     esPopular: platillo.esPopular,
-//     esNuevo: platillo.esNuevo,
-//     esDelChef: platillo.esDelChef,
-//     disponible: platillo.disponible,
-//     disponibleTakeout: platillo.disponibleTakeout,
-//     orden: platillo.orden,
-//     notasCocina: platillo.notasCocina,
-//     fechaAlta: platillo.fechaAlta,
-//     creadoEn: platillo.creadoEn,
-//     actualizadoEn: platillo.actualizadoEn,
-//   };
-// }
+export class PlatilloMapper {
+  static toResponse(row: { platillo: any; categoria: any }): PlatilloResponseDto {
+    const { platillo, categoria } = row;
+
+    return {
+      id: platillo.id,
+      nombre: platillo.nombre,
+      descripcion: platillo.descripcion || '',
+      descripcionCorta: platillo.descripcionCorta || undefined,
+      imagenUrl: platillo.imagenUrl || undefined,
+      // Convertimos el string numérico de Postgres a number para JavaScript/TypeScript
+      precio: typeof platillo.precio === 'string' ? parseFloat(platillo.precio) : platillo.precio,
+      tiempoPreparacion: platillo.tiempoPreparacion || undefined,
+      disponible: platillo.disponible ?? true,
+      esVegetariano: platillo.esVegetariano ?? false,
+      esVegano: platillo.esVegano ?? false,
+      esSinGluten: platillo.esSinGluten ?? false,
+      esPicante: platillo.esPicante ?? false,
+      nivelPicante: platillo.nivelPicante || undefined,
+      esPopular: platillo.esPopular ?? false,
+      esNuevo: platillo.esNuevo ?? false,
+      esDelChef: platillo.esDelChef ?? false,
+      categoria: categoria?.id ? { id: categoria.id, nombre: categoria.nombre } : undefined,
+    };
+  }
+}

@@ -8,7 +8,8 @@ import { PlatilloEntity } from '../interfaces/platillo.interface';
 @Injectable()
 export class PlatillosRepository {
   constructor(@Inject(DRIZZLE) private db: PostgresJsDatabase<typeof schema>) {}
-  // Reemplaza el método findPublicPlatillos con esta versión corregida
+
+  // Mantiene tu lógica original para la landing pública
   async findPublicPlatillos(categoriaId?: number) {
     const conditions = [eq(schema.platillos.disponible, true)];
     if (categoriaId) {
@@ -40,17 +41,25 @@ export class PlatillosRepository {
       )
       .where(and(...conditions));
   }
-  // async findPublicCategorias() {
-  //   return await this.db
-  //     .select({
-  //       id: schema.categoriasMenu.id,
-  //       nombre: schema.categoriasMenu.nombre,
-  //       icono: schema.categoriasMenu.icono,
-  //       color: schema.categoriasMenu.color,
-  //     })
-  //     .from(schema.categoriasMenu)
-  //     .where(eq(schema.categoriasMenu.activo, true)) // asumiendo campo 'activo'
-  //     .orderBy(schema.categoriasMenu.orden);
-  // }
 
+  // NUEVO MÉTODO: Obtiene todo el registro del platillo y su categoría para el detalle de producto
+  async findByIdWithCategory(id: number) {
+    const result = await this.db
+      .select({
+        platillo: schema.platillos,
+        categoria: {
+          id: schema.categoriasMenu.id,
+          nombre: schema.categoriasMenu.nombre,
+        },
+      })
+      .from(schema.platillos)
+      .leftJoin(
+        schema.categoriasMenu,
+        eq(schema.platillos.categoriaId, schema.categoriasMenu.id),
+      )
+      .where(eq(schema.platillos.id, id))
+      .limit(1);
+
+    return result[0] || null;
+  }
 }

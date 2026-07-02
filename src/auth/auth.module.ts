@@ -12,7 +12,6 @@ import { JwtAuthGuard } from './guards/jwt-auth.guards';
 import jwtConfig from 'src/common/config/jwt.config';
 import { DatabaseModule } from 'src/database/database.module';
 import { CacheModule } from 'src/cache/cache.module';
-// import { RedisModule } from 'src/redis/redis.module';
 
 @Module({
   imports: [
@@ -25,11 +24,16 @@ import { CacheModule } from 'src/cache/cache.module';
   providers: [
     AuthService,
     BcryptService,
+    JwtAuthGuard, // <-- 👈 Agrega el guard como provider explícito
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
   ],
-  exports: [JwtModule, BcryptService],
+  exports: [
+    JwtModule,
+    BcryptService,
+    JwtAuthGuard, // <-- 👈 Ahora se puede exportar
+  ],
 })
 export class AuthModule {}
