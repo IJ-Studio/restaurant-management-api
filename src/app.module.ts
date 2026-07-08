@@ -15,7 +15,8 @@ import { CacheModule } from './cache/cache.module';
 import { UsersModule } from './users/users.module';
 import { MetricsModule } from './database/features/metrics/metrics.module';
 import { MenuModule } from './menu/menu.module';
-
+import { OrdersModule } from './orders/orders.module';
+import { MesasModule } from './mesas/mesas.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -40,6 +41,8 @@ import { MenuModule } from './menu/menu.module';
     UsersModule,
     MetricsModule,
     MenuModule,
+    OrdersModule,
+    MesasModule,
   ],
   controllers: [],
   providers: [
