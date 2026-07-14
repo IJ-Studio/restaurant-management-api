@@ -59,6 +59,9 @@ importers:
       exceljs:
         specifier: ^3.4.0
         version: 3.10.0
+      facturapi:
+        specifier: ^4.18.0
+        version: 4.18.0
       ioredis:
         specifier: ^5.10.0
         version: 5.10.0
@@ -77,6 +80,9 @@ importers:
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
+      stripe:
+        specifier: ^22.3.1
+        version: 22.3.1(@types/node@22.19.15)
       typeorm:
         specifier: ^0.3.28
         version: 0.3.28(better-sqlite3@11.10.0)(ioredis@5.10.0)(mysql2@3.20.0(@types/node@22.19.15))(ts-node@10.9.2(@types/node@22.19.15)(typescript@5.9.3))
@@ -2607,6 +2613,10 @@ packages:
     resolution: {integrity: sha512-hIS4idWWai69NezIdRt2xFVofaF4j+6INOpJlVOLDO8zXGpUVEVzIYk12UUi2JzjEzWL3IOAxcTubgz9Po0yXw==}
     engines: {node: '>= 18'}
 
+  facturapi@4.18.0:
+    resolution: {integrity: sha512-HR13NU6NNEe2PB8Y76uTQLCYn/3EGxjN8Y+cGiM4ZZkzwKe3QPavBnQINWp7Mo1HTX37nlVWmuG82HPjfBjYlQ==}
+    engines: {node: '>=18.0.0', npm: '>=10.0.0'}
+
   fast-csv@4.3.6:
     resolution: {integrity: sha512-2RNSpuwwsJGP0frGsOmTb9oUF+VkFSM4SyLTDgwf2ciHWTarN0lQTC+F2f/t5J9QjW+c65VFIAAu85GsvMIusw==}
     engines: {node: '>=10.0.0'}
@@ -3989,6 +3999,15 @@ packages:
   strip-json-comments@3.1.1:
     resolution: {integrity: sha512-6fPc+R4ihwqP6N/aIv2f1gMH8lOVtWQHoqC4yK6oSDVVocumAsfCqjkXnqiYMhmMwS/mEHLp7Vehlt3ql6lEig==}
     engines: {node: '>=8'}
+
+  stripe@22.3.1:
+    resolution: {integrity: sha512-6XSLN0KK0IdfXqDHqMg6CDoO3eO62ye9dhzw0fZp55AUOzHR1YRJOqYHTsuCi4QJ4Ni/usEmXtq69c9ghKDmYw==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@types/node': '>=18'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
 
   strtok3@10.3.4:
     resolution: {integrity: sha512-KIy5nylvC5le1OdaaoCJ07L+8iQzJHGH6pWDuzS+d07Cu7n1MZ2x26P8ZKIWfbK02+XIL8Mp4RkWeqdUCrDMfg==}
@@ -6943,6 +6962,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  facturapi@4.18.0: {}
+
   fast-csv@4.3.6:
     dependencies:
       '@fast-csv/format': 4.3.5
@@ -8505,6 +8526,10 @@ snapshots:
     optional: true
 
   strip-json-comments@3.1.1: {}
+
+  stripe@22.3.1(@types/node@22.19.15):
+    optionalDependencies:
+      '@types/node': 22.19.15
 
   strtok3@10.3.4:
     dependencies:

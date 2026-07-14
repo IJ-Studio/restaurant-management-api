@@ -1,4 +1,4 @@
-import { Controller, Post, Patch, Param, Body, Get, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Patch, Delete, Param, Body, Get, Query, BadRequestException } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { CreateOrderMesaDto } from './dto/create-order-mesa.dto';
 import { Public } from '../auth/decorators/public.decorator';
@@ -20,12 +20,18 @@ export class OrdersController {
     @Query('usuarioId') usuarioId?: string,
     @Query('tipo') tipo?: string,
   ) {
-    // FIX: antes, si tipo === 'domicilio' pero no llegaba usuarioId, el
-    // código usaba "mesaId" como si fuera el id del usuario
-    // (`const idBuscar = usuarioId || mesaId`), lo cual era incorrecto y
-    // además el service ignoraba usuarioId por completo, devolviendo las
-    // órdenes a domicilio de TODOS los usuarios (fuga de datos). Ahora
-    // usuarioId es obligatorio y realmente se usa para filtrar.
+    // FIX: antes, cualquier presencia de "usuarioId" activaba la rama de
+    // domicilio, aunque viniera acompañando a "mesaId". Ahora se revisa
+    // mesaId primero, ya que las consultas de mesa también necesitan
+    // usuarioId (para saber de quién es el carrito), pero no son
+    // pedidos a domicilio.
+    if (mesaId) {
+      return await this.ordersService.findOrdersByUser(
+        mesaId,
+        usuarioId ? Number(usuarioId) : undefined,
+      );
+    }
+
     if (tipo === 'domicilio' || usuarioId) {
       if (!usuarioId) {
         throw new BadRequestException('El parámetro usuarioId es requerido para pedidos a domicilio.');
@@ -33,18 +39,27 @@ export class OrdersController {
       return await this.ordersService.findDeliveryOrdersByUser(Number(usuarioId));
     }
 
-    if (!mesaId) {
-      throw new BadRequestException('El parámetro mesaId es requerido.');
-    }
-    // FIX: mesaId aquí es el "numero" físico de la mesa (varchar), no el
-    // id interno. La resolución numero -> id ahora ocurre en el service.
-    return await this.ordersService.findOrdersByUser(mesaId);
+    throw new BadRequestException('Debes indicar mesaId o usuarioId.');
   }
 
-  // FIX: este endpoint no existía. El frontend (handleCancelarOrden en
-  // app/menu/pedido/page.tsx) hace PATCH a /pedidos/cancelar/:id pero no
-  // había ninguna ruta que lo atendiera, aunque el método sí existía en
-  // OrdersService. Por eso "cancelar" nunca funcionaba.
+  // FIX (nuevo): manda a cocina un pedido de mesa que estaba en 'pendiente'
+  // (carrito). El frontend llama esto cuando el cliente presiona
+  // "Confirmar" en /menu/pedido.
+  @Public()
+  @Post('confirmar/:id')
+  async confirmarOrdenMesa(@Param('id') id: string) {
+    return await this.ordersService.confirmarOrdenMesa(id);
+  }
+
+  // FIX (nuevo): quita un producto individual de un pedido que sigue en
+  // 'pendiente' (carrito de mesa o de domicilio). El id es el de la fila
+  // en orden_items, no el de la orden completa.
+  @Public()
+  @Delete('item/:id')
+  async eliminarItem(@Param('id') id: string) {
+    return await this.ordersService.eliminarItemOrden(Number(id));
+  }
+
   @Public()
   @Patch('cancelar/:id')
   async cancelarOrden(@Param('id') id: string) {

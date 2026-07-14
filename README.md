@@ -46,12 +46,10 @@ api_restaurant_management
 │  │  │  ├─ constants.ts
 │  │  │  ├─ drizzle.provider.ts
 │  │  │  └─ migrations
-│  │  │     ├─ 0000_magenta_demogoblin.sql
-│  │  │     ├─ meta
-│  │  │     │  ├─ 0000_snapshot.json
-│  │  │     │  └─ _journal.json
-│  │  │     ├─ relations.ts
-│  │  │     └─ schema.ts
+│  │  │     ├─ 0000_loud_rattler.sql
+│  │  │     └─ meta
+│  │  │        ├─ 0000_snapshot.json
+│  │  │        └─ _journal.json
 │  │  ├─ features
 │  │  │  ├─ backups
 │  │  │  │  ├─ backups.controller.ts
@@ -67,8 +65,8 @@ api_restaurant_management
 │  │  │     └─ metrics.service.ts
 │  │  ├─ schema
 │  │  │  ├─ index.ts
-│  │  │  ├─ public.relations.ts
-│  │  │  └─ public.schema.ts
+│  │  │  ├─ public.schema.ts
+│  │  │  └─ relations.schema.ts
 │  │  └─ supabase
 │  │     └─ supabase.service.ts
 │  ├─ guards
@@ -90,6 +88,22 @@ api_restaurant_management
 │  │  │  └─ platillos.repository.ts
 │  │  └─ utils
 │  │     └─ platillo-mapper.ts
+│  ├─ mesas
+│  │  ├─ mesas.controller.ts
+│  │  ├─ mesas.module.ts
+│  │  └─ mesas.service.ts
+│  ├─ orders
+│  │  ├─ dto
+│  │  │  └─ create-order-mesa.dto.ts
+│  │  ├─ orders.controller.ts
+│  │  ├─ orders.module.ts
+│  │  └─ orders.service.ts
+│  ├─ pagos
+│  │  ├─ dto
+│  │  │  └─ Pagos.dto.ts
+│  │  ├─ Pagos.controller.ts
+│  │  ├─ Pagos.module.ts
+│  │  └─ Pagos.service.ts
 │  ├─ platillos
 │  │  ├─ platillos.controller.ts
 │  │  ├─ platillos.module.ts

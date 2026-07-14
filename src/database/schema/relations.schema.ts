@@ -1,5 +1,53 @@
 import { relations } from "drizzle-orm/relations";
-import { inventarioProductos, inventarioMermas, inventarioProveedores, inventarioOrdenes, inventarioProveedorProducto, menusDelDia, menusDelDiaItems, platillos, recetas, variantesPlatillo, combos, ordenItems, estacionesCocina, ordenes, ingredientes, recetasIngredientes, unidadesMedida, ventas, categoriasMenu, subcategoriasMenu, departamentos, puestos, empleados, users, nomina, gruposModificadores, modificadores, alergenos, categoriasIngrediente, areasSalon, mesas, logsAuditoria, clientes, reservaciones, pagos, metodosPago, estatusMesa, cierresCaja, facturas, reembolsos, categoriasEstacion, platillosModificadores, platillosAlergenos, proveedoresIngredientes, proveedores } from "./schema";
+import {
+	metodosPagoGuardados,
+	direccionesCliente,
+	inventarioProductos,
+	inventarioMermas,
+	inventarioProveedores,
+	inventarioOrdenes,
+	inventarioProveedorProducto,
+	menusDelDia,
+	menusDelDiaItems,
+	platillos,
+	recetas,
+	variantesPlatillo,
+	combos,
+	ordenItems,
+	estacionesCocina,
+	ordenes,
+	ingredientes,
+	recetasIngredientes,
+	unidadesMedida,
+	ventas,
+	categoriasMenu,
+	subcategoriasMenu,
+	departamentos,
+	puestos,
+	empleados,
+	 users,
+	nomina,
+	gruposModificadores,
+	modificadores,
+	alergenos,
+	categoriasIngrediente,
+	areasSalon,
+	mesas,
+	logsAuditoria,
+	clientes,
+	reservaciones,
+	pagos,
+	metodosPago,
+	estatusMesa,
+	cierresCaja,
+	facturas,
+	reembolsos,
+	categoriasEstacion,
+	platillosModificadores,
+	platillosAlergenos,
+	proveedoresIngredientes,
+	proveedores
+} from "./public.schema";
 
 export const inventarioMermasRelations = relations(inventarioMermas, ({one}) => ({
 	inventarioProducto: one(inventarioProductos, {
@@ -68,7 +116,12 @@ export const platillosRelations = relations(platillos, ({one, many}) => ({
 	platillosModificadores: many(platillosModificadores),
 	platillosAlergenos: many(platillosAlergenos),
 }));
-
+export const metodosPagoGuardadosRelations = relations(metodosPagoGuardados, ({one}) => ({
+	cliente: one(clientes, {
+		fields: [metodosPagoGuardados.clienteId],
+		references: [clientes.id]
+	}),
+}));
 export const recetasRelations = relations(recetas, ({one, many}) => ({
 	platillo: one(platillos, {
 		fields: [recetas.platilloId],
@@ -123,7 +176,6 @@ export const estacionesCocinaRelations = relations(estacionesCocina, ({many}) =>
 }));
 
 export const ordenesRelations = relations(ordenes, ({one, many}) => ({
-	ordenItems: many(ordenItems),
 	user: one(users, {
 		fields: [ordenes.atendidoPor],
 		references: [users.id]
@@ -140,6 +192,11 @@ export const ordenesRelations = relations(ordenes, ({one, many}) => ({
 		fields: [ordenes.reservacionId],
 		references: [reservaciones.id]
 	}),
+	direccionEnvio: one(direccionesCliente, {          // 👈 NUEVO
+		fields: [ordenes.direccionEnvioId],
+		references: [direccionesCliente.id]
+	}),
+	ordenItems: many(ordenItems),
 	pagos: many(pagos),
 	estatusMesas: many(estatusMesa),
 	facturas: many(facturas),
@@ -301,11 +358,13 @@ export const logsAuditoriaRelations = relations(logsAuditoria, ({one}) => ({
 }));
 
 export const clientesRelations = relations(clientes, ({one, many}) => ({
+	direccionesClientes: many(direccionesCliente),
 	ordenes: many(ordenes),
 	user: one(users, {
 		fields: [clientes.userId],
 		references: [users.id]
 	}),
+	metodosPagoGuardados: many(metodosPagoGuardados), // 👈 NUEVO
 }));
 
 export const reservacionesRelations = relations(reservaciones, ({one, many}) => ({
