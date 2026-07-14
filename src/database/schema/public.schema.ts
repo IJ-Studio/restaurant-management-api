@@ -1,7 +1,40 @@
-import { pgTable, unique, serial, varchar, text, boolean, integer, bigint, timestamp, foreignKey, numeric, char, check, smallint, time, date, index, jsonb, uuid, bigserial, inet, primaryKey, pgView } from "drizzle-orm/pg-core"
+import { pgTable, unique, serial, varchar, text, smallint, boolean, time, char, integer, bigint, timestamp, numeric, foreignKey, json, jsonb, index, uuid, check, date, bigserial, inet, primaryKey, pgView } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 
+export const direccionesCliente = pgTable("direcciones_cliente", {
+	id: serial().primaryKey().notNull(),
+	clienteId: uuid("cliente_id").notNull(),
+	alias: varchar({ length: 60 }).default('Casa'),
+	linea1: varchar({ length: 200 }).notNull(),
+	linea2: varchar({ length: 200 }),
+	colonia: varchar({ length: 100 }),
+	referencias: text(),
+	esPrincipal: boolean("es_principal").default(false),
+	codigoPostal: varchar("codigo_postal", { length: 5 }),   // 👈 NUEVO
+	ciudad: varchar({ length: 100 }),                         // 👈 NUEVO
+	estado: varchar({ length: 100 }),                         // 👈 NUEVO
+}, (table) => [
+	foreignKey({
+			columns: [table.clienteId],
+			foreignColumns: [clientes.id],
+			name: "direcciones_cliente_cliente_id_fkey"
+		}).onDelete("cascade"),
+]);
+export const categoriasMenu = pgTable("categorias_menu", {
+	id: serial().primaryKey().notNull(),
+	nombre: varchar({ length: 100 }).notNull(),
+	descripcion: text(),
+	imagenUrl: text("imagen_url"),
+	orden: smallint().default(0),
+	activa: boolean().default(true),
+	disponibleDesde: time("disponible_desde"),
+	disponibleHasta: time("disponible_hasta"),
+	icono: varchar({ length: 50 }),
+	color: char({ length: 7 }),
+}, (table) => [
+	unique("categorias_menu_nombre_key").on(table.nombre),
+]);
 
 export const users = pgTable("users", {
 	id: serial().primaryKey().notNull(),
@@ -26,10 +59,229 @@ export const users = pgTable("users", {
 	unique("users_email_unique").on(table.email),
 ]);
 
-export const categorias = pgTable("categorias", {
+export const inventarioProductos = pgTable("inventario_productos", {
 	id: serial().primaryKey().notNull(),
-	nombre: text().notNull(),
+	name: text().notNull(),
+	sku: varchar({ length: 50 }).default('').notNull(),
+	category: varchar({ length: 50 }).notNull(),
+	unit: varchar({ length: 20 }).default('pza').notNull(),
+	stock: numeric({ precision: 10, scale:  3 }).default('0').notNull(),
+	minStock: numeric("min_stock", { precision: 10, scale:  3 }).default('0').notNull(),
+	maxStock: numeric("max_stock", { precision: 10, scale:  3 }).default('100').notNull(),
+	costPerUnit: numeric("cost_per_unit", { precision: 10, scale:  2 }).default('0').notNull(),
+	supplier: text().default('').notNull(),
+	active: boolean().default(true).notNull(),
+	lastUpdated: timestamp("last_updated", { mode: 'string' }).defaultNow(),
+	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
 });
+
+export const inventarioMermas = pgTable("inventario_mermas", {
+	id: serial().primaryKey().notNull(),
+	productId: integer("product_id"),
+	productName: text("product_name").notNull(),
+	quantity: numeric({ precision: 10, scale:  3 }).notNull(),
+	unit: varchar({ length: 20 }).notNull(),
+	reason: varchar({ length: 50 }).notNull(),
+	justification: text().notNull(),
+	reportedBy: text("reported_by").default('').notNull(),
+	cost: numeric({ precision: 10, scale:  2 }).default('0').notNull(),
+	date: timestamp({ mode: 'string' }).defaultNow(),
+	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
+}, (table) => [
+	foreignKey({
+			columns: [table.productId],
+			foreignColumns: [inventarioProductos.id],
+			name: "inventario_mermas_product_id_inventario_productos_id_fk"
+		}),
+]);
+
+export const inventarioOrdenes = pgTable("inventario_ordenes", {
+	id: serial().primaryKey().notNull(),
+	folio: varchar({ length: 30 }).notNull(),
+	supplierId: integer("supplier_id"),
+	supplierName: text("supplier_name").notNull(),
+	status: varchar({ length: 30 }).default('borrador').notNull(),
+	items: json().default([]).notNull(),
+	total: numeric({ precision: 10, scale:  2 }).default('0').notNull(),
+	expectedAt: text("expected_at"),
+	receivedAt: text("received_at"),
+	notes: text(),
+	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
+}, (table) => [
+	foreignKey({
+			columns: [table.supplierId],
+			foreignColumns: [inventarioProveedores.id],
+			name: "inventario_ordenes_supplier_id_inventario_proveedores_id_fk"
+		}),
+]);
+
+export const inventarioProveedores = pgTable("inventario_proveedores", {
+	id: serial().primaryKey().notNull(),
+	name: text().notNull(),
+	contact: text().default(''),
+	email: text().default(''),
+	phone: text().default(''),
+	website: text(),
+	address: text(),
+	category: text().default('').notNull(),
+	products: json().default([]).notNull(),
+	paymentTerms: text("payment_terms").default('Contado').notNull(),
+	deliveryDays: integer("delivery_days").default(1).notNull(),
+	active: boolean().default(true).notNull(),
+	notes: text(),
+	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
+});
+
+export const inventarioProveedorProducto = pgTable("inventario_proveedor_producto", {
+	id: serial().primaryKey().notNull(),
+	proveedorId: integer("proveedor_id").notNull(),
+	productoId: integer("producto_id").notNull(),
+	esPrincipal: boolean("es_principal").default(true),
+	notas: text(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	foreignKey({
+			columns: [table.productoId],
+			foreignColumns: [inventarioProductos.id],
+			name: "inventario_proveedor_producto_producto_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.proveedorId],
+			foreignColumns: [inventarioProveedores.id],
+			name: "inventario_proveedor_producto_proveedor_id_fkey"
+		}).onDelete("cascade"),
+	unique("inventario_proveedor_producto_proveedor_id_producto_id_key").on(table.proveedorId, table.productoId),
+]);
+
+export const systemSettings = pgTable("system_settings", {
+	id: serial().primaryKey().notNull(),
+	key: varchar({ length: 100 }).notNull(),
+	value: jsonb().notNull(),
+	updatedAt: timestamp("updated_at", { mode: 'string' }).defaultNow(),
+}, (table) => [
+	unique("system_settings_key_key").on(table.key),
+]);
+
+export const menusDelDiaItems = pgTable("menus_del_dia_items", {
+	id: serial().primaryKey().notNull(),
+	menuDiaId: integer("menu_dia_id").notNull(),
+	platilloId: integer("platillo_id").notNull(),
+	tipo: varchar({ length: 30 }),
+	orden: smallint().default(0),
+}, (table) => [
+	foreignKey({
+			columns: [table.menuDiaId],
+			foreignColumns: [menusDelDia.id],
+			name: "menus_del_dia_items_menu_dia_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.platilloId],
+			foreignColumns: [platillos.id],
+			name: "menus_del_dia_items_platillo_id_fkey"
+		}),
+]);
+
+export const recetas = pgTable("recetas", {
+	id: serial().primaryKey().notNull(),
+	platilloId: integer("platillo_id").notNull(),
+	varianteId: integer("variante_id"),
+	version: smallint().default(1),
+	activa: boolean().default(true),
+	costoCalculado: numeric("costo_calculado", { precision: 10, scale:  4 }),
+	margenPct: numeric("margen_pct", { precision: 5, scale:  2 }),
+	procedimiento: text(),
+	fotoEmplatado: text("foto_emplatado"),
+	tiempoPrepMin: integer("tiempo_prep_min"),
+	porcionGramos: numeric("porcion_gramos", { precision: 7, scale:  2 }),
+	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	foreignKey({
+			columns: [table.platilloId],
+			foreignColumns: [platillos.id],
+			name: "recetas_platillo_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.varianteId],
+			foreignColumns: [variantesPlatillo.id],
+			name: "recetas_variante_id_fkey"
+		}),
+]);
+
+export const ordenItems = pgTable("orden_items", {
+	id: serial().primaryKey().notNull(),
+	ordenId: uuid("orden_id").notNull(),
+	platilloId: integer("platillo_id").notNull(),
+	varianteId: integer("variante_id"),
+	comboId: integer("combo_id"),
+	cantidad: smallint().default(1).notNull(),
+	precioUnitario: numeric("precio_unitario", { precision: 10, scale:  2 }).notNull(),
+	descuento: numeric({ precision: 10, scale:  2 }).default('0'),
+	subtotal: numeric({ precision: 10, scale:  2 }),
+	estatus: varchar({ length: 30 }).default('pendiente'),
+	estacionId: integer("estacion_id"),
+	notas: text(),
+	enviadoCocina: boolean("enviado_cocina").default(false),
+	tiempoEnvio: timestamp("tiempo_envio", { withTimezone: true, mode: 'string' }),
+	tiempoListo: timestamp("tiempo_listo", { withTimezone: true, mode: 'string' }),
+	tiempoEntrega: timestamp("tiempo_entrega", { withTimezone: true, mode: 'string' }),
+	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_orden_items_orden").using("btree", table.ordenId.asc().nullsLast().op("uuid_ops")),
+	index("idx_orden_items_platillo").using("btree", table.platilloId.asc().nullsLast().op("int4_ops")),
+	foreignKey({
+			columns: [table.comboId],
+			foreignColumns: [combos.id],
+			name: "orden_items_combo_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.estacionId],
+			foreignColumns: [estacionesCocina.id],
+			name: "orden_items_estacion_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.ordenId],
+			foreignColumns: [ordenes.id],
+			name: "orden_items_orden_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.platilloId],
+			foreignColumns: [platillos.id],
+			name: "orden_items_platillo_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.varianteId],
+			foreignColumns: [variantesPlatillo.id],
+			name: "orden_items_variante_id_fkey"
+		}),
+]);
+
+export const recetasIngredientes = pgTable("recetas_ingredientes", {
+	id: serial().primaryKey().notNull(),
+	recetaId: integer("receta_id").notNull(),
+	ingredienteId: integer("ingrediente_id").notNull(),
+	cantidad: numeric({ precision: 10, scale:  4 }).notNull(),
+	unidadId: integer("unidad_id").notNull(),
+	esOpcional: boolean("es_opcional").default(false),
+	notas: varchar({ length: 255 }),
+}, (table) => [
+	foreignKey({
+			columns: [table.ingredienteId],
+			foreignColumns: [ingredientes.id],
+			name: "recetas_ingredientes_ingrediente_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.recetaId],
+			foreignColumns: [recetas.id],
+			name: "recetas_ingredientes_receta_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.unidadId],
+			foreignColumns: [unidadesMedida.id],
+			name: "recetas_ingredientes_unidad_id_fkey"
+		}),
+	unique("recetas_ingredientes_receta_id_ingrediente_id_key").on(table.recetaId, table.ingredienteId),
+]);
 
 export const ventas = pgTable("ventas", {
 	id: serial().primaryKey().notNull(),
@@ -82,6 +334,8 @@ export const restaurante = pgTable("restaurante", {
 	activo: boolean().default(true),
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+	duracionReservaDefault: integer("duracion_reserva_default").default(90),
+	diasConfirmacion: integer("dias_confirmacion").default(3),
 });
 
 export const horarios = pgTable("horarios", {
@@ -108,16 +362,12 @@ export const horariosEspeciales = pgTable("horarios_especiales", {
 	unique("horarios_especiales_fecha_key").on(table.fecha),
 ]);
 
-export const certificaciones = pgTable("certificaciones", {
+export const alergenos = pgTable("alergenos", {
 	id: serial().primaryKey().notNull(),
-	nombre: varchar({ length: 150 }).notNull(),
-	organismo: varchar({ length: 150 }),
-	numero: varchar({ length: 80 }),
-	fechaEmision: date("fecha_emision"),
-	fechaVencimiento: date("fecha_vencimiento"),
-	documentoUrl: text("documento_url"),
-	activa: boolean().default(true),
-});
+	nombre: varchar({ length: 80 }).notNull(),
+}, (table) => [
+	unique("alergenos_nombre_key").on(table.nombre),
+]);
 
 export const platillos = pgTable("platillos", {
 	id: serial().primaryKey().notNull(),
@@ -163,35 +413,101 @@ export const platillos = pgTable("platillos", {
 	check("platillos_nivel_picante_check", sql`(nivel_picante >= 0) AND (nivel_picante <= 5)`),
 ]);
 
-export const alergenos = pgTable("alergenos", {
+export const roles = pgTable("roles", {
 	id: serial().primaryKey().notNull(),
-	nombre: varchar({ length: 80 }).notNull(),
-	icono: varchar({ length: 10 }),
-	color: char({ length: 7 }),
+	name: varchar({ length: 50 }).notNull(),
+	permissions: jsonb(),
+	isActive: boolean("is_active").default(true).notNull(),
+	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
-	unique("alergenos_nombre_key").on(table.nombre),
+	unique("roles_name_key").on(table.name),
 ]);
 
-export const informacionNutricional = pgTable("informacion_nutricional", {
+export const departamentos = pgTable("departamentos", {
+	id: serial().primaryKey().notNull(),
+	nombre: varchar({ length: 100 }).notNull(),
+	descripcion: text(),
+	activo: boolean().default(true),
+}, (table) => [
+	unique("departamentos_nombre_key").on(table.nombre),
+]);
+
+export const puestos = pgTable("puestos", {
+	id: serial().primaryKey().notNull(),
+	departamentoId: integer("departamento_id").notNull(),
+	nombre: varchar({ length: 100 }).notNull(),
+	descripcion: text(),
+	nivel: smallint().default(1),
+	salarioBase: numeric("salario_base", { precision: 10, scale:  2 }),
+	activo: boolean().default(true),
+}, (table) => [
+	foreignKey({
+			columns: [table.departamentoId],
+			foreignColumns: [departamentos.id],
+			name: "puestos_departamento_id_fkey"
+		}),
+]);
+
+export const empleados = pgTable("empleados", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	userId: integer("user_id"),
+	puestoId: integer("puesto_id"),
+	numeroEmpleado: varchar("numero_empleado", { length: 20 }),
+	fotoUrl: text("foto_url"),
+	fechaNacimiento: date("fecha_nacimiento"),
+	genero: varchar({ length: 20 }),
+	estadoCivil: varchar("estado_civil", { length: 20 }),
+	curp: varchar({ length: 18 }),
+	nss: varchar({ length: 15 }),
+	rfcEmpleado: varchar("rfc_empleado", { length: 13 }),
+	telefonoEmergencia: varchar("telefono_emergencia", { length: 20 }),
+	contactoEmergencia: varchar("contacto_emergencia", { length: 150 }),
+	direccionEmpleado: text("direccion_empleado"),
+	fechaIngreso: date("fecha_ingreso"),
+	fechaBaja: date("fecha_baja"),
+	tipoContrato: varchar("tipo_contrato", { length: 50 }),
+	jornada: varchar({ length: 30 }),
+	salarioMensual: numeric("salario_mensual", { precision: 10, scale:  2 }),
+	banco: varchar({ length: 80 }),
+	clabeInterbancaria: varchar("clabe_interbancaria", { length: 18 }),
+	activo: boolean().default(true),
+	notas: text(),
+	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+	nombre: varchar({ length: 120 }),
+}, (table) => [
+	index("idx_empleados_user").using("btree", table.userId.asc().nullsLast().op("int4_ops")),
+	foreignKey({
+			columns: [table.puestoId],
+			foreignColumns: [puestos.id],
+			name: "empleados_puesto_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.userId],
+			foreignColumns: [users.id],
+			name: "empleados_user_id_fkey"
+		}).onDelete("set null"),
+	unique("empleados_user_id_key").on(table.userId),
+	unique("empleados_numero_empleado_key").on(table.numeroEmpleado),
+	unique("empleados_curp_key").on(table.curp),
+	unique("empleados_nss_key").on(table.nss),
+	unique("empleados_rfc_empleado_key").on(table.rfcEmpleado),
+]);
+
+export const variantesPlatillo = pgTable("variantes_platillo", {
 	id: serial().primaryKey().notNull(),
 	platilloId: integer("platillo_id").notNull(),
-	porcionGramos: numeric("porcion_gramos", { precision: 7, scale:  2 }),
-	calorias: numeric({ precision: 7, scale:  2 }),
-	proteinasG: numeric("proteinas_g", { precision: 7, scale:  2 }),
-	carbohidratosG: numeric("carbohidratos_g", { precision: 7, scale:  2 }),
-	azucaresG: numeric("azucares_g", { precision: 7, scale:  2 }),
-	fibraG: numeric("fibra_g", { precision: 7, scale:  2 }),
-	grasasTotalesG: numeric("grasas_totales_g", { precision: 7, scale:  2 }),
-	grasasSaturadasG: numeric("grasas_saturadas_g", { precision: 7, scale:  2 }),
-	sodioMg: numeric("sodio_mg", { precision: 7, scale:  2 }),
-	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+	nombre: varchar({ length: 100 }).notNull(),
+	precioExtra: numeric("precio_extra", { precision: 10, scale:  2 }).default('0'),
+	precioTotal: numeric("precio_total", { precision: 10, scale:  2 }),
+	disponible: boolean().default(true),
+	orden: smallint().default(0),
 }, (table) => [
 	foreignKey({
 			columns: [table.platilloId],
 			foreignColumns: [platillos.id],
-			name: "informacion_nutricional_platillo_id_fkey"
+			name: "variantes_platillo_platillo_id_fkey"
 		}).onDelete("cascade"),
-	unique("informacion_nutricional_platillo_id_key").on(table.platilloId),
 ]);
 
 export const backups = pgTable("backups", {
@@ -238,22 +554,6 @@ export const nomina = pgTable("nomina", {
 		}),
 ]);
 
-export const variantesPlatillo = pgTable("variantes_platillo", {
-	id: serial().primaryKey().notNull(),
-	platilloId: integer("platillo_id").notNull(),
-	nombre: varchar({ length: 100 }).notNull(),
-	precioExtra: numeric("precio_extra", { precision: 10, scale:  2 }).default('0'),
-	precioTotal: numeric("precio_total", { precision: 10, scale:  2 }),
-	disponible: boolean().default(true),
-	orden: smallint().default(0),
-}, (table) => [
-	foreignKey({
-			columns: [table.platilloId],
-			foreignColumns: [platillos.id],
-			name: "variantes_platillo_platillo_id_fkey"
-		}).onDelete("cascade"),
-]);
-
 export const modificadores = pgTable("modificadores", {
 	id: serial().primaryKey().notNull(),
 	grupoId: integer("grupo_id").notNull(),
@@ -266,258 +566,6 @@ export const modificadores = pgTable("modificadores", {
 			columns: [table.grupoId],
 			foreignColumns: [gruposModificadores.id],
 			name: "modificadores_grupo_id_fkey"
-		}).onDelete("cascade"),
-]);
-
-export const roles = pgTable("roles", {
-	id: serial().primaryKey().notNull(),
-	name: varchar({ length: 50 }).notNull(),
-	permissions: jsonb(),
-	isActive: boolean("is_active").default(true).notNull(),
-	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow().notNull(),
-}, (table) => [
-	unique("roles_name_key").on(table.name),
-]);
-
-export const puestos = pgTable("puestos", {
-	id: serial().primaryKey().notNull(),
-	departamentoId: integer("departamento_id").notNull(),
-	nombre: varchar({ length: 100 }).notNull(),
-	descripcion: text(),
-	nivel: smallint().default(1),
-	salarioBase: numeric("salario_base", { precision: 10, scale:  2 }),
-	activo: boolean().default(true),
-}, (table) => [
-	foreignKey({
-			columns: [table.departamentoId],
-			foreignColumns: [departamentos.id],
-			name: "puestos_departamento_id_fkey"
-		}),
-]);
-
-export const departamentos = pgTable("departamentos", {
-	id: serial().primaryKey().notNull(),
-	nombre: varchar({ length: 100 }).notNull(),
-	descripcion: text(),
-	activo: boolean().default(true),
-}, (table) => [
-	unique("departamentos_nombre_key").on(table.nombre),
-]);
-
-export const empleados = pgTable("empleados", {
-	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
-	userId: integer("user_id"),
-	puestoId: integer("puesto_id"),
-	numeroEmpleado: varchar("numero_empleado", { length: 20 }),
-	fotoUrl: text("foto_url"),
-	fechaNacimiento: date("fecha_nacimiento"),
-	genero: varchar({ length: 20 }),
-	estadoCivil: varchar("estado_civil", { length: 20 }),
-	curp: varchar({ length: 18 }),
-	nss: varchar({ length: 15 }),
-	rfcEmpleado: varchar("rfc_empleado", { length: 13 }),
-	telefonoEmergencia: varchar("telefono_emergencia", { length: 20 }),
-	contactoEmergencia: varchar("contacto_emergencia", { length: 150 }),
-	direccionEmpleado: text("direccion_empleado"),
-	fechaIngreso: date("fecha_ingreso"),
-	fechaBaja: date("fecha_baja"),
-	tipoContrato: varchar("tipo_contrato", { length: 50 }),
-	jornada: varchar({ length: 30 }),
-	salarioMensual: numeric("salario_mensual", { precision: 10, scale:  2 }),
-	banco: varchar({ length: 80 }),
-	clabeInterbancaria: varchar("clabe_interbancaria", { length: 18 }),
-	activo: boolean().default(true),
-	notas: text(),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	index("idx_empleados_user").using("btree", table.userId.asc().nullsLast().op("int4_ops")),
-	foreignKey({
-			columns: [table.puestoId],
-			foreignColumns: [puestos.id],
-			name: "empleados_puesto_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.userId],
-			foreignColumns: [users.id],
-			name: "empleados_user_id_fkey"
-		}).onDelete("set null"),
-	unique("empleados_user_id_key").on(table.userId),
-	unique("empleados_numero_empleado_key").on(table.numeroEmpleado),
-	unique("empleados_curp_key").on(table.curp),
-	unique("empleados_nss_key").on(table.nss),
-	unique("empleados_rfc_empleado_key").on(table.rfcEmpleado),
-]);
-
-export const horariosEmpleado = pgTable("horarios_empleado", {
-	id: serial().primaryKey().notNull(),
-	empleadoId: uuid("empleado_id").notNull(),
-	turnoId: integer("turno_id").notNull(),
-	diaSemana: smallint("dia_semana").notNull(),
-}, (table) => [
-	foreignKey({
-			columns: [table.empleadoId],
-			foreignColumns: [empleados.id],
-			name: "horarios_empleado_empleado_id_fkey"
-		}).onDelete("cascade"),
-	foreignKey({
-			columns: [table.turnoId],
-			foreignColumns: [turnos.id],
-			name: "horarios_empleado_turno_id_fkey"
-		}),
-	unique("horarios_empleado_empleado_id_dia_semana_key").on(table.empleadoId, table.diaSemana),
-	check("horarios_empleado_dia_semana_check", sql`(dia_semana >= 0) AND (dia_semana <= 6)`),
-]);
-
-export const asistencias = pgTable("asistencias", {
-	id: serial().primaryKey().notNull(),
-	empleadoId: uuid("empleado_id").notNull(),
-	fecha: date().notNull(),
-	horaEntrada: timestamp("hora_entrada", { withTimezone: true, mode: 'string' }),
-	horaSalida: timestamp("hora_salida", { withTimezone: true, mode: 'string' }),
-	tipo: varchar({ length: 30 }).default('normal'),
-	justificacion: text(),
-	aprobadoPor: uuid("aprobado_por"),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	index("idx_asistencias_fecha").using("btree", table.fecha.asc().nullsLast().op("date_ops")),
-	foreignKey({
-			columns: [table.aprobadoPor],
-			foreignColumns: [empleados.id],
-			name: "asistencias_aprobado_por_fkey"
-		}),
-	foreignKey({
-			columns: [table.empleadoId],
-			foreignColumns: [empleados.id],
-			name: "asistencias_empleado_id_fkey"
-		}),
-]);
-
-export const vacaciones = pgTable("vacaciones", {
-	id: serial().primaryKey().notNull(),
-	empleadoId: uuid("empleado_id").notNull(),
-	fechaInicio: date("fecha_inicio").notNull(),
-	fechaFin: date("fecha_fin").notNull(),
-	diasHabiles: integer("dias_habiles"),
-	estatus: varchar({ length: 20 }).default('pendiente'),
-	aprobadoPor: uuid("aprobado_por"),
-	notas: text(),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	foreignKey({
-			columns: [table.aprobadoPor],
-			foreignColumns: [empleados.id],
-			name: "vacaciones_aprobado_por_fkey"
-		}),
-	foreignKey({
-			columns: [table.empleadoId],
-			foreignColumns: [empleados.id],
-			name: "vacaciones_empleado_id_fkey"
-		}),
-]);
-
-export const turnos = pgTable("turnos", {
-	id: serial().primaryKey().notNull(),
-	nombre: varchar({ length: 80 }).notNull(),
-	horaInicio: time("hora_inicio").notNull(),
-	horaFin: time("hora_fin").notNull(),
-	color: char({ length: 7 }),
-	activo: boolean().default(true),
-}, (table) => [
-	unique("turnos_nombre_key").on(table.nombre),
-]);
-
-export const evaluacionesDesempeno = pgTable("evaluaciones_desempeno", {
-	id: serial().primaryKey().notNull(),
-	empleadoId: uuid("empleado_id").notNull(),
-	evaluadorId: uuid("evaluador_id").notNull(),
-	periodo: varchar({ length: 20 }),
-	puntualidad: smallint(),
-	actitud: smallint(),
-	productividad: smallint(),
-	trabajoEquipo: smallint("trabajo_equipo"),
-	conocimiento: smallint(),
-	puntajeTotal: numeric("puntaje_total", { precision: 4, scale:  2 }),
-	comentarios: text(),
-	planMejora: text("plan_mejora"),
-	fecha: date().notNull(),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	foreignKey({
-			columns: [table.empleadoId],
-			foreignColumns: [empleados.id],
-			name: "evaluaciones_desempeno_empleado_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.evaluadorId],
-			foreignColumns: [empleados.id],
-			name: "evaluaciones_desempeno_evaluador_id_fkey"
-		}),
-	check("evaluaciones_desempeno_actitud_check", sql`(actitud >= 1) AND (actitud <= 5)`),
-	check("evaluaciones_desempeno_conocimiento_check", sql`(conocimiento >= 1) AND (conocimiento <= 5)`),
-	check("evaluaciones_desempeno_productividad_check", sql`(productividad >= 1) AND (productividad <= 5)`),
-	check("evaluaciones_desempeno_puntualidad_check", sql`(puntualidad >= 1) AND (puntualidad <= 5)`),
-	check("evaluaciones_desempeno_trabajo_equipo_check", sql`(trabajo_equipo >= 1) AND (trabajo_equipo <= 5)`),
-]);
-
-export const capacitacionesEmpleado = pgTable("capacitaciones_empleado", {
-	id: serial().primaryKey().notNull(),
-	empleadoId: uuid("empleado_id").notNull(),
-	capacitacionId: integer("capacitacion_id").notNull(),
-	fechaCompletado: date("fecha_completado"),
-	calificacion: numeric({ precision: 5, scale:  2 }),
-	certificadoUrl: text("certificado_url"),
-}, (table) => [
-	foreignKey({
-			columns: [table.capacitacionId],
-			foreignColumns: [capacitaciones.id],
-			name: "capacitaciones_empleado_capacitacion_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.empleadoId],
-			foreignColumns: [empleados.id],
-			name: "capacitaciones_empleado_empleado_id_fkey"
-		}),
-	unique("capacitaciones_empleado_empleado_id_capacitacion_id_key").on(table.empleadoId, table.capacitacionId),
-]);
-
-export const capacitaciones = pgTable("capacitaciones", {
-	id: serial().primaryKey().notNull(),
-	nombre: varchar({ length: 150 }).notNull(),
-	descripcion: text(),
-	duracionHrs: numeric("duracion_hrs", { precision: 5, scale:  1 }),
-	instructor: varchar({ length: 150 }),
-	fecha: date(),
-	obligatoria: boolean().default(false),
-	activa: boolean().default(true),
-});
-
-export const categoriasMenu = pgTable("categorias_menu", {
-	id: serial().primaryKey().notNull(),
-	nombre: varchar({ length: 100 }).notNull(),
-	descripcion: text(),
-	imagenUrl: text("imagen_url"),
-	orden: smallint().default(0),
-	activa: boolean().default(true),
-	disponibleDesde: time("disponible_desde"),
-	disponibleHasta: time("disponible_hasta"),
-	icono: varchar({ length: 50 }),
-	color: char({ length: 7 }),
-}, (table) => [
-	unique("categorias_menu_nombre_key").on(table.nombre),
-]);
-
-export const subcategoriasMenu = pgTable("subcategorias_menu", {
-	id: serial().primaryKey().notNull(),
-	categoriaId: integer("categoria_id").notNull(),
-	nombre: varchar({ length: 100 }).notNull(),
-	orden: smallint().default(0),
-	activa: boolean().default(true),
-}, (table) => [
-	foreignKey({
-			columns: [table.categoriaId],
-			foreignColumns: [categoriasMenu.id],
-			name: "subcategorias_menu_categoria_id_fkey"
 		}).onDelete("cascade"),
 ]);
 
@@ -575,60 +623,6 @@ export const ingredientes = pgTable("ingredientes", {
 		}),
 ]);
 
-export const recetas = pgTable("recetas", {
-	id: serial().primaryKey().notNull(),
-	platilloId: integer("platillo_id").notNull(),
-	varianteId: integer("variante_id"),
-	version: smallint().default(1),
-	activa: boolean().default(true),
-	costoCalculado: numeric("costo_calculado", { precision: 10, scale:  4 }),
-	margenPct: numeric("margen_pct", { precision: 5, scale:  2 }),
-	procedimiento: text(),
-	fotoEmplatado: text("foto_emplatado"),
-	tiempoPrepMin: integer("tiempo_prep_min"),
-	porcionGramos: numeric("porcion_gramos", { precision: 7, scale:  2 }),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	foreignKey({
-			columns: [table.platilloId],
-			foreignColumns: [platillos.id],
-			name: "recetas_platillo_id_fkey"
-		}).onDelete("cascade"),
-	foreignKey({
-			columns: [table.varianteId],
-			foreignColumns: [variantesPlatillo.id],
-			name: "recetas_variante_id_fkey"
-		}),
-]);
-
-export const recetasIngredientes = pgTable("recetas_ingredientes", {
-	id: serial().primaryKey().notNull(),
-	recetaId: integer("receta_id").notNull(),
-	ingredienteId: integer("ingrediente_id").notNull(),
-	cantidad: numeric({ precision: 10, scale:  4 }).notNull(),
-	unidadId: integer("unidad_id").notNull(),
-	esOpcional: boolean("es_opcional").default(false),
-	notas: varchar({ length: 255 }),
-}, (table) => [
-	foreignKey({
-			columns: [table.ingredienteId],
-			foreignColumns: [ingredientes.id],
-			name: "recetas_ingredientes_ingrediente_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.recetaId],
-			foreignColumns: [recetas.id],
-			name: "recetas_ingredientes_receta_id_fkey"
-		}).onDelete("cascade"),
-	foreignKey({
-			columns: [table.unidadId],
-			foreignColumns: [unidadesMedida.id],
-			name: "recetas_ingredientes_unidad_id_fkey"
-		}),
-	unique("recetas_ingredientes_receta_id_ingrediente_id_key").on(table.recetaId, table.ingredienteId),
-]);
-
 export const proveedores = pgTable("proveedores", {
 	id: serial().primaryKey().notNull(),
 	nombre: varchar({ length: 150 }).notNull(),
@@ -668,132 +662,6 @@ export const categoriasIngrediente = pgTable("categorias_ingrediente", {
 	unique("categorias_ingrediente_nombre_key").on(table.nombre),
 ]);
 
-export const ordenesCompra = pgTable("ordenes_compra", {
-	id: serial().primaryKey().notNull(),
-	proveedorId: integer("proveedor_id").notNull(),
-	folio: varchar({ length: 30 }),
-	fechaOrden: date("fecha_orden").default(sql`CURRENT_DATE`).notNull(),
-	fechaEsperada: date("fecha_esperada"),
-	fechaRecibida: date("fecha_recibida"),
-	estatus: varchar({ length: 30 }).default('borrador'),
-	subtotal: numeric({ precision: 12, scale:  2 }),
-	iva: numeric({ precision: 12, scale:  2 }),
-	total: numeric({ precision: 12, scale:  2 }),
-	notas: text(),
-	creadoPor: integer("creado_por"),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	foreignKey({
-			columns: [table.creadoPor],
-			foreignColumns: [users.id],
-			name: "ordenes_compra_creado_por_fkey"
-		}).onDelete("set null"),
-	foreignKey({
-			columns: [table.proveedorId],
-			foreignColumns: [proveedores.id],
-			name: "ordenes_compra_proveedor_id_fkey"
-		}),
-	unique("ordenes_compra_folio_key").on(table.folio),
-]);
-
-export const ordenesCompraItems = pgTable("ordenes_compra_items", {
-	id: serial().primaryKey().notNull(),
-	ordenCompraId: integer("orden_compra_id").notNull(),
-	ingredienteId: integer("ingrediente_id").notNull(),
-	cantidadPedida: numeric("cantidad_pedida", { precision: 10, scale:  3 }).notNull(),
-	cantidadRecibida: numeric("cantidad_recibida", { precision: 10, scale:  3 }).default('0'),
-	unidadId: integer("unidad_id").notNull(),
-	precioUnitario: numeric("precio_unitario", { precision: 10, scale:  4 }).notNull(),
-	subtotal: numeric({ precision: 12, scale:  4 }),
-	notas: varchar({ length: 255 }),
-}, (table) => [
-	foreignKey({
-			columns: [table.ingredienteId],
-			foreignColumns: [ingredientes.id],
-			name: "ordenes_compra_items_ingrediente_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.ordenCompraId],
-			foreignColumns: [ordenesCompra.id],
-			name: "ordenes_compra_items_orden_compra_id_fkey"
-		}).onDelete("cascade"),
-	foreignKey({
-			columns: [table.unidadId],
-			foreignColumns: [unidadesMedida.id],
-			name: "ordenes_compra_items_unidad_id_fkey"
-		}),
-]);
-
-export const movimientosInventario = pgTable("movimientos_inventario", {
-	id: serial().primaryKey().notNull(),
-	ingredienteId: integer("ingrediente_id").notNull(),
-	tipo: varchar({ length: 30 }).notNull(),
-	cantidad: numeric({ precision: 10, scale:  3 }).notNull(),
-	unidadId: integer("unidad_id").notNull(),
-	stockAnterior: numeric("stock_anterior", { precision: 10, scale:  3 }),
-	stockNuevo: numeric("stock_nuevo", { precision: 10, scale:  3 }),
-	costoUnitario: numeric("costo_unitario", { precision: 10, scale:  4 }),
-	costoTotal: numeric("costo_total", { precision: 12, scale:  4 }),
-	referenciaId: integer("referencia_id"),
-	referenciaTipo: varchar("referencia_tipo", { length: 30 }),
-	userId: integer("user_id"),
-	fecha: timestamp({ withTimezone: true, mode: 'string' }).defaultNow(),
-	notas: text(),
-}, (table) => [
-	index("idx_movimientos_fecha").using("btree", table.fecha.asc().nullsLast().op("timestamptz_ops")),
-	foreignKey({
-			columns: [table.ingredienteId],
-			foreignColumns: [ingredientes.id],
-			name: "movimientos_inventario_ingrediente_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.unidadId],
-			foreignColumns: [unidadesMedida.id],
-			name: "movimientos_inventario_unidad_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.userId],
-			foreignColumns: [users.id],
-			name: "movimientos_inventario_user_id_fkey"
-		}).onDelete("set null"),
-]);
-
-export const conteosInventario = pgTable("conteos_inventario", {
-	id: serial().primaryKey().notNull(),
-	fecha: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	estatus: varchar({ length: 20 }).default('en_proceso'),
-	userId: integer("user_id"),
-	notas: text(),
-}, (table) => [
-	foreignKey({
-			columns: [table.userId],
-			foreignColumns: [users.id],
-			name: "conteos_inventario_user_id_fkey"
-		}).onDelete("set null"),
-]);
-
-export const conteosInventarioItems = pgTable("conteos_inventario_items", {
-	id: serial().primaryKey().notNull(),
-	conteoId: integer("conteo_id").notNull(),
-	ingredienteId: integer("ingrediente_id").notNull(),
-	stockSistema: numeric("stock_sistema", { precision: 10, scale:  3 }),
-	stockFisico: numeric("stock_fisico", { precision: 10, scale:  3 }),
-	diferencia: numeric({ precision: 10, scale:  3 }),
-	costoDiferencia: numeric("costo_diferencia", { precision: 12, scale:  4 }),
-}, (table) => [
-	foreignKey({
-			columns: [table.conteoId],
-			foreignColumns: [conteosInventario.id],
-			name: "conteos_inventario_items_conteo_id_fkey"
-		}).onDelete("cascade"),
-	foreignKey({
-			columns: [table.ingredienteId],
-			foreignColumns: [ingredientes.id],
-			name: "conteos_inventario_items_ingrediente_id_fkey"
-		}),
-]);
-
 export const areasSalon = pgTable("areas_salon", {
 	id: serial().primaryKey().notNull(),
 	nombre: varchar({ length: 100 }).notNull(),
@@ -826,52 +694,6 @@ export const mesas = pgTable("mesas", {
 	unique("mesas_numero_key").on(table.numero),
 ]);
 
-export const programaLealtad = pgTable("programa_lealtad", {
-	id: serial().primaryKey().notNull(),
-	nombre: varchar({ length: 150 }).default('Club El Quijote').notNull(),
-	descripcion: text(),
-	puntosPorPeso: numeric("puntos_por_peso", { precision: 6, scale:  4 }).default('0.10'),
-	valorPunto: numeric("valor_punto", { precision: 8, scale:  4 }).default('0.10'),
-	minimoCanje: integer("minimo_canje").default(50),
-	activo: boolean().default(true),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-});
-
-export const nivelesLealtad = pgTable("niveles_lealtad", {
-	id: serial().primaryKey().notNull(),
-	programaId: integer("programa_id").notNull(),
-	nombre: varchar({ length: 80 }).notNull(),
-	puntosMinimos: integer("puntos_minimos").notNull(),
-	descuentoPct: numeric("descuento_pct", { precision: 5, scale:  2 }).default('0'),
-	multiplicador: numeric({ precision: 4, scale:  2 }).default('1'),
-	beneficios: text(),
-	color: char({ length: 7 }),
-	icono: varchar({ length: 50 }),
-}, (table) => [
-	foreignKey({
-			columns: [table.programaId],
-			foreignColumns: [programaLealtad.id],
-			name: "niveles_lealtad_programa_id_fkey"
-		}),
-]);
-
-export const direccionesCliente = pgTable("direcciones_cliente", {
-	id: serial().primaryKey().notNull(),
-	clienteId: uuid("cliente_id").notNull(),
-	alias: varchar({ length: 60 }).default('Casa'),
-	linea1: varchar({ length: 200 }).notNull(),
-	linea2: varchar({ length: 200 }),
-	colonia: varchar({ length: 100 }),
-	referencias: text(),
-	esPrincipal: boolean("es_principal").default(false),
-}, (table) => [
-	foreignKey({
-			columns: [table.clienteId],
-			foreignColumns: [clientes.id],
-			name: "direcciones_cliente_cliente_id_fkey"
-		}).onDelete("cascade"),
-]);
-
 export const metodosPago = pgTable("metodos_pago", {
 	id: serial().primaryKey().notNull(),
 	nombre: varchar({ length: 80 }).notNull(),
@@ -891,188 +713,17 @@ export const categoriasGasto = pgTable("categorias_gasto", {
 	unique("categorias_gasto_nombre_key").on(table.nombre),
 ]);
 
-export const presupuestos = pgTable("presupuestos", {
+export const subcategoriasMenu = pgTable("subcategorias_menu", {
 	id: serial().primaryKey().notNull(),
 	categoriaId: integer("categoria_id").notNull(),
-	anio: smallint().notNull(),
-	mes: smallint().notNull(),
-	monto: numeric({ precision: 12, scale:  2 }).notNull(),
-}, (table) => [
-	foreignKey({
-			columns: [table.categoriaId],
-			foreignColumns: [categoriasGasto.id],
-			name: "presupuestos_categoria_id_fkey"
-		}),
-	unique("presupuestos_categoria_id_anio_mes_key").on(table.categoriaId, table.anio, table.mes),
-	check("presupuestos_mes_check", sql`(mes >= 1) AND (mes <= 12)`),
-]);
-
-export const cortesDiarios = pgTable("cortes_diarios", {
-	id: serial().primaryKey().notNull(),
-	fecha: date().notNull(),
-	totalOrdenes: integer("total_ordenes").default(0),
-	ticketPromedio: numeric("ticket_promedio", { precision: 10, scale:  2 }),
-	totalVentas: numeric("total_ventas", { precision: 12, scale:  2 }).default('0'),
-	totalEfectivo: numeric("total_efectivo", { precision: 12, scale:  2 }).default('0'),
-	totalTarjeta: numeric("total_tarjeta", { precision: 12, scale:  2 }).default('0'),
-	totalDigital: numeric("total_digital", { precision: 12, scale:  2 }).default('0'),
-	totalDescuentos: numeric("total_descuentos", { precision: 12, scale:  2 }).default('0'),
-	totalImpuestos: numeric("total_impuestos", { precision: 12, scale:  2 }).default('0'),
-	totalPropinas: numeric("total_propinas", { precision: 12, scale:  2 }).default('0'),
-	costoAlimentos: numeric("costo_alimentos", { precision: 12, scale:  2 }).default('0'),
-	costoManoObra: numeric("costo_mano_obra", { precision: 12, scale:  2 }).default('0'),
-	otrosGastos: numeric("otros_gastos", { precision: 12, scale:  2 }).default('0'),
-	utilidadBruta: numeric("utilidad_bruta", { precision: 12, scale:  2 }),
-	generadoEn: timestamp("generado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	unique("cortes_diarios_fecha_key").on(table.fecha),
-]);
-
-export const gastos = pgTable("gastos", {
-	id: serial().primaryKey().notNull(),
-	categoriaId: integer("categoria_id").notNull(),
-	concepto: varchar({ length: 200 }).notNull(),
-	monto: numeric({ precision: 12, scale:  2 }).notNull(),
-	iva: numeric({ precision: 12, scale:  2 }).default('0'),
-	total: numeric({ precision: 12, scale:  2 }),
-	fecha: date().default(sql`CURRENT_DATE`).notNull(),
-	proveedorId: integer("proveedor_id"),
-	metodoPagoId: integer("metodo_pago_id"),
-	folioFactura: varchar("folio_factura", { length: 80 }),
-	comprobanteUrl: text("comprobante_url"),
-	recurrente: boolean().default(false),
-	registradoPor: integer("registrado_por"),
-	aprobadoPor: integer("aprobado_por"),
-	notas: text(),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	foreignKey({
-			columns: [table.aprobadoPor],
-			foreignColumns: [users.id],
-			name: "gastos_aprobado_por_fkey"
-		}).onDelete("set null"),
-	foreignKey({
-			columns: [table.categoriaId],
-			foreignColumns: [categoriasGasto.id],
-			name: "gastos_categoria_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.metodoPagoId],
-			foreignColumns: [metodosPago.id],
-			name: "gastos_metodo_pago_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.proveedorId],
-			foreignColumns: [proveedores.id],
-			name: "gastos_proveedor_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.registradoPor],
-			foreignColumns: [users.id],
-			name: "gastos_registrado_por_fkey"
-		}).onDelete("set null"),
-]);
-
-export const campanas = pgTable("campanas", {
-	id: serial().primaryKey().notNull(),
-	nombre: varchar({ length: 150 }).notNull(),
-	descripcion: text(),
-	canal: varchar({ length: 50 }),
-	objetivo: varchar({ length: 80 }),
-	presupuesto: numeric({ precision: 12, scale:  2 }),
-	fechaInicio: date("fecha_inicio"),
-	fechaFin: date("fecha_fin"),
-	estatus: varchar({ length: 20 }).default('borrador'),
-	enviados: integer().default(0),
-	conversiones: integer().default(0),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-});
-
-export const resenas = pgTable("resenas", {
-	id: serial().primaryKey().notNull(),
-	userId: integer("user_id"),
-	ordenId: uuid("orden_id"),
-	nombreCliente: varchar("nombre_cliente", { length: 150 }),
-	plataforma: varchar({ length: 50 }).default('interna'),
-	calificacionGeneral: smallint("calificacion_general"),
-	calificacionComida: smallint("calificacion_comida"),
-	calificacionServicio: smallint("calificacion_servicio"),
-	calificacionAmbiente: smallint("calificacion_ambiente"),
-	calificacionPrecio: smallint("calificacion_precio"),
-	comentario: text(),
-	respuesta: text(),
-	respondidoPor: integer("respondido_por"),
-	fechaRespuesta: timestamp("fecha_respuesta", { withTimezone: true, mode: 'string' }),
-	visible: boolean().default(true),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	foreignKey({
-			columns: [table.ordenId],
-			foreignColumns: [ordenes.id],
-			name: "resenas_orden_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.respondidoPor],
-			foreignColumns: [users.id],
-			name: "resenas_respondido_por_fkey"
-		}).onDelete("set null"),
-	foreignKey({
-			columns: [table.userId],
-			foreignColumns: [users.id],
-			name: "resenas_user_id_fkey"
-		}).onDelete("set null"),
-	check("resenas_calificacion_ambiente_check", sql`(calificacion_ambiente >= 1) AND (calificacion_ambiente <= 5)`),
-	check("resenas_calificacion_comida_check", sql`(calificacion_comida >= 1) AND (calificacion_comida <= 5)`),
-	check("resenas_calificacion_general_check", sql`(calificacion_general >= 1) AND (calificacion_general <= 5)`),
-	check("resenas_calificacion_precio_check", sql`(calificacion_precio >= 1) AND (calificacion_precio <= 5)`),
-	check("resenas_calificacion_servicio_check", sql`(calificacion_servicio >= 1) AND (calificacion_servicio <= 5)`),
-]);
-
-export const respuestasEncuesta = pgTable("respuestas_encuesta", {
-	id: serial().primaryKey().notNull(),
-	encuestaId: integer("encuesta_id").notNull(),
-	userId: integer("user_id"),
-	ordenId: uuid("orden_id"),
-	respuestas: jsonb(),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	foreignKey({
-			columns: [table.encuestaId],
-			foreignColumns: [encuestasSatisfaccion.id],
-			name: "respuestas_encuesta_encuesta_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.ordenId],
-			foreignColumns: [ordenes.id],
-			name: "respuestas_encuesta_orden_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.userId],
-			foreignColumns: [users.id],
-			name: "respuestas_encuesta_user_id_fkey"
-		}).onDelete("set null"),
-]);
-
-export const encuestasSatisfaccion = pgTable("encuestas_satisfaccion", {
-	id: serial().primaryKey().notNull(),
-	nombre: varchar({ length: 150 }).notNull(),
-	activa: boolean().default(true),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-});
-
-export const preguntasEncuesta = pgTable("preguntas_encuesta", {
-	id: serial().primaryKey().notNull(),
-	encuestaId: integer("encuesta_id").notNull(),
-	pregunta: text().notNull(),
-	tipo: varchar({ length: 30 }).default('escala'),
-	opciones: jsonb(),
-	obligatoria: boolean().default(true),
+	nombre: varchar({ length: 100 }).notNull(),
 	orden: smallint().default(0),
+	activa: boolean().default(true),
 }, (table) => [
 	foreignKey({
-			columns: [table.encuestaId],
-			foreignColumns: [encuestasSatisfaccion.id],
-			name: "preguntas_encuesta_encuesta_id_fkey"
+			columns: [table.categoriaId],
+			foreignColumns: [categoriasMenu.id],
+			name: "subcategorias_menu_categoria_id_fkey"
 		}).onDelete("cascade"),
 ]);
 
@@ -1097,24 +748,6 @@ export const logsAuditoria = pgTable("logs_auditoria", {
 		}).onDelete("set null"),
 ]);
 
-export const notificaciones = pgTable("notificaciones", {
-	id: serial().primaryKey().notNull(),
-	userId: integer("user_id").notNull(),
-	tipo: varchar({ length: 50 }),
-	titulo: varchar({ length: 150 }),
-	mensaje: text(),
-	leida: boolean().default(false),
-	urlAccion: text("url_accion"),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	index("idx_notificaciones_user").using("btree", table.userId.asc().nullsLast().op("int4_ops")),
-	foreignKey({
-			columns: [table.userId],
-			foreignColumns: [users.id],
-			name: "notificaciones_user_id_fkey"
-		}).onDelete("cascade"),
-]);
-
 export const combos = pgTable("combos", {
 	id: serial().primaryKey().notNull(),
 	nombre: varchar({ length: 150 }).notNull(),
@@ -1128,26 +761,6 @@ export const combos = pgTable("combos", {
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
-export const combosItems = pgTable("combos_items", {
-	id: serial().primaryKey().notNull(),
-	comboId: integer("combo_id").notNull(),
-	platilloId: integer("platillo_id").notNull(),
-	cantidad: smallint().default(1),
-	obligatorio: boolean().default(true),
-	orden: smallint().default(0),
-}, (table) => [
-	foreignKey({
-			columns: [table.comboId],
-			foreignColumns: [combos.id],
-			name: "combos_items_combo_id_fkey"
-		}).onDelete("cascade"),
-	foreignKey({
-			columns: [table.platilloId],
-			foreignColumns: [platillos.id],
-			name: "combos_items_platillo_id_fkey"
-		}),
-]);
-
 export const menusDelDia = pgTable("menus_del_dia", {
 	id: serial().primaryKey().notNull(),
 	nombre: varchar({ length: 150 }).notNull(),
@@ -1159,54 +772,6 @@ export const menusDelDia = pgTable("menus_del_dia", {
 	notas: text(),
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
-
-export const menusDelDiaItems = pgTable("menus_del_dia_items", {
-	id: serial().primaryKey().notNull(),
-	menuDiaId: integer("menu_dia_id").notNull(),
-	platilloId: integer("platillo_id").notNull(),
-	tipo: varchar({ length: 30 }),
-	orden: smallint().default(0),
-}, (table) => [
-	foreignKey({
-			columns: [table.menuDiaId],
-			foreignColumns: [menusDelDia.id],
-			name: "menus_del_dia_items_menu_dia_id_fkey"
-		}).onDelete("cascade"),
-	foreignKey({
-			columns: [table.platilloId],
-			foreignColumns: [platillos.id],
-			name: "menus_del_dia_items_platillo_id_fkey"
-		}),
-]);
-
-export const preferenciasCliente = pgTable("preferencias_cliente", {
-	id: serial().primaryKey().notNull(),
-	clienteId: uuid("cliente_id").notNull(),
-	alergenos: integer().array().default([]),
-	dieta: varchar({ length: 50 }),
-	mesaPreferida: integer("mesa_preferida"),
-	bebidaFavorita: varchar("bebida_favorita", { length: 150 }),
-	platilloFavorito: integer("platillo_favorito"),
-	notas: text(),
-	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	foreignKey({
-			columns: [table.clienteId],
-			foreignColumns: [clientes.id],
-			name: "preferencias_cliente_cliente_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.mesaPreferida],
-			foreignColumns: [mesas.id],
-			name: "preferencias_cliente_mesa_preferida_fkey"
-		}),
-	foreignKey({
-			columns: [table.platilloFavorito],
-			foreignColumns: [platillos.id],
-			name: "preferencias_cliente_platillo_favorito_fkey"
-		}),
-	unique("preferencias_cliente_cliente_id_key").on(table.clienteId),
-]);
 
 export const cupones = pgTable("cupones", {
 	id: serial().primaryKey().notNull(),
@@ -1226,29 +791,6 @@ export const cupones = pgTable("cupones", {
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
 	unique("cupones_codigo_key").on(table.codigo),
-]);
-
-export const comandas = pgTable("comandas", {
-	id: serial().primaryKey().notNull(),
-	ordenId: uuid("orden_id").notNull(),
-	estacionId: integer("estacion_id").notNull(),
-	folioComanda: varchar("folio_comanda", { length: 20 }),
-	estatus: varchar({ length: 30 }).default('pendiente'),
-	prioridad: smallint().default(0),
-	tiempoInicio: timestamp("tiempo_inicio", { withTimezone: true, mode: 'string' }),
-	tiempoListo: timestamp("tiempo_listo", { withTimezone: true, mode: 'string' }),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	foreignKey({
-			columns: [table.estacionId],
-			foreignColumns: [estacionesCocina.id],
-			name: "comandas_estacion_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.ordenId],
-			foreignColumns: [ordenes.id],
-			name: "comandas_orden_id_fkey"
-		}),
 ]);
 
 export const estacionesCocina = pgTable("estaciones_cocina", {
@@ -1284,6 +826,8 @@ export const ordenes = pgTable("ordenes", {
 	tiempoCierre: timestamp("tiempo_cierre", { withTimezone: true, mode: 'string' }),
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+	direccionEnvioId: integer("direccion_envio_id"), // 👈 NUEVO
+
 }, (table) => [
 	index("idx_ordenes_atendido_por").using("btree", table.atendidoPor.asc().nullsLast().op("int4_ops")),
 	index("idx_ordenes_estatus").using("btree", table.estatus.asc().nullsLast().op("text_ops")),
@@ -1310,93 +854,11 @@ export const ordenes = pgTable("ordenes", {
 			name: "ordenes_reservacion_id_fkey"
 		}),
 	unique("ordenes_folio_key").on(table.folio),
-]);
-
-export const ordenItems = pgTable("orden_items", {
-	id: serial().primaryKey().notNull(),
-	ordenId: uuid("orden_id").notNull(),
-	platilloId: integer("platillo_id").notNull(),
-	varianteId: integer("variante_id"),
-	comboId: integer("combo_id"),
-	cantidad: smallint().default(1).notNull(),
-	precioUnitario: numeric("precio_unitario", { precision: 10, scale:  2 }).notNull(),
-	descuento: numeric({ precision: 10, scale:  2 }).default('0'),
-	subtotal: numeric({ precision: 10, scale:  2 }),
-	estatus: varchar({ length: 30 }).default('pendiente'),
-	estacionId: integer("estacion_id"),
-	notas: text(),
-	enviadoCocina: boolean("enviado_cocina").default(false),
-	tiempoEnvio: timestamp("tiempo_envio", { withTimezone: true, mode: 'string' }),
-	tiempoListo: timestamp("tiempo_listo", { withTimezone: true, mode: 'string' }),
-	tiempoEntrega: timestamp("tiempo_entrega", { withTimezone: true, mode: 'string' }),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	index("idx_orden_items_orden").using("btree", table.ordenId.asc().nullsLast().op("uuid_ops")),
-	index("idx_orden_items_platillo").using("btree", table.platilloId.asc().nullsLast().op("int4_ops")),
 	foreignKey({
-			columns: [table.comboId],
-			foreignColumns: [combos.id],
-			name: "orden_items_combo_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.estacionId],
-			foreignColumns: [estacionesCocina.id],
-			name: "orden_items_estacion_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.ordenId],
-			foreignColumns: [ordenes.id],
-			name: "orden_items_orden_id_fkey"
-		}).onDelete("cascade"),
-	foreignKey({
-			columns: [table.platilloId],
-			foreignColumns: [platillos.id],
-			name: "orden_items_platillo_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.varianteId],
-			foreignColumns: [variantesPlatillo.id],
-			name: "orden_items_variante_id_fkey"
-		}),
-]);
-
-export const ordenItemModificadores = pgTable("orden_item_modificadores", {
-	id: serial().primaryKey().notNull(),
-	ordenItemId: integer("orden_item_id").notNull(),
-	modificadorId: integer("modificador_id").notNull(),
-	precioExtra: numeric("precio_extra", { precision: 10, scale:  2 }).default('0'),
-	cantidad: smallint().default(1),
-}, (table) => [
-	foreignKey({
-			columns: [table.modificadorId],
-			foreignColumns: [modificadores.id],
-			name: "orden_item_modificadores_modificador_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.ordenItemId],
-			foreignColumns: [ordenItems.id],
-			name: "orden_item_modificadores_orden_item_id_fkey"
-		}).onDelete("cascade"),
-]);
-
-export const historialEstatusOrden = pgTable("historial_estatus_orden", {
-	id: serial().primaryKey().notNull(),
-	ordenId: uuid("orden_id").notNull(),
-	estatus: varchar({ length: 30 }).notNull(),
-	userId: integer("user_id"),
-	notas: text(),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	foreignKey({
-			columns: [table.ordenId],
-			foreignColumns: [ordenes.id],
-			name: "historial_estatus_orden_orden_id_fkey"
-		}).onDelete("cascade"),
-	foreignKey({
-			columns: [table.userId],
-			foreignColumns: [users.id],
-			name: "historial_estatus_orden_user_id_fkey"
-		}).onDelete("set null"),
+		columns: [table.direccionEnvioId],
+		foreignColumns: [direccionesCliente.id],
+		name: "ordenes_direccion_envio_id_fkey"
+	}).onDelete("set null"),
 ]);
 
 export const pagos = pgTable("pagos", {
@@ -1410,6 +872,8 @@ export const pagos = pgTable("pagos", {
 	cobradoPor: integer("cobrado_por"),
 	estatus: varchar({ length: 20 }).default('completado'),
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+	pasarela: varchar({ length: 30 }),                               // 👈 NUEVO
+	idTransaccionPasarela: varchar("id_transaccion_pasarela", { length: 255 }), // 👈 NUEVO
 }, (table) => [
 	index("idx_pagos_orden").using("btree", table.ordenId.asc().nullsLast().op("uuid_ops")),
 	foreignKey({
@@ -1428,7 +892,6 @@ export const pagos = pgTable("pagos", {
 			name: "pagos_orden_id_fkey"
 		}),
 ]);
-
 export const estatusMesa = pgTable("estatus_mesa", {
 	id: serial().primaryKey().notNull(),
 	mesaId: integer("mesa_id").notNull(),
@@ -1447,41 +910,6 @@ export const estatusMesa = pgTable("estatus_mesa", {
 			name: "fk_estatus_mesa_orden"
 		}).onDelete("set null"),
 	unique("estatus_mesa_mesa_id_key").on(table.mesaId),
-]);
-
-export const reservaciones = pgTable("reservaciones", {
-	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
-	mesaId: integer("mesa_id"),
-	userId: integer("user_id"),
-	clienteNombre: varchar("cliente_nombre", { length: 150 }).notNull(),
-	clienteTelefono: varchar("cliente_telefono", { length: 20 }),
-	clienteEmail: varchar("cliente_email", { length: 150 }),
-	fechaHora: timestamp("fecha_hora", { withTimezone: true, mode: 'string' }).notNull(),
-	duracionMin: integer("duracion_min").default(90),
-	numComensales: smallint("num_comensales").notNull(),
-	ocasion: varchar({ length: 80 }),
-	peticionesEspeciales: text("peticiones_especiales"),
-	estatus: varchar({ length: 30 }).default('confirmada'),
-	canal: varchar({ length: 30 }).default('telefono'),
-	recordatorioEnviado: boolean("recordatorio_enviado").default(false),
-	noShow: boolean("no_show").default(false),
-	depositoRequerido: numeric("deposito_requerido", { precision: 10, scale:  2 }).default('0'),
-	depositoPagado: numeric("deposito_pagado", { precision: 10, scale:  2 }).default('0'),
-	notas: text(),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	index("idx_reservaciones_fecha").using("btree", table.fechaHora.asc().nullsLast().op("timestamptz_ops")),
-	foreignKey({
-			columns: [table.mesaId],
-			foreignColumns: [mesas.id],
-			name: "reservaciones_mesa_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.userId],
-			foreignColumns: [users.id],
-			name: "reservaciones_user_id_fkey"
-		}).onDelete("set null"),
 ]);
 
 export const cierresCaja = pgTable("cierres_caja", {
@@ -1527,6 +955,7 @@ export const facturas = pgTable("facturas", {
 	estatus: varchar({ length: 20 }).default('vigente'),
 	fechaEmision: timestamp("fecha_emision", { withTimezone: true, mode: 'string' }).defaultNow(),
 	fechaCancelacion: timestamp("fecha_cancelacion", { withTimezone: true, mode: 'string' }),
+	facturapiInvoiceId: varchar("facturapi_invoice_id", { length: 100 }), // 👈 NUEVO
 }, (table) => [
 	foreignKey({
 			columns: [table.ordenId],
@@ -1539,6 +968,41 @@ export const facturas = pgTable("facturas", {
 			name: "facturas_user_id_fkey"
 		}).onDelete("set null"),
 	unique("facturas_folio_fiscal_key").on(table.folioFiscal),
+]);
+
+export const reservaciones = pgTable("reservaciones", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	mesaId: integer("mesa_id"),
+	userId: integer("user_id"),
+	clienteNombre: varchar("cliente_nombre", { length: 150 }).notNull(),
+	clienteTelefono: varchar("cliente_telefono", { length: 20 }),
+	clienteEmail: varchar("cliente_email", { length: 150 }),
+	fechaHora: timestamp("fecha_hora", { withTimezone: true, mode: 'string' }).notNull(),
+	duracionMin: integer("duracion_min").default(90),
+	numComensales: smallint("num_comensales").notNull(),
+	ocasion: varchar({ length: 80 }),
+	peticionesEspeciales: text("peticiones_especiales"),
+	estatus: varchar({ length: 30 }).default('confirmada'),
+	canal: varchar({ length: 30 }).default('telefono'),
+	recordatorioEnviado: boolean("recordatorio_enviado").default(false),
+	noShow: boolean("no_show").default(false),
+	depositoRequerido: numeric("deposito_requerido", { precision: 10, scale:  2 }).default('0'),
+	depositoPagado: numeric("deposito_pagado", { precision: 10, scale:  2 }).default('0'),
+	notas: text(),
+	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_reservaciones_fecha").using("btree", table.fechaHora.asc().nullsLast().op("timestamptz_ops")),
+	foreignKey({
+			columns: [table.mesaId],
+			foreignColumns: [mesas.id],
+			name: "reservaciones_mesa_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.userId],
+			foreignColumns: [users.id],
+			name: "reservaciones_user_id_fkey"
+		}).onDelete("set null"),
 ]);
 
 export const reembolsos = pgTable("reembolsos", {
@@ -1563,31 +1027,6 @@ export const reembolsos = pgTable("reembolsos", {
 		}),
 ]);
 
-export const cuponesUsos = pgTable("cupones_usos", {
-	id: serial().primaryKey().notNull(),
-	cuponId: integer("cupon_id").notNull(),
-	ordenId: uuid("orden_id").notNull(),
-	userId: integer("user_id"),
-	descuento: numeric({ precision: 10, scale:  2 }),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	foreignKey({
-			columns: [table.cuponId],
-			foreignColumns: [cupones.id],
-			name: "cupones_usos_cupon_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.ordenId],
-			foreignColumns: [ordenes.id],
-			name: "cupones_usos_orden_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.userId],
-			foreignColumns: [users.id],
-			name: "cupones_usos_user_id_fkey"
-		}).onDelete("set null"),
-]);
-
 export const clientes = pgTable("clientes", {
 	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
 	userId: integer("user_id"),
@@ -1606,66 +1045,40 @@ export const clientes = pgTable("clientes", {
 		}).onDelete("set null"),
 	unique("clientes_user_id_key").on(table.userId),
 ]);
-
-export const cuentasLealtad = pgTable("cuentas_lealtad", {
-	id: serial().primaryKey().notNull(),
+export const metodosPagoGuardados = pgTable("metodos_pago_guardados", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
 	clienteId: uuid("cliente_id").notNull(),
-	nivelId: integer("nivel_id"),
-	puntosAcumulados: integer("puntos_acumulados").default(0),
-	puntosCanjeados: integer("puntos_canjeados").default(0),
-	puntosDisponibles: integer("puntos_disponibles").default(0),
-	totalGastado: numeric("total_gastado", { precision: 12, scale:  2 }).default('0'),
-	visitas: integer().default(0),
-	ultimaVisita: timestamp("ultima_visita", { withTimezone: true, mode: 'string' }),
-	activa: boolean().default(true),
+	pasarela: varchar({ length: 30 }).notNull(),
+	stripeCustomerId: varchar("stripe_customer_id", { length: 255 }).notNull(),
+	stripePaymentMethodId: varchar("stripe_payment_method_id", { length: 255 }).notNull(),
+	marca: varchar({ length: 20 }),
+	ultimos4: varchar("ultimos_4", { length: 4 }),
+	mesExpiracion: smallint("mes_expiracion"),
+	anioExpiracion: smallint("anio_expiracion"),
+	esPrincipal: boolean("es_principal").default(false),
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
 	foreignKey({
 			columns: [table.clienteId],
 			foreignColumns: [clientes.id],
-			name: "cuentas_lealtad_cliente_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.nivelId],
-			foreignColumns: [nivelesLealtad.id],
-			name: "cuentas_lealtad_nivel_id_fkey"
-		}),
-	unique("cuentas_lealtad_cliente_id_key").on(table.clienteId),
-]);
-
-export const transaccionesLealtad = pgTable("transacciones_lealtad", {
-	id: serial().primaryKey().notNull(),
-	cuentaId: integer("cuenta_id").notNull(),
-	tipo: varchar({ length: 20 }).notNull(),
-	puntos: integer().notNull(),
-	balanceAntes: integer("balance_antes"),
-	balanceDespues: integer("balance_despues"),
-	referencia: varchar({ length: 100 }),
-	descripcion: text(),
-	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
-}, (table) => [
-	foreignKey({
-			columns: [table.cuentaId],
-			foreignColumns: [cuentasLealtad.id],
-			name: "transacciones_lealtad_cuenta_id_fkey"
-		}),
-]);
-
-export const platillosAlergenos = pgTable("platillos_alergenos", {
-	platilloId: integer("platillo_id").notNull(),
-	alergenoId: integer("alergeno_id").notNull(),
-}, (table) => [
-	foreignKey({
-			columns: [table.alergenoId],
-			foreignColumns: [alergenos.id],
-			name: "platillos_alergenos_alergeno_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.platilloId],
-			foreignColumns: [platillos.id],
-			name: "platillos_alergenos_platillo_id_fkey"
+			name: "metodos_pago_guardados_cliente_id_fkey"
 		}).onDelete("cascade"),
-	primaryKey({ columns: [table.platilloId, table.alergenoId], name: "platillos_alergenos_pkey"}),
+]);
+export const categoriasEstacion = pgTable("categorias_estacion", {
+	estacionId: integer("estacion_id").notNull(),
+	categoriaId: integer("categoria_id").notNull(),
+}, (table) => [
+	foreignKey({
+			columns: [table.categoriaId],
+			foreignColumns: [categoriasMenu.id],
+			name: "categorias_estacion_categoria_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.estacionId],
+			foreignColumns: [estacionesCocina.id],
+			name: "categorias_estacion_estacion_id_fkey"
+		}),
+	primaryKey({ columns: [table.estacionId, table.categoriaId], name: "categorias_estacion_pkey"}),
 ]);
 
 export const platillosModificadores = pgTable("platillos_modificadores", {
@@ -1685,21 +1098,21 @@ export const platillosModificadores = pgTable("platillos_modificadores", {
 	primaryKey({ columns: [table.platilloId, table.grupoId], name: "platillos_modificadores_pkey"}),
 ]);
 
-export const categoriasEstacion = pgTable("categorias_estacion", {
-	estacionId: integer("estacion_id").notNull(),
-	categoriaId: integer("categoria_id").notNull(),
+export const platillosAlergenos = pgTable("platillos_alergenos", {
+	platilloId: integer("platillo_id").notNull(),
+	alergenoId: integer("alergeno_id").notNull(),
 }, (table) => [
 	foreignKey({
-			columns: [table.categoriaId],
-			foreignColumns: [categoriasMenu.id],
-			name: "categorias_estacion_categoria_id_fkey"
+			columns: [table.alergenoId],
+			foreignColumns: [alergenos.id],
+			name: "platillos_alergenos_alergeno_id_fkey"
 		}),
 	foreignKey({
-			columns: [table.estacionId],
-			foreignColumns: [estacionesCocina.id],
-			name: "categorias_estacion_estacion_id_fkey"
-		}),
-	primaryKey({ columns: [table.estacionId, table.categoriaId], name: "categorias_estacion_pkey"}),
+			columns: [table.platilloId],
+			foreignColumns: [platillos.id],
+			name: "platillos_alergenos_platillo_id_fkey"
+		}).onDelete("cascade"),
+	primaryKey({ columns: [table.platilloId, table.alergenoId], name: "platillos_alergenos_pkey"}),
 ]);
 
 export const proveedoresIngredientes = pgTable("proveedores_ingredientes", {

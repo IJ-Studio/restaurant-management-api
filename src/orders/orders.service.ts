@@ -53,6 +53,28 @@ export class OrdersService {
     return mesa.id;
   }
 
+  // FIX (nuevo): helper compartido por agregarACarritoDomicilio,
+  // agregarACarritoMesa y eliminarItemOrden. Antes cada uno repetía la
+  // misma lógica de sumar subtotales y actualizar la orden.
+  private async recalcularTotalOrden(ordenId: string): Promise<string> {
+    const itemsDeLaOrden = await this.db
+      .select()
+      .from(ordenItems)
+      .where(eq(ordenItems.ordenId, ordenId));
+
+    const nuevoTotal = itemsDeLaOrden.reduce(
+      (acc, it) => acc + parseFloat(it.subtotal ?? '0'),
+      0,
+    );
+
+    await this.db
+      .update(ordenes)
+      .set({ subtotal: nuevoTotal.toString(), total: nuevoTotal.toString() })
+      .where(eq(ordenes.id, ordenId));
+
+    return nuevoTotal.toString();
+  }
+
   async createOrderMesa(dto: CreateOrderMesaDto) {
     const listaItems = dto.items?.length
       ? dto.items
@@ -76,7 +98,6 @@ export class OrdersService {
     const platillosMap = new Map(dbPlatillos.map((p) => [p.id, p]));
 
     const clienteId = await this.resolverClienteId(dto.usuarioId);
-
     const esDomicilio = !dto.mesa;
 
     try {
@@ -85,68 +106,104 @@ export class OrdersService {
       }
 
       const mesaDbId = await this.resolverMesaId(dto.mesa!);
-
-      let totalGeneral = 0;
-      const itemsAInsertar: any[] = [];
-
-      for (const item of listaItems) {
-        const platilloInfo = platillosMap.get(item.platilloId);
-        if (!platilloInfo) {
-          throw new NotFoundException(`El platillo con ID ${item.platilloId} no existe.`);
-        }
-
-        const precioUnitario = parseFloat(platilloInfo.precio.toString());
-        const subtotalItem = precioUnitario * item.cantidad;
-        totalGeneral += subtotalItem;
-
-        itemsAInsertar.push({
-          platilloId: item.platilloId,
-          cantidad: item.cantidad,
-          precioUnitario: precioUnitario.toString(),
-          subtotal: subtotalItem.toString(),
-        });
+      return await this.agregarACarritoMesa(clienteId, mesaDbId, dto.mesa!, listaItems, platillosMap);
+    } catch (error: any) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
       }
+      console.error('Error real de Postgres (createOrderMesa):', error.cause ?? error);
+      throw new BadRequestException(
+        `Error interno al procesar el pedido: ${error.cause?.message || error.message}`,
+      );
+    }
+  }
 
+  // FIX (reescrito): ya NO se crea una orden nueva por cada producto
+  // agregado. Ahora se busca (o crea) la orden 'pendiente' de esa mesa +
+  // cliente, igual que ya hacía agregarACarritoDomicilio, y se acumulan
+  // los productos ahí. La orden solo se manda a cocina cuando el cliente
+  // presiona "Confirmar" (ver confirmarOrdenMesa).
+  private async agregarACarritoMesa(
+    clienteId: string,
+    mesaDbId: number,
+    mesaNumero: string,
+    listaItems: { platilloId: number; cantidad: number }[],
+    platillosMap: Map<number, any>,
+  ) {
+    const [ordenExistente] = await this.db
+      .select()
+      .from(ordenes)
+      .where(
+        and(
+          eq(ordenes.clienteId, clienteId),
+          eq(ordenes.mesaId, mesaDbId),
+          eq(ordenes.tipo, 'mesa'),
+          eq(ordenes.estatus, 'pendiente'),
+        ),
+      )
+      .limit(1);
+
+    let ordenId: string;
+    if (ordenExistente) {
+      ordenId = ordenExistente.id;
+    } else {
       const [nuevaOrden] = await this.db
         .insert(ordenes)
         .values({
           tipo: 'mesa',
           mesaId: mesaDbId,
           clienteId,
-          estatus: 'abierta',
-          subtotal: totalGeneral.toString(),
-          total: totalGeneral.toString(),
-          descuentos: '0.00',
-          impuestos: '0.00',
-          propina: '0.00',
+          estatus: 'pendiente',
+          subtotal: '0',
+          total: '0',
           numComensales: 1,
         })
         .returning();
-
-      const itemsConOrdenId = itemsAInsertar.map((item) => ({
-        ...item,
-        ordenId: nuevaOrden.id,
-      }));
-
-      await this.db.insert(ordenItems).values(itemsConOrdenId);
-
-      return {
-        success: true,
-        message: 'Pedido recibido exitosamente.',
-        ordenId: nuevaOrden.id,
-        mesaId: dto.mesa,
-        total: nuevaOrden.total,
-      };
-    } catch (error: any) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
-        throw error;
-      }
-      // 👇 Log del error real de Postgres (antes se perdía)
-      console.error('Error real de Postgres (createOrderMesa):', error.cause ?? error);
-      throw new BadRequestException(
-        `Error interno al procesar el pedido: ${error.cause?.message || error.message}`,
-      );
+      ordenId = nuevaOrden.id;
     }
+
+    for (const item of listaItems) {
+      const platilloInfo = platillosMap.get(item.platilloId);
+      if (!platilloInfo) {
+        throw new NotFoundException(`El platillo con ID ${item.platilloId} no existe.`);
+      }
+      const precioUnitario = parseFloat(platilloInfo.precio.toString());
+
+      const [itemExistente] = await this.db
+        .select()
+        .from(ordenItems)
+        .where(and(eq(ordenItems.ordenId, ordenId), eq(ordenItems.platilloId, item.platilloId)))
+        .limit(1);
+
+      if (itemExistente) {
+        const nuevaCantidad = itemExistente.cantidad + item.cantidad;
+        await this.db
+          .update(ordenItems)
+          .set({
+            cantidad: nuevaCantidad,
+            subtotal: (nuevaCantidad * precioUnitario).toString(),
+          })
+          .where(eq(ordenItems.id, itemExistente.id));
+      } else {
+        await this.db.insert(ordenItems).values({
+          ordenId,
+          platilloId: item.platilloId,
+          cantidad: item.cantidad,
+          precioUnitario: precioUnitario.toString(),
+          subtotal: (item.cantidad * precioUnitario).toString(),
+        });
+      }
+    }
+
+    const totalActualizado = await this.recalcularTotalOrden(ordenId);
+
+    return {
+      success: true,
+      message: 'Producto agregado a tu pedido de mesa.',
+      ordenId,
+      mesaId: mesaNumero,
+      total: totalActualizado,
+    };
   }
 
   private async agregarACarritoDomicilio(
@@ -217,31 +274,110 @@ export class OrdersService {
       }
     }
 
-    const itemsDeLaOrden = await this.db
-      .select()
-      .from(ordenItems)
-      .where(eq(ordenItems.ordenId, ordenId));
-
-    const nuevoTotal = itemsDeLaOrden.reduce(
-      (acc, it) => acc + parseFloat(it.subtotal ?? '0'),
-      0,
-    );
-
-    await this.db
-      .update(ordenes)
-      .set({ subtotal: nuevoTotal.toString(), total: nuevoTotal.toString() })
-      .where(eq(ordenes.id, ordenId));
+    const totalActualizado = await this.recalcularTotalOrden(ordenId);
 
     return {
       success: true,
       message: 'Producto agregado a tu pedido a domicilio.',
       ordenId,
       mesaId: null,
-      total: nuevoTotal.toString(),
+      total: totalActualizado,
     };
   }
 
-  async findOrdersByUser(mesaNumero: string) {
+  // FIX (nuevo): manda a cocina la orden de mesa que estaba en 'pendiente'.
+  // A partir de aquí ya no se pueden quitar productos (ver
+  // eliminarItemOrden) y arranca la ventana de 2 minutos para cancelar
+  // (esCancelable en el frontend usa tiempoApertura).
+  async confirmarOrdenMesa(ordenId: string) {
+    const [orden] = await this.db
+      .select()
+      .from(ordenes)
+      .where(eq(ordenes.id, ordenId))
+      .limit(1);
+
+    if (!orden) {
+      throw new NotFoundException(`La orden con ID ${ordenId} no existe.`);
+    }
+    if (orden.tipo !== 'mesa') {
+      throw new BadRequestException('Esta orden no corresponde a un pedido de mesa.');
+    }
+    if (orden.estatus !== 'pendiente') {
+      throw new BadRequestException(
+        `Este pedido ya fue confirmado o no está disponible (estatus actual: ${orden.estatus}).`,
+      );
+    }
+
+    const itemsDeLaOrden = await this.db
+      .select()
+      .from(ordenItems)
+      .where(eq(ordenItems.ordenId, ordenId));
+
+    if (!itemsDeLaOrden.length) {
+      throw new BadRequestException('No puedes confirmar un pedido sin productos.');
+    }
+
+    await this.db
+      .update(ordenes)
+      .set({ estatus: 'abierta', tiempoApertura: new Date().toISOString() })
+      .where(eq(ordenes.id, ordenId));
+
+    return {
+      success: true,
+      message: 'Tu pedido fue enviado a cocina.',
+      ordenId,
+    };
+  }
+
+  // FIX (nuevo): quita un producto individual de un pedido, mesa o
+  // domicilio, siempre y cuando ese pedido siga en 'pendiente' (carrito).
+  // Una vez confirmado/enviado, esta ruta se bloquea a propósito.
+  async eliminarItemOrden(itemId: number) {
+    const [item] = await this.db
+      .select()
+      .from(ordenItems)
+      .where(eq(ordenItems.id, itemId))
+      .limit(1);
+
+    if (!item) {
+      throw new NotFoundException(`El producto con ID ${itemId} no existe en ningún pedido.`);
+    }
+
+    const [orden] = await this.db
+      .select()
+      .from(ordenes)
+      .where(eq(ordenes.id, item.ordenId))
+      .limit(1);
+
+    if (!orden) {
+      throw new NotFoundException('El pedido al que pertenece este producto ya no existe.');
+    }
+
+    if (orden.estatus !== 'pendiente') {
+      throw new BadRequestException(
+        'Este producto ya no se puede quitar porque el pedido ya fue confirmado.',
+      );
+    }
+
+    await this.db.delete(ordenItems).where(eq(ordenItems.id, itemId));
+
+    const totalActualizado = await this.recalcularTotalOrden(item.ordenId);
+
+    const itemsRestantes = await this.db
+      .select()
+      .from(ordenItems)
+      .where(eq(ordenItems.ordenId, item.ordenId));
+
+    return {
+      success: true,
+      message: 'Producto eliminado de tu pedido.',
+      ordenId: item.ordenId,
+      total: totalActualizado,
+      itemsRestantes: itemsRestantes.length,
+    };
+  }
+
+  async findOrdersByUser(mesaNumero: string, usuarioId?: number) {
     let mesaDbId: number;
     try {
       mesaDbId = await this.resolverMesaId(mesaNumero);
@@ -249,7 +385,30 @@ export class OrdersService {
       return [];
     }
 
+    // FIX (nuevo): antes esta consulta solo filtraba por mesaId, así que
+    // cualquiera que supiera el número de mesa (o lo tuviera guardado en
+    // localStorage) veía el carrito de cualquier otro cliente en esa
+    // mesa, incluso después de cerrar sesión. Ahora, si viene usuarioId,
+    // se filtra también por el cliente real de la sesión.
+    let clienteId: string | undefined;
+    if (usuarioId) {
+      const [cliente] = await this.db
+        .select()
+        .from(clientes)
+        .where(eq(clientes.userId, usuarioId))
+        .limit(1);
+
+      // Si el usuario nunca ha hecho un pedido, todavía no tiene fila en
+      // "clientes" y por lo tanto no puede tener órdenes.
+      if (!cliente) return [];
+      clienteId = cliente.id;
+    }
+
     try {
+      const condiciones = clienteId
+        ? and(eq(ordenes.mesaId, mesaDbId), eq(ordenes.clienteId, clienteId))
+        : eq(ordenes.mesaId, mesaDbId);
+
       const rows = await this.db
         .select({
           id: ordenes.id,
@@ -266,7 +425,7 @@ export class OrdersService {
         .from(ordenes)
         .leftJoin(ordenItems, eq(ordenes.id, ordenItems.ordenId))
         .leftJoin(platillos, eq(ordenItems.platilloId, platillos.id))
-        .where(eq(ordenes.mesaId, mesaDbId))
+        .where(condiciones)
         .orderBy(desc(ordenes.tiempoApertura));
 
       const groupedOrders: Record<string, any> = {};
@@ -298,7 +457,6 @@ export class OrdersService {
 
       return Object.values(groupedOrders);
     } catch (error: any) {
-      // 👇 Log del error real de Postgres (antes se perdía)
       console.error('Error real de Postgres (findOrdersByUser):', error.cause ?? error);
       throw new BadRequestException(
         `Error al consultar las comandas de la mesa: ${error.cause?.message || error.message}`,
@@ -306,72 +464,68 @@ export class OrdersService {
     }
   }
 
-async findDeliveryOrdersByUser(usuarioId: number) {
-  const [cliente] = await this.db
-    .select()
-    .from(clientes)
-    .where(eq(clientes.userId, usuarioId))
-    .limit(1);
+  async findDeliveryOrdersByUser(usuarioId: number) {
+    const [cliente] = await this.db
+      .select()
+      .from(clientes)
+      .where(eq(clientes.userId, usuarioId))
+      .limit(1);
 
-  if (!cliente) return [];
+    if (!cliente) return [];
 
-  try {
-    const rows = await this.db
-      .select({
-        id: ordenes.id,
-        estatus: ordenes.estatus,
-        total: ordenes.total,
-        tiempoApertura: ordenes.tiempoApertura,
-        tipo: ordenes.tipo,
-        itemId: ordenItems.id,
-        cantidad: ordenItems.cantidad,
-        precioUnitario: ordenItems.precioUnitario,
-        platilloNombre: platillos.nombre,
-        platilloImagen: platillos.imagenUrl,
-      })
-      .from(ordenes)
-      .leftJoin(ordenItems, eq(ordenes.id, ordenItems.ordenId))
-      .leftJoin(platillos, eq(ordenItems.platilloId, platillos.id))
-      .where(and(eq(ordenes.clienteId, cliente.id), eq(ordenes.tipo, 'domicilio')))
-      .orderBy(desc(ordenes.tiempoApertura));
+    try {
+      const rows = await this.db
+        .select({
+          id: ordenes.id,
+          estatus: ordenes.estatus,
+          total: ordenes.total,
+          tiempoApertura: ordenes.tiempoApertura,
+          tipo: ordenes.tipo,
+          itemId: ordenItems.id,
+          cantidad: ordenItems.cantidad,
+          precioUnitario: ordenItems.precioUnitario,
+          platilloNombre: platillos.nombre,
+          platilloImagen: platillos.imagenUrl,
+        })
+        .from(ordenes)
+        .leftJoin(ordenItems, eq(ordenes.id, ordenItems.ordenId))
+        .leftJoin(platillos, eq(ordenItems.platilloId, platillos.id))
+        .where(and(eq(ordenes.clienteId, cliente.id), eq(ordenes.tipo, 'domicilio')))
+        .orderBy(desc(ordenes.tiempoApertura));
 
-    // NOTA: la dirección de entrega ya NO se resuelve aquí. Se pedirá en
-    // el checkout (ver handleProcederAlPagoDomicilio en el frontend), así
-    // que este listado solo muestra el pedido y su estatus, sin dirección
-    // todavía. Cuando implementes el checkout, esa pantalla es la que debe
-    // insertar/seleccionar la fila en "direcciones_cliente" (o el campo
-    // que decidas usar) y ligarla a la orden antes de pagar.
-    const groupedOrders: Record<string, any> = {};
+      // NOTA: la dirección de entrega se pide hasta el checkout, no aquí.
+      const groupedOrders: Record<string, any> = {};
 
-    for (const row of rows) {
-      if (!groupedOrders[row.id]) {
-        groupedOrders[row.id] = {
-          id: row.id,
-          estatus: row.estatus,
-          total: row.total,
-          creadoEn: row.tiempoApertura,
-          items: [],
-        };
+      for (const row of rows) {
+        if (!groupedOrders[row.id]) {
+          groupedOrders[row.id] = {
+            id: row.id,
+            estatus: row.estatus,
+            total: row.total,
+            creadoEn: row.tiempoApertura,
+            items: [],
+          };
+        }
+
+        if (row.itemId) {
+          groupedOrders[row.id].items.push({
+            id: row.itemId,
+            cantidad: row.cantidad,
+            precio: row.precioUnitario,
+            nombre: row.platilloNombre,
+          });
+        }
       }
 
-      if (row.itemId) {
-        groupedOrders[row.id].items.push({
-          id: row.itemId,
-          cantidad: row.cantidad,
-          precio: row.precioUnitario,
-          nombre: row.platilloNombre,
-        });
-      }
+      return Object.values(groupedOrders);
+    } catch (error: any) {
+      console.error('Error real de Postgres (findDeliveryOrdersByUser):', error.cause ?? error);
+      throw new BadRequestException(
+        `Error al consultar pedidos a domicilio: ${error.cause?.message || error.message}`,
+      );
     }
-
-    return Object.values(groupedOrders);
-  } catch (error: any) {
-    console.error('Error real de Postgres (findDeliveryOrdersByUser):', error.cause ?? error);
-    throw new BadRequestException(
-      `Error al consultar pedidos a domicilio: ${error.cause?.message || error.message}`,
-    );
   }
-}
+
   async cancelarOrden(ordenId: string) {
     const [orden] = await this.db
       .select()

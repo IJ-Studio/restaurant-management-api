@@ -3,7 +3,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'; // 👈 AGREGADO
 import { APP_GUARD } from '@nestjs/core'; // 👈 AGREGADO
-
+import { PagosModule } from './pagos/pagos.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { AuthModule } from './auth/auth.module';
 import { BackupsModule } from './database/features/backups/backups.module';
@@ -32,6 +32,7 @@ import { MesasModule } from './mesas/mesas.module';
     DatabaseModule,
     CacheModule,
     AuthModule,
+      PagosModule,
     ReservationsModule,
     ScheduleModule.forRoot(),
     BackupsModule,
