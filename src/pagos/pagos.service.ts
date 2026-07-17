@@ -6,6 +6,7 @@ import {
   direccionesCliente,
   metodosPago,
   metodosPagoGuardados,
+  perfilesFacturacion,
   ordenes,
   pagos,
   facturas,
@@ -18,6 +19,7 @@ import {
   GuardarMetodoPagoDto,
   CrearIntentoPagoDto,
   CrearFacturaDto,
+  GuardarPerfilFacturacionDto,
 } from './dto/pagos.dto';
 
 @Injectable()
@@ -41,8 +43,7 @@ export class PagosService {
     this.facturapi = new Facturapi(facturapiKey);
   }
 
-  // Mismo patrón que OrdersService.resolverClienteId: resuelve (o crea)
-  // el "cliente" ligado a un usuario autenticado.
+
   private async resolverClienteId(usuarioId: number): Promise<string> {
     const [clienteExistente] = await this.db
       .select()
@@ -108,6 +109,45 @@ export class PagosService {
       .where(eq(direccionesCliente.clienteId, cliente.id));
   }
 
+  async actualizarDireccion(id: number, usuarioId: number, dto: Partial<CrearDireccionDto>) {
+    const clienteId = await this.resolverClienteId(usuarioId);
+
+    const [direccion] = await this.db
+      .select()
+      .from(direccionesCliente)
+      .where(and(eq(direccionesCliente.id, id), eq(direccionesCliente.clienteId, clienteId)))
+      .limit(1);
+
+    if (!direccion) {
+      throw new NotFoundException('Esa dirección no existe o no te pertenece.');
+    }
+
+    if (dto.esPrincipal) {
+      await this.db
+        .update(direccionesCliente)
+        .set({ esPrincipal: false })
+        .where(eq(direccionesCliente.clienteId, clienteId));
+    }
+
+    const [actualizada] = await this.db
+      .update(direccionesCliente)
+      .set({
+        alias: dto.alias ?? direccion.alias,
+        linea1: dto.linea1 ?? direccion.linea1,
+        linea2: dto.linea2 ?? direccion.linea2,
+        colonia: dto.colonia ?? direccion.colonia,
+        referencias: dto.referencias ?? direccion.referencias,
+        codigoPostal: dto.codigoPostal ?? direccion.codigoPostal,
+        ciudad: dto.ciudad ?? direccion.ciudad,
+        estado: dto.estado ?? direccion.estado,
+        esPrincipal: dto.esPrincipal ?? direccion.esPrincipal,
+      })
+      .where(eq(direccionesCliente.id, id))
+      .returning();
+
+    return actualizada;
+  }
+
   async eliminarDireccion(id: number, usuarioId: number) {
     const clienteId = await this.resolverClienteId(usuarioId);
 
@@ -133,24 +173,50 @@ export class PagosService {
   // solo nos manda el "paymentMethodId" (un token) que Stripe genera.
   // ══════════════════════════════════════════════════════════════
 
-  // Regresa el Customer de Stripe ligado a este cliente, reutilizando el
-  // que ya exista (si tiene una tarjeta guardada previa) para no crear
-  // Customers duplicados en el dashboard de Stripe.
+  // Regresa el Customer de Stripe ligado a este cliente.
+  //
+  // IMPORTANTE: la fuente de verdad es la columna `clientes.stripeCustomerId`,
+  // NO los métodos de pago guardados. Antes, esta función buscaba el
+  // Customer en `metodosPagoGuardados`, lo cual es incorrecto: como se
+  // llama tanto en crearSetupIntent() como en guardarMetodoPago() para el
+  // mismo flujo de "guardar tarjeta nueva", y la fila de metodosPagoGuardados
+  // no existe todavía en el primer paso, terminaba creando DOS Customers de
+  // Stripe distintos para la misma operación — el PaymentMethod quedaba
+  // adjunto al primer Customer, pero la DB guardaba el segundo. Ese es el
+  // origen exacto del error "PaymentMethod ... does not belong to the
+  // Customer you supplied".
+  //
+  // Requiere agregar la columna `stripeCustomerId: text('stripe_customer_id')`
+  // (nullable) a la tabla `clientes` en tu schema de Drizzle + su migración.
   private async resolverStripeCustomerId(clienteId: string, usuarioId: number): Promise<string> {
-    const [metodoExistente] = await this.db
+    const [cliente] = await this.db
       .select()
-      .from(metodosPagoGuardados)
-      .where(eq(metodosPagoGuardados.clienteId, clienteId))
+      .from(clientes)
+      .where(eq(clientes.id, clienteId))
       .limit(1);
 
-    if (metodoExistente) return metodoExistente.stripeCustomerId;
+    if (cliente?.stripeCustomerId) return cliente.stripeCustomerId;
 
     const customer = await this.stripe.customers.create({
       metadata: { clienteId, usuarioId: String(usuarioId) },
     });
 
+    // Se persiste inmediatamente para que cualquier llamada posterior
+    // (en el mismo flujo o en otro distinto) reutilice este mismo Customer.
+    await this.db
+      .update(clientes)
+      .set({ stripeCustomerId: customer.id })
+      .where(eq(clientes.id, clienteId));
+
     return customer.id;
   }
+
+  // Repara clientes existentes que ya quedaron con datos inconsistentes por
+  // el bug anterior: si un método de pago guardado tiene un stripeCustomerId
+  // distinto al que ahora vive en `clientes`, ese método ya no sirve para
+  // cobrar (el PaymentMethod sigue adjunto al Customer viejo). Bórralo desde
+  // el endpoint de eliminar y pide al usuario que vuelva a guardar su tarjeta.
+  // No hay forma automática de "reasignar" un PaymentMethod a otro Customer.
 
   // Paso 1 del flujo de "guardar tarjeta": el frontend pide este Setup
   // Intent, lo usa con stripe.confirmCardSetup(), y de ahí obtiene el
@@ -235,6 +301,37 @@ export class PagosService {
       anioExpiracion: m.anioExpiracion,
       esPrincipal: m.esPrincipal,
     };
+  }
+
+  // Solo se puede cambiar cuál es la principal: Stripe nunca regresa el
+  // número completo ni la fecha real editable de una tarjeta ya tokenizada,
+  // así que "editar" el número/vencimiento no es técnicamente posible.
+  // Para eso el flujo correcto es: guardar la tarjeta nueva + eliminar la vieja.
+  async marcarMetodoPagoPrincipal(id: string, usuarioId: number) {
+    const clienteId = await this.resolverClienteId(usuarioId);
+
+    const [metodo] = await this.db
+      .select()
+      .from(metodosPagoGuardados)
+      .where(and(eq(metodosPagoGuardados.id, id), eq(metodosPagoGuardados.clienteId, clienteId)))
+      .limit(1);
+
+    if (!metodo) {
+      throw new NotFoundException('Ese método de pago no existe o no te pertenece.');
+    }
+
+    await this.db
+      .update(metodosPagoGuardados)
+      .set({ esPrincipal: false })
+      .where(eq(metodosPagoGuardados.clienteId, clienteId));
+
+    const [actualizado] = await this.db
+      .update(metodosPagoGuardados)
+      .set({ esPrincipal: true })
+      .where(eq(metodosPagoGuardados.id, id))
+      .returning();
+
+    return this.formatearMetodoPago(actualizado);
   }
 
   async eliminarMetodoPago(id: string, usuarioId: number) {
@@ -325,8 +422,18 @@ export class PagosService {
       stripeCustomerId = guardado.stripeCustomerId;
     }
 
-    // Idempotency key = ordenId: si el usuario da doble clic o hay un
-    // retry de red, Stripe no duplica el cobro.
+    // FIX: la key ya NO depende solo del ordenId. Antes, un primer intento
+    // fallido (o cualquier reintento con datos distintos — otra tarjeta,
+    // otro customer, otro monto) chocaba con Stripe porque reusaba la
+    // misma key con parámetros diferentes ("Keys for idempotent requests
+    // can only be used with the same parameters..."). Ahora la key
+    // incluye también el método de pago, el customer y el monto usados:
+    //  - un doble clic accidental con los MISMOS datos sigue protegido
+    //    (Stripe regresa la respuesta cacheada, no cobra dos veces).
+    //  - cambiar de tarjeta o reintentar tras corregir algo genera una
+    //    key nueva, y Stripe la trata como una petición legítima distinta.
+    const idempotencyKey = `orden-${dto.ordenId}-${paymentMethodId ?? 'auto'}-${stripeCustomerId ?? 'sin-customer'}-${montoEnCentavos}`;
+
     const paymentIntent = await this.stripe.paymentIntents.create(
       {
         amount: montoEnCentavos,
@@ -338,7 +445,7 @@ export class PagosService {
         off_session: !!stripeCustomerId,
         metadata: { ordenId: dto.ordenId, clienteId },
       },
-      { idempotencyKey: `orden-${dto.ordenId}` },
+      { idempotencyKey },
     );
 
     return {
@@ -405,6 +512,69 @@ export class PagosService {
   }
 
   // ══════════════════════════════════════════════════════════════
+  // PERFILES DE FACTURACIÓN (REUSABLES)
+  // ══════════════════════════════════════════════════════════════
+
+  async guardarPerfilFacturacion(dto: GuardarPerfilFacturacionDto) {
+    const clienteId = await this.resolverClienteId(dto.usuarioId);
+
+    if (dto.esPrincipal) {
+      await this.db
+        .update(perfilesFacturacion)
+        .set({ esPrincipal: false })
+        .where(eq(perfilesFacturacion.clienteId, clienteId));
+    }
+
+    const [guardado] = await this.db
+      .insert(perfilesFacturacion)
+      .values({
+        clienteId,
+        rfc: dto.rfc,
+        razonSocial: dto.razonSocial,
+        usoCfdi: dto.usoCfdi,
+        regimenFiscal: dto.regimenFiscal,
+        codigoPostalFiscal: dto.codigoPostalFiscal,
+        email: dto.email,
+        esPrincipal: dto.esPrincipal ?? false,
+      })
+      .returning();
+
+    return guardado;
+  }
+
+  async listarPerfilesFacturacion(usuarioId: number) {
+    const [cliente] = await this.db
+      .select()
+      .from(clientes)
+      .where(eq(clientes.userId, usuarioId))
+      .limit(1);
+
+    if (!cliente) return [];
+
+    return await this.db
+      .select()
+      .from(perfilesFacturacion)
+      .where(eq(perfilesFacturacion.clienteId, cliente.id));
+  }
+
+  async eliminarPerfilFacturacion(id: string, usuarioId: number) {
+    const clienteId = await this.resolverClienteId(usuarioId);
+
+    const [perfil] = await this.db
+      .select()
+      .from(perfilesFacturacion)
+      .where(and(eq(perfilesFacturacion.id, id), eq(perfilesFacturacion.clienteId, clienteId)))
+      .limit(1);
+
+    if (!perfil) {
+      throw new NotFoundException('Ese perfil de facturación no existe o no te pertenece.');
+    }
+
+    await this.db.delete(perfilesFacturacion).where(eq(perfilesFacturacion.id, id));
+    return { success: true, message: 'Perfil de facturación eliminado.' };
+  }
+
+  // ══════════════════════════════════════════════════════════════
   // FACTURACIÓN (CFDI VÍA FACTURAPI)
   // ══════════════════════════════════════════════════════════════
 
@@ -442,6 +612,56 @@ export class PagosService {
       throw new BadRequestException('Esta orden ya tiene una factura generada.');
     }
 
+    // Resuelve los datos fiscales: o vienen de un perfil guardado, o
+    // llegan manuales en el body (y ambos casos se validan aquí).
+    let datosFiscales: {
+      rfc: string;
+      razonSocial: string;
+      usoCfdi: string;
+      regimenFiscal: string;
+      codigoPostalFiscal: string;
+      email?: string | null;
+    };
+
+    if (dto.perfilFacturacionId) {
+      const [perfil] = await this.db
+        .select()
+        .from(perfilesFacturacion)
+        .where(
+          and(
+            eq(perfilesFacturacion.id, dto.perfilFacturacionId),
+            eq(perfilesFacturacion.clienteId, clienteId),
+          ),
+        )
+        .limit(1);
+
+      if (!perfil) {
+        throw new NotFoundException('Ese perfil de facturación no existe o no te pertenece.');
+      }
+
+      datosFiscales = perfil;
+    } else {
+      if (
+        !dto.rfc ||
+        !dto.razonSocial ||
+        !dto.usoCfdi ||
+        !dto.regimenFiscal ||
+        !dto.codigoPostalFiscal
+      ) {
+        throw new BadRequestException(
+          'Faltan datos fiscales (rfc, razonSocial, usoCfdi, regimenFiscal, codigoPostalFiscal) o un perfilFacturacionId.',
+        );
+      }
+      datosFiscales = {
+        rfc: dto.rfc,
+        razonSocial: dto.razonSocial,
+        usoCfdi: dto.usoCfdi,
+        regimenFiscal: dto.regimenFiscal,
+        codigoPostalFiscal: dto.codigoPostalFiscal,
+        email: dto.email,
+      };
+    }
+
     const total = parseFloat(orden.total);
     const subtotal = +(total / 1.16).toFixed(2);
     const iva = +(total - subtotal).toFixed(2);
@@ -450,11 +670,11 @@ export class PagosService {
     try {
       facturapiInvoice = await this.facturapi.invoices.create({
         customer: {
-          legal_name: dto.razonSocial,
-          tax_id: dto.rfc,
-          tax_system: dto.regimenFiscal,
-          email: dto.email,
-          address: { zip: dto.codigoPostalFiscal },
+          legal_name: datosFiscales.razonSocial,
+          tax_id: datosFiscales.rfc,
+          tax_system: datosFiscales.regimenFiscal,
+          email: datosFiscales.email,
+          address: { zip: datosFiscales.codigoPostalFiscal },
         },
         items: [
           {
@@ -467,7 +687,7 @@ export class PagosService {
             },
           },
         ],
-        use: dto.usoCfdi,
+        use: datosFiscales.usoCfdi,
         payment_form: '31', // "Intermediario pagos" (cobro con tarjeta en línea vía pasarela)
       });
     } catch (err: any) {
@@ -477,12 +697,19 @@ export class PagosService {
       );
     }
 
-    // Guarda RFC/razón social en el cliente para prellenarlos la próxima
-    // vez que pida factura.
-    await this.db
-      .update(clientes)
-      .set({ rfc: dto.rfc, razonSocial: dto.razonSocial, requiereFactura: true })
-      .where(eq(clientes.id, clienteId));
+    // Si mandó datos fiscales manuales y pidió guardarlos, crea el
+    // perfil reusable para futuras facturas.
+    if (dto.guardarComoPerfil && !dto.perfilFacturacionId) {
+      await this.db.insert(perfilesFacturacion).values({
+        clienteId,
+        rfc: datosFiscales.rfc,
+        razonSocial: datosFiscales.razonSocial,
+        usoCfdi: datosFiscales.usoCfdi,
+        regimenFiscal: datosFiscales.regimenFiscal,
+        codigoPostalFiscal: datosFiscales.codigoPostalFiscal,
+        email: datosFiscales.email,
+      });
+    }
 
     const [facturaGuardada] = await this.db
       .insert(facturas)
@@ -491,10 +718,10 @@ export class PagosService {
         userId: dto.usuarioId,
         folioFiscal: facturapiInvoice.uuid ?? null,
         facturapiInvoiceId: facturapiInvoice.id,
-        rfcReceptor: dto.rfc,
-        razonSocial: dto.razonSocial,
-        usoCfdi: dto.usoCfdi,
-        regimenFiscal: dto.regimenFiscal,
+        rfcReceptor: datosFiscales.rfc,
+        razonSocial: datosFiscales.razonSocial,
+        usoCfdi: datosFiscales.usoCfdi,
+        regimenFiscal: datosFiscales.regimenFiscal,
         subtotal: subtotal.toString(),
         iva: iva.toString(),
         total: total.toString(),

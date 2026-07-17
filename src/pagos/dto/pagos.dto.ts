@@ -50,6 +50,45 @@ export class CrearDireccionDto {
   esPrincipal?: boolean;
 }
 
+export class ActualizarDireccionDto {
+  @IsString()
+  @IsOptional()
+  alias?: string;
+
+  @IsString()
+  @IsOptional()
+  linea1?: string;
+
+  @IsString()
+  @IsOptional()
+  linea2?: string;
+
+  @IsString()
+  @IsOptional()
+  colonia?: string;
+
+  @IsString()
+  @IsOptional()
+  referencias?: string;
+
+  @IsString()
+  @IsOptional()
+  @Length(5, 5, { message: 'El código postal debe tener exactamente 5 dígitos.' })
+  codigoPostal?: string;
+
+  @IsString()
+  @IsOptional()
+  ciudad?: string;
+
+  @IsString()
+  @IsOptional()
+  estado?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  esPrincipal?: boolean;
+}
+
 export class GuardarMetodoPagoDto {
   @IsNumber()
   @IsNotEmpty()
@@ -103,6 +142,50 @@ export class CrearFacturaDto {
   @IsNotEmpty()
   ordenId: string;
 
+  // Si el cliente ya tiene un perfil de facturación guardado, solo manda
+  // este ID y el resto de los campos fiscales se vuelve opcional.
+  @IsUUID()
+  @IsOptional()
+  perfilFacturacionId?: string;
+
+  @IsString()
+  @IsOptional()
+  @Length(12, 13, { message: 'El RFC debe tener 12 (persona moral) o 13 (persona física) caracteres.' })
+  rfc?: string;
+
+  @IsString()
+  @IsOptional()
+  razonSocial?: string;
+
+  @IsString()
+  @IsOptional()
+  usoCfdi?: string;
+
+  @IsString()
+  @IsOptional()
+  regimenFiscal?: string;
+
+  @IsString()
+  @IsOptional()
+  @Length(5, 5, { message: 'El código postal fiscal debe tener exactamente 5 dígitos.' })
+  codigoPostalFiscal?: string;
+
+  @IsString()
+  @IsOptional()
+  email?: string;
+
+  // Si manda datos fiscales manuales (sin perfilFacturacionId) y quiere
+  // guardarlos como perfil reusable para la próxima vez.
+  @IsBoolean()
+  @IsOptional()
+  guardarComoPerfil?: boolean;
+}
+
+export class GuardarPerfilFacturacionDto {
+  @IsNumber()
+  @IsNotEmpty()
+  usuarioId: number;
+
   @IsString()
   @Length(12, 13, { message: 'El RFC debe tener 12 (persona moral) o 13 (persona física) caracteres.' })
   rfc: string;
@@ -126,4 +209,8 @@ export class CrearFacturaDto {
   @IsString()
   @IsOptional()
   email?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  esPrincipal?: boolean;
 }
