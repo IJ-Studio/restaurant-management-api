@@ -17,6 +17,7 @@ import { MetricsModule } from './database/features/metrics/metrics.module';
 import { MenuModule } from './menu/menu.module';
 import { OrdersModule } from './orders/orders.module';
 import { MesasModule } from './mesas/mesas.module';
+import { RecommendationsModule } from './recommendations/recommendations.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -44,6 +45,7 @@ import { MesasModule } from './mesas/mesas.module';
     MenuModule,
     OrdersModule,
     MesasModule,
+    RecommendationsModule,
   ],
   controllers: [],
   providers: [
