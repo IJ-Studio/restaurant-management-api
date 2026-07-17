@@ -18,6 +18,7 @@ import { MenuModule } from './menu/menu.module';
 import { OrdersModule } from './orders/orders.module';
 import { MesasModule } from './mesas/mesas.module';
 import { RecommendationsModule } from './recommendations/recommendations.module';
+import { PredictiveDemandModule } from './predictive-demand/predictive-demand.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -46,6 +47,7 @@ import { RecommendationsModule } from './recommendations/recommendations.module'
     OrdersModule,
     MesasModule,
     RecommendationsModule,
+    PredictiveDemandModule,
   ],
   controllers: [],
   providers: [
