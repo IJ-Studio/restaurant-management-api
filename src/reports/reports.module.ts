@@ -6,16 +6,19 @@ import { ExportSalesDishesRepository } from './export/repositories/export.salesD
 import { CsvAdapter } from './export/adapters/csv.adapter';
 import { XlsxAdapter } from './export/adapters/xlsx.adapter';
 import { PdfAdapter } from './export/adapters/pdf.adapter';
+import { SegmentsController } from './segments/segments.controller';
+import { SegmentsService } from './segments/segments.service';
 
 @Module({
   imports: [DatabaseModule],
-  controllers: [ExportController],
+  controllers: [ExportController, SegmentsController],
   providers: [
     ExportService,
     ExportSalesDishesRepository,
     CsvAdapter,
     XlsxAdapter,
     PdfAdapter,
+    SegmentsService,
   ],
   exports: [ExportService],
 })
