@@ -1033,6 +1033,7 @@ export const clientes = pgTable("clientes", {
 	rfc: varchar({ length: 13 }),
 	razonSocial: varchar("razon_social", { length: 200 }),
 	requiereFactura: boolean("requiere_factura").default(false),
+	stripeCustomerId: text("stripe_customer_id"),   // 👈 NUEVO
 	notas: text(),
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
@@ -1045,6 +1046,7 @@ export const clientes = pgTable("clientes", {
 		}).onDelete("set null"),
 	unique("clientes_user_id_key").on(table.userId),
 ]);
+
 export const metodosPagoGuardados = pgTable("metodos_pago_guardados", {
 	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
 	clienteId: uuid("cliente_id").notNull(),
@@ -1062,6 +1064,24 @@ export const metodosPagoGuardados = pgTable("metodos_pago_guardados", {
 			columns: [table.clienteId],
 			foreignColumns: [clientes.id],
 			name: "metodos_pago_guardados_cliente_id_fkey"
+		}).onDelete("cascade"),
+]);
+export const perfilesFacturacion = pgTable("perfiles_facturacion", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	clienteId: uuid("cliente_id").notNull(),
+	rfc: varchar({ length: 13 }).notNull(),
+	razonSocial: varchar("razon_social", { length: 200 }).notNull(),
+	usoCfdi: varchar("uso_cfdi", { length: 10 }).notNull(),
+	regimenFiscal: varchar("regimen_fiscal", { length: 50 }).notNull(),
+	codigoPostalFiscal: varchar("codigo_postal_fiscal", { length: 5 }).notNull(),
+	email: varchar({ length: 150 }),
+	esPrincipal: boolean("es_principal").default(false),
+	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	foreignKey({
+			columns: [table.clienteId],
+			foreignColumns: [clientes.id],
+			name: "perfiles_facturacion_cliente_id_fkey"
 		}).onDelete("cascade"),
 ]);
 export const categoriasEstacion = pgTable("categorias_estacion", {

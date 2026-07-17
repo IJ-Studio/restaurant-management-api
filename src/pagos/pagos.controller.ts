@@ -1,12 +1,14 @@
-import {Controller,Post,Get,Delete,Body,Query,Param,Req,Res,Headers,BadRequestException,} from '@nestjs/common';
+import {Controller,Post,Get,Put,Delete,Body,Query,Param,Req,Res,Headers,BadRequestException,} from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { PagosService } from './pagos.service';
 import { Public } from '../auth/decorators/public.decorator';
 import {
   CrearDireccionDto,
+  ActualizarDireccionDto,
   GuardarMetodoPagoDto,
   CrearIntentoPagoDto,
   CrearFacturaDto,
+  GuardarPerfilFacturacionDto,
 } from './dto/pagos.dto';
 
 @Controller()
@@ -26,6 +28,17 @@ export class PagosController {
   async listarDirecciones(@Query('usuarioId') usuarioId: string) {
     if (!usuarioId) throw new BadRequestException('El parámetro usuarioId es requerido.');
     return await this.pagosService.listarDirecciones(Number(usuarioId));
+  }
+
+  @Public()
+  @Put('direcciones/:id')
+  async actualizarDireccion(
+    @Param('id') id: string,
+    @Query('usuarioId') usuarioId: string,
+    @Body() dto: ActualizarDireccionDto,
+  ) {
+    if (!usuarioId) throw new BadRequestException('El parámetro usuarioId es requerido.');
+    return await this.pagosService.actualizarDireccion(Number(id), Number(usuarioId), dto);
   }
 
   @Public()
@@ -79,6 +92,28 @@ export class PagosController {
   @Post('pagos/webhook')
   async webhookStripe(@Req() req: Request, @Headers('stripe-signature') signature: string) {
     return await this.pagosService.manejarWebhookStripe(req.body, signature);
+  }
+
+  // ── PERFILES DE FACTURACIÓN ──────────────────────────────────
+
+  @Public()
+  @Post('perfiles-facturacion')
+  async guardarPerfilFacturacion(@Body() dto: GuardarPerfilFacturacionDto) {
+    return await this.pagosService.guardarPerfilFacturacion(dto);
+  }
+
+  @Public()
+  @Get('perfiles-facturacion')
+  async listarPerfilesFacturacion(@Query('usuarioId') usuarioId: string) {
+    if (!usuarioId) throw new BadRequestException('El parámetro usuarioId es requerido.');
+    return await this.pagosService.listarPerfilesFacturacion(Number(usuarioId));
+  }
+
+  @Public()
+  @Delete('perfiles-facturacion/:id')
+  async eliminarPerfilFacturacion(@Param('id') id: string, @Query('usuarioId') usuarioId: string) {
+    if (!usuarioId) throw new BadRequestException('El parámetro usuarioId es requerido.');
+    return await this.pagosService.eliminarPerfilFacturacion(id, Number(usuarioId));
   }
 
   // ── FACTURACIÓN ───────────────────────────────────────────────

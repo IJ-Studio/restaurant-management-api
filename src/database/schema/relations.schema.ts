@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm/relations";
 import {
+	perfilesFacturacion,   // 👈 NUEVO
 	metodosPagoGuardados,
 	direccionesCliente,
 	inventarioProductos,
@@ -119,6 +120,12 @@ export const platillosRelations = relations(platillos, ({one, many}) => ({
 export const metodosPagoGuardadosRelations = relations(metodosPagoGuardados, ({one}) => ({
 	cliente: one(clientes, {
 		fields: [metodosPagoGuardados.clienteId],
+		references: [clientes.id]
+	}),
+}));
+export const perfilesFacturacionRelations = relations(perfilesFacturacion, ({one}) => ({
+	cliente: one(clientes, {
+		fields: [perfilesFacturacion.clienteId],
 		references: [clientes.id]
 	}),
 }));
@@ -365,6 +372,7 @@ export const clientesRelations = relations(clientes, ({one, many}) => ({
 		references: [users.id]
 	}),
 	metodosPagoGuardados: many(metodosPagoGuardados), // 👈 NUEVO
+	perfilesFacturacion: many(perfilesFacturacion), // 👈 NUEVO
 }));
 
 export const reservacionesRelations = relations(reservaciones, ({one, many}) => ({
