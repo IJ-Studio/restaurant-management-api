@@ -4,6 +4,7 @@ import * as os from 'os';
 import { DRIZZLE } from './database/drizzle/constants';
 import type { DrizzleDB } from './database/drizzle/drizzle.provider';
 import { sql } from 'drizzle-orm';
+import { Public } from './auth/decorators/public.decorator';
 
 @Controller()
 export class AppController {
@@ -12,6 +13,7 @@ export class AppController {
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
   ) {}
 
+@Public() // <-- Hace que esta ruta no requiera token
   @Get()
   async getStatus() {
     const packageJson = require('../package.json');
