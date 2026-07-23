@@ -11,7 +11,7 @@ export interface ClientFeatures {
   recenciaDias: number;
 }
 
-interface Point {
+export interface Point {
   clienteId: string;
   z: number[];
 }
@@ -162,4 +162,66 @@ export function silhouetteScore(
   }
 
   return counted > 0 ? total / counted : 0;
+}
+
+// ── PCA (2 componentes, vía iteración de potencias) ─────────────────────────
+// Los 4 features (frecuencia, ticket, % en mesa, recencia) ya vienen
+// estandarizados a media 0 en `points`, así que la matriz de covarianza es
+// simplemente (Zᵀ·Z)/n. Se obtienen los 2 autovectores dominantes por
+// iteración de potencias + deflación (sin librerías externas de álgebra
+// lineal), y se proyecta cada cliente sobre ese plano: es el plano 2D que
+// mejor conserva las distancias reales entre clientes usadas por K-Means,
+// a diferencia de graficar 2 features de negocio cualesquiera (que pueden
+// verse mezclados aunque los clústeres estén bien separados en 4D).
+
+function matVecMul(matrix: number[][], v: number[]): number[] {
+  return matrix.map((row) => row.reduce((s, a, i) => s + a * v[i], 0));
+}
+
+function normalizeVec(v: number[]): number[] {
+  const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
+  return v.map((x) => x / norm);
+}
+
+function powerIteration(
+  matrix: number[][],
+  iterations = 200,
+): { vector: number[]; value: number } {
+  const dim = matrix.length;
+  let v = normalizeVec(Array.from({ length: dim }, (_, i) => (i === 0 ? 1 : 0.1)));
+
+  for (let i = 0; i < iterations; i++) {
+    v = normalizeVec(matVecMul(matrix, v));
+  }
+
+  const Av = matVecMul(matrix, v);
+  const value = v.reduce((s, x, i) => s + x * Av[i], 0); // cociente de Rayleigh
+  return { vector: v, value };
+}
+
+export function pca2D(points: Point[]): { x: number; y: number }[] {
+  const n = points.length;
+  const dim = points[0]?.z.length ?? 0;
+  if (n === 0 || dim === 0) return [];
+
+  const cov: number[][] = Array.from({ length: dim }, () => new Array(dim).fill(0));
+  for (const p of points) {
+    for (let i = 0; i < dim; i++) {
+      for (let j = 0; j < dim; j++) {
+        cov[i][j] += p.z[i] * p.z[j];
+      }
+    }
+  }
+  for (let i = 0; i < dim; i++) {
+    for (let j = 0; j < dim; j++) cov[i][j] /= n;
+  }
+
+  const { vector: v1, value: lambda1 } = powerIteration(cov);
+  const deflated = cov.map((row, i) => row.map((val, j) => val - lambda1 * v1[i] * v1[j]));
+  const { vector: v2 } = powerIteration(deflated);
+
+  return points.map((p) => ({
+    x: p.z.reduce((s, val, i) => s + val * v1[i], 0),
+    y: p.z.reduce((s, val, i) => s + val * v2[i], 0),
+  }));
 }
