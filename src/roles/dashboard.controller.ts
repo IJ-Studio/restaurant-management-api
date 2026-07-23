@@ -2,9 +2,12 @@ import { Controller, Get, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guards';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { DashboardService } from './dashboard.service';
 
 @Controller('dashboard')
 export class DashboardController {
+  constructor(private readonly dashboardService: DashboardService) {}
+
   @Get('admin')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(1) // admin
@@ -38,5 +41,19 @@ export class DashboardController {
   @Roles(5) // cliente
   getClienteDashboard() {
     return { message: 'cliente_dashboard' };
+  }
+
+  @Get('admin/ventas-por-hora')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(1) // admin
+  async getVentasPorHora() {
+    return await this.dashboardService.getVentasPorHora();
+  }
+
+  @Get('admin/stats')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(1) // admin
+  async getAdminStats() {
+    return await this.dashboardService.getAdminStats();
   }
 }
