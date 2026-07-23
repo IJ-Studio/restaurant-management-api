@@ -1,7 +1,11 @@
-import { Controller, Post, Patch, Delete, Param, Body, Get, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Patch, Delete, Param, Body, Get, Query, BadRequestException, UseGuards, Res, Req } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { CreateOrderMesaDto } from './dto/create-order-mesa.dto';
 import { Public } from '../auth/decorators/public.decorator';
+import type { Response, Request } from 'express';import { JwtAuthGuard } from '../auth/guards/jwt-auth.guards';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { ROLES } from '../common/constants/roles';
 
 @Controller('pedidos')
 export class OrdersController {
@@ -65,4 +69,37 @@ export class OrdersController {
   async cancelarOrden(@Param('id') id: string) {
     return await this.ordersService.cancelarOrden(id);
   }
+
+    // NUEVO: Endpoint para el panel de administración (solo admin)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(ROLES.ADMIN)
+  @Get('admin/recent')
+  async getRecentOrdersForAdmin() {
+    return await this.ordersService.getRecentOrdersForAdmin();
+  }
+
+ @UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(ROLES.ADMIN)
+@Get('admin/stream')
+async streamOrdersForAdmin(@Req() req: Request, @Res() res: Response) {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const orders = await this.ordersService.getRecentOrdersForAdmin();
+  res.write(`data: ${JSON.stringify(orders)}\n\n`);
+
+  const interval = setInterval(async () => {
+    const updated = await this.ordersService.getRecentOrdersForAdmin();
+    res.write(`data: ${JSON.stringify(updated)}\n\n`);
+  }, 30000);
+
+  req.on('close', () => {
+    clearInterval(interval);
+  });
+}
+
+
+
 }
