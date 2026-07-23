@@ -6,7 +6,6 @@ import { APP_GUARD } from '@nestjs/core';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { BcryptService } from './bcrypt.service';
-import { DashboardController } from '../roles/dashboard.controller';
 import { JwtAuthGuard } from './guards/jwt-auth.guards';
 
 import jwtConfig from 'src/common/config/jwt.config';
@@ -20,11 +19,11 @@ import { CacheModule } from 'src/cache/cache.module';
     DatabaseModule,
     CacheModule,
   ],
-  controllers: [AuthController, DashboardController],
+  controllers: [AuthController], // ✅ CORREGIDO
   providers: [
     AuthService,
     BcryptService,
-    JwtAuthGuard, // <-- 👈 Agrega el guard como provider explícito
+    JwtAuthGuard,
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
@@ -33,7 +32,7 @@ import { CacheModule } from 'src/cache/cache.module';
   exports: [
     JwtModule,
     BcryptService,
-    JwtAuthGuard, // <-- 👈 Ahora se puede exportar
+    JwtAuthGuard,
   ],
 })
 export class AuthModule {}

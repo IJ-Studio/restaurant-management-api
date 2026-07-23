@@ -20,6 +20,8 @@ import { MesasModule } from './mesas/mesas.module';
 import { RecommendationsModule } from './recommendations/recommendations.module';
 import { PredictiveDemandModule } from './predictive-demand/predictive-demand.module';
 import { PayrollModule } from './payroll/payroll.module';
+import { DashboardModule } from './roles/dashboard.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -45,6 +47,7 @@ import { PayrollModule } from './payroll/payroll.module';
     UsersModule,
     MetricsModule,
     MenuModule,
+    DashboardModule,
     OrdersModule,
     MesasModule,
     RecommendationsModule,

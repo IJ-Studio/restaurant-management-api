@@ -4,7 +4,7 @@ import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 
 import { DRIZZLE } from '../../database/drizzle/constants';
 import * as schema from '../../database/schema/public.schema';
-import { kmeans, silhouetteScore, ClientFeatures } from './kmeans.util';
+import { kmeans, silhouetteScore, pca2D, ClientFeatures } from './kmeans.util';
 
 const K = 4;
 const MIN_CLIENTES = K * 2;
@@ -51,6 +51,8 @@ interface ClienteAgregadoRow {
 interface ClientInfo extends ClientFeatures {
   nombre: string;
   email: string;
+  pcaX: number;
+  pcaY: number;
 }
 
 interface ClusterStat {
@@ -90,17 +92,17 @@ export class SegmentsService {
       having count(o.id) > 0
     `);
 
-    const featureRows: ClientInfo[] = (rows as unknown as ClienteAgregadoRow[]).map(
-      (r) => ({
-        clienteId: r.cliente_id,
-        nombre: r.nombre?.trim() || 'Cliente sin nombre',
-        email: r.email ?? '',
-        frecuencia: Number(r.frecuencia),
-        ticketPromedio: Number(r.ticket_promedio),
-        proporcionMesa: Number(r.proporcion_mesa),
-        recenciaDias: Number(r.recencia_dias),
-      }),
-    );
+    const featureRows: Omit<ClientInfo, 'pcaX' | 'pcaY'>[] = (
+      rows as unknown as ClienteAgregadoRow[]
+    ).map((r) => ({
+      clienteId: r.cliente_id,
+      nombre: r.nombre?.trim() || 'Cliente sin nombre',
+      email: r.email ?? '',
+      frecuencia: Number(r.frecuencia),
+      ticketPromedio: Number(r.ticket_promedio),
+      proporcionMesa: Number(r.proporcion_mesa),
+      recenciaDias: Number(r.recencia_dias),
+    }));
 
     if (featureRows.length < MIN_CLIENTES) {
       return {
@@ -113,8 +115,18 @@ export class SegmentsService {
     const indiceSilueta = silhouetteScore(points, assignments, K);
     const totalClientes = featureRows.length;
 
+    // Coordenadas 2D (PCA sobre el mismo espacio estandarizado que usó
+    // K-Means) para graficar los clústeres de forma fiel a como se separaron
+    // realmente, en vez de proyectar 2 features de negocio al azar.
+    const coords = pca2D(points);
+    const enrichedRows: ClientInfo[] = featureRows.map((r, i) => ({
+      ...r,
+      pcaX: Math.round(coords[i].x * 100) / 100,
+      pcaY: Math.round(coords[i].y * 100) / 100,
+    }));
+
     const clusterStats: ClusterStat[] = Array.from({ length: K }, (_, ci) => {
-      const members = featureRows.filter((_, i) => assignments[i] === ci);
+      const members = enrichedRows.filter((_, i) => assignments[i] === ci);
       const tamano = members.length;
       const avg = (sel: (m: ClientFeatures) => number) =>
         tamano > 0 ? members.reduce((s, m) => s + sel(m), 0) / tamano : 0;
@@ -150,6 +162,8 @@ export class SegmentsService {
           ticketPromedio: Math.round(m.ticketPromedio),
           tipoDominante: m.proporcionMesa >= 0.5 ? 'mesa' : 'domicilio',
           recenciaDias: Math.round(m.recenciaDias),
+          pcaX: m.pcaX,
+          pcaY: m.pcaY,
         })),
       };
     });

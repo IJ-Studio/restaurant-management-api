@@ -1,6 +1,8 @@
 import { Injectable, BadRequestException, NotFoundException, Inject } from '@nestjs/common';
 import { DRIZZLE } from '../../src/database/drizzle/constants';
 import type { DrizzleDB } from '../../src/database/drizzle/drizzle.provider';
+import { eq, and, desc, inArray, sql } from 'drizzle-orm';
+import { CreateOrderMesaDto } from './dto/create-order-mesa.dto';
 import {
   ordenes,
   ordenItems,
@@ -9,8 +11,13 @@ import {
   mesas,
   direccionesCliente,
 } from '../../src/database/schema/public.schema';
-import { eq, and, desc, inArray, sql } from 'drizzle-orm';
-import { CreateOrderMesaDto } from './dto/create-order-mesa.dto';
+
+import { users } from '../../src/database/schema/public.schema';
+
+
+
+
+
 
 @Injectable()
 export class OrdersService {
@@ -560,4 +567,66 @@ export class OrdersService {
       message: 'Tu comanda ha sido cancelada con éxito.',
     };
   }
+    // NUEVO: Obtener órdenes recientes para administración
+// Dentro de la clase OrdersService
+async getRecentOrdersForAdmin(): Promise<any[]> {
+  try {
+    // Fechas límite del día de hoy
+    const hoy = new Date();
+    const inicioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).toISOString();
+    const finDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1).toISOString();
+
+    const rows = await this.db
+      .select({
+        id: ordenes.id,
+        customer: sql<string>`CONCAT(${users.name}, ' ', ${users.lastname})`.as('customer'),
+        time: ordenes.tiempoApertura,
+        item: platillos.nombre,
+        table: mesas.numero,
+        tipo: ordenes.tipo,
+        status: ordenes.estatus,
+        total: ordenes.total,
+      })
+      .from(ordenes)
+      .leftJoin(clientes, eq(ordenes.clienteId, clientes.id))
+      .leftJoin(users, eq(clientes.userId, users.id))
+      .leftJoin(mesas, eq(ordenes.mesaId, mesas.id))
+      .leftJoin(ordenItems, eq(ordenes.id, ordenItems.ordenId))
+      .leftJoin(platillos, eq(ordenItems.platilloId, platillos.id))
+      .where(
+        and(
+          sql`${ordenes.estatus} NOT IN ('cancelada', 'completada', 'entregada')`,
+          sql`${ordenes.tiempoApertura} >= ${inicioDia}`,
+          sql`${ordenes.tiempoApertura} < ${finDia}`,
+        ),
+      )
+      .orderBy(desc(ordenes.tiempoApertura))
+      .limit(50);
+
+    // Agrupar para no repetir órdenes por cada item
+    const orderMap = new Map<string, any>();
+    for (const row of rows) {
+      if (!orderMap.has(row.id)) {
+        orderMap.set(row.id, {
+          id: row.id,
+          customer: row.customer || 'Sin cliente',
+          time: row.time
+            ? new Date(row.time).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+            : '—',
+          item: row.item || '—',
+          table: row.table
+            ? `Mesa ${row.table}`
+            : row.tipo === 'domicilio' ? 'Domicilio' : 'N/A',
+          status: row.status,
+          total: Number(row.total ?? 0),
+        });
+      }
+    }
+
+    return Array.from(orderMap.values());
+  } catch (error: any) {
+    console.error('Error al obtener órdenes recientes:', error);
+    throw new BadRequestException('Error al cargar las órdenes para administración.');
+  }
+}
 }
