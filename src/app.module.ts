@@ -1,4 +1,3 @@
-import { AppController } from './app.controller';
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from '@nestjs/config';
@@ -50,7 +49,7 @@ import { PredictiveDemandModule } from './predictive-demand/predictive-demand.mo
     RecommendationsModule,
     PredictiveDemandModule,
   ],
-   controllers: [AppController],  // 👈 debe estar aquí
+   controllers: [],  // 👈 debe estar aquí
 
   providers: [
     // ─── PROVEE EL GUARD DE FORMA GLOBAL PARA TODAS LAS RUTAS ───
