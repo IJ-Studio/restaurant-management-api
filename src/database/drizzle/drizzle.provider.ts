@@ -16,6 +16,11 @@ export const DrizzleProvider = {
       idle_timeout: config.get<number>('DATABASE_POOL_IDLE_TIMEOUT') ?? 30000,
       connect_timeout:
         config.get<number>('DATABASE_CONNECTION_TIMEOUT') ?? 5000,
+      // El DATABASE_URL apunta al pooler de Supabase en modo "transaction"
+      // (puerto 6543), que no soporta prepared statements por conexión —
+      // sin esto, postgres-js puede leer columnas desalineadas/undefined
+      // de forma intermitente (ver error en getAllUsers/timestamp mapping).
+      prepare: false,
     });
     return drizzle(client, { schema });
   },
