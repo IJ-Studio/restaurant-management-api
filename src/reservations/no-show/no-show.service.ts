@@ -4,11 +4,29 @@ import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 
 import { DRIZZLE } from '../../database/drizzle/constants';
 import * as schema from '../../database/schema/public.schema';
-import { fitRandomForest, predictProba, mulberry32, RandomForestModel } from './random-forest.util';
+import { fitRandomForest, predictProba, computeRocAuc, mulberry32, RandomForestModel } from './random-forest.util';
 
 const MIN_MUESTRAS = 30;
 const UMBRAL_ALTO = 0.25;
 const UMBRAL_MEDIO = 0.1;
+
+// Umbral usado para calcular precision/recall/F1/matriz de confusión
+// reportados por getModelMetrics(). NO es 0.5 a propósito: con ~14% de
+// clase positiva y árboles regularizados (maxDepth=6, minSamplesLeaf=5),
+// la probabilidad promedio del bosque casi nunca cruza 0.5 para la clase
+// minoritaria, aunque el modelo sí discrimina razonablemente (ver ROC-AUC,
+// que es independiente del umbral). class_weight='balanced' ajusta el
+// criterio de split (Gini ponderado, ver fitRandomForest), no el punto de
+// corte de la predicción final — son dos cosas distintas.
+//
+// Se reutiliza UMBRAL_ALTO (ya definido para la clasificación de riesgo que
+// ve el usuario) en vez de introducir un número nuevo: así la métrica
+// reportada mide lo mismo que el sistema realmente hace al decidir "actuar"
+// sobre una reservación, y no un punto de corte arbitrario. Costo de error:
+// un falso negativo (no-show no detectado) cuesta una mesa perdida sin
+// aviso; un falso positivo cuesta como mucho una llamada de confirmación de
+// más — por eso se prioriza recall sobre precision en este dominio.
+const UMBRAL_METRICA_REPORTADA = UMBRAL_ALTO;
 
 // Categorías fijas (no inferidas de los datos): "alexa" existe como canal
 // real aunque no aparezca en las 450 filas sintéticas, así que debe quedar
@@ -83,6 +101,8 @@ interface ModelCache {
   precision: number;
   recall: number;
   f1: number;
+  rocAuc: number | null;
+  umbralMetricaReportada: number;
   datasetInfo: {
     totalMuestras: number;
     reales: number;
@@ -199,20 +219,25 @@ export class NoShowService {
       { seed: 77 },
     );
 
+    const testProbas = testIdx.map((i) => predictProba(model, X[i]));
+    const testLabels = testIdx.map((i) => y[i]);
+
     let tp = 0;
     let fp = 0;
     let fn = 0;
     let tn = 0;
-    for (const i of testIdx) {
-      const pred = predictProba(model, X[i]) >= 0.5 ? 1 : 0;
-      if (pred === 1 && y[i] === 1) tp++;
-      else if (pred === 1 && y[i] === 0) fp++;
-      else if (pred === 0 && y[i] === 1) fn++;
+    testProbas.forEach((proba, k) => {
+      const pred = proba >= UMBRAL_METRICA_REPORTADA ? 1 : 0;
+      const actual = testLabels[k];
+      if (pred === 1 && actual === 1) tp++;
+      else if (pred === 1 && actual === 0) fp++;
+      else if (pred === 0 && actual === 1) fn++;
       else tn++;
-    }
+    });
     const precision = tp + fp > 0 ? tp / (tp + fp) : 0;
     const recall = tp + fn > 0 ? tp / (tp + fn) : 0;
     const f1 = precision + recall > 0 ? (2 * precision * recall) / (precision + recall) : 0;
+    const rocAuc = computeRocAuc(testProbas, testLabels);
 
     const reales = parsed.filter((r) => !r.es_sintetica).length;
     const sinteticas = parsed.length - reales;
@@ -223,6 +248,8 @@ export class NoShowService {
       precision: Math.round(precision * 1000) / 1000,
       recall: Math.round(recall * 1000) / 1000,
       f1: Math.round(f1 * 1000) / 1000,
+      rocAuc: rocAuc === null ? null : Math.round(rocAuc * 1000) / 1000,
+      umbralMetricaReportada: UMBRAL_METRICA_REPORTADA,
       datasetInfo: {
         totalMuestras: parsed.length,
         reales,
@@ -259,12 +286,17 @@ export class NoShowService {
   }
 
   async getModelMetrics() {
-    const { matrizConfusion, precision, recall, f1, datasetInfo, model } = await this.ensureModel();
+    const { matrizConfusion, precision, recall, f1, rocAuc, umbralMetricaReportada, datasetInfo, model } =
+      await this.ensureModel();
 
     const importanciaVariables = FEATURE_NAMES.map((variable, i) => ({
       variable,
       importancia: Math.round(model.featureImportances[i] * 1000) / 1000,
     })).sort((a, b) => b.importancia - a.importancia);
+
+    const { falsosPositivos: fp, verdaderosNegativos: tn } = matrizConfusion;
+    const tasaFalsosPositivos =
+      fp + tn > 0 ? Math.round((fp / (fp + tn)) * 1000) / 10 : 0;
 
     return {
       datasetInfo,
@@ -272,8 +304,12 @@ export class NoShowService {
       precision,
       recall,
       f1,
+      rocAuc,
+      umbralMetricaReportada,
       importanciaVariables,
       limitaciones: [
+        `Precision/recall/F1/matriz de confusión se calculan con umbral de decisión ${umbralMetricaReportada} (el mismo que clasifica una reservación como riesgo "Alto"), no 0.5: con ~${datasetInfo.tasaClasePositiva}% de clase positiva, un falso negativo (no-show no detectado) cuesta una mesa perdida sin aviso, mientras que un falso positivo cuesta, cuando mucho, una llamada de confirmación de más — por eso se prioriza recall. ROC-AUC (independiente del umbral) mide la capacidad de discriminación del modelo aparte de esta decisión.`,
+        `Ese mismo umbral marca ${tasaFalsosPositivos}% de las reservaciones que sí iban a llegar (${fp} de ${fp + tn} en el set de prueba) como riesgo alto — es el costo operativo de priorizar recall: no es un resultado ideal sin costos, es una decisión consciente de negocio. Con solo ${datasetInfo.nPrueba} filas de prueba (${datasetInfo.tasaClasePositiva}% positivas), esta cifra tiene poca robustez estadística y puede variar bastante según el split.`,
         `${datasetInfo.porcentajeSintetico}% del dataset usado para entrenar es sintético (${datasetInfo.sinteticas} de ${datasetInfo.totalMuestras} filas) — el modelo aún no tiene validez predictiva real, es una prueba de concepto del pipeline completo.`,
         'ordenes.reservacion_id no está vinculado en los datos reales hoy, así que no se puede confirmar desde el lado de pedidos si una reservación se concretó en una compra.',
         'Reentrenar excluyendo las filas sintéticas cuando se acumulen al menos 200-300 reservaciones reales resueltas.',

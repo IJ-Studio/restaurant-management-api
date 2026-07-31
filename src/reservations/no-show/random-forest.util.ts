@@ -240,3 +240,39 @@ export function predictProba(model: RandomForestModel, x: number[]): number {
   const sum = model.trees.reduce((s, tree) => s + predictTree(tree, x), 0);
   return model.trees.length > 0 ? sum / model.trees.length : 0;
 }
+
+// AUC-ROC vía el método de rangos (equivalente a la U de Mann-Whitney):
+// probabilidad de que un positivo elegido al azar reciba mayor score que un
+// negativo elegido al azar. Independiente del umbral de decisión, a
+// diferencia de precision/recall/F1 — por eso complementa esas métricas
+// cuando la clase positiva es rara y el umbral importa tanto.
+export function computeRocAuc(scores: number[], labels: (0 | 1)[]): number | null {
+  const n = scores.length;
+  if (n === 0) return null;
+
+  const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => scores[a] - scores[b]);
+  const ranks = new Array<number>(n);
+  let i = 0;
+  while (i < n) {
+    let j = i;
+    while (j + 1 < n && scores[order[j + 1]] === scores[order[i]]) j++;
+    const avgRank = (i + j) / 2 + 1; // rango promedio (1-based) para empates
+    for (let k = i; k <= j; k++) ranks[order[k]] = avgRank;
+    i = j + 1;
+  }
+
+  let sumRanksPos = 0;
+  let nPos = 0;
+  let nNeg = 0;
+  for (let k = 0; k < n; k++) {
+    if (labels[k] === 1) {
+      sumRanksPos += ranks[k];
+      nPos++;
+    } else {
+      nNeg++;
+    }
+  }
+
+  if (nPos === 0 || nNeg === 0) return null; // no definido con una sola clase presente
+  return (sumRanksPos - (nPos * (nPos + 1)) / 2) / (nPos * nNeg);
+}
