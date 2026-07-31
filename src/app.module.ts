@@ -17,8 +17,6 @@ import { MetricsModule } from './database/features/metrics/metrics.module';
 import { MenuModule } from './menu/menu.module';
 import { OrdersModule } from './orders/orders.module';
 import { MesasModule } from './mesas/mesas.module';
-import { RecommendationsModule } from './recommendations/recommendations.module';
-import { PredictiveDemandModule } from './predictive-demand/predictive-demand.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { DashboardModule } from './roles/dashboard.module';
 
@@ -50,8 +48,6 @@ import { DashboardModule } from './roles/dashboard.module';
     DashboardModule,
     OrdersModule,
     MesasModule,
-    RecommendationsModule,
-    PredictiveDemandModule,
     PayrollModule,
   ],
    controllers: [],  // 👈 debe estar aquí
