@@ -827,6 +827,7 @@ export const ordenes = pgTable("ordenes", {
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	direccionEnvioId: integer("direccion_envio_id"), // 👈 NUEVO
+	cancelacionSintetica: boolean("cancelacion_sintetica"),
 
 }, (table) => [
 	index("idx_ordenes_atendido_por").using("btree", table.atendidoPor.asc().nullsLast().op("int4_ops")),
@@ -991,6 +992,7 @@ export const reservaciones = pgTable("reservaciones", {
 	notas: text(),
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+	esSintetica: boolean("es_sintetica"),
 }, (table) => [
 	index("idx_reservaciones_fecha").using("btree", table.fechaHora.asc().nullsLast().op("timestamptz_ops")),
 	foreignKey({

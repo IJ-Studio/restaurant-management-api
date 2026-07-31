@@ -1,0 +1,181 @@
+# Evidencia de reproducibilidad — 2026-07-31
+#
+# Prueba: aplicar 0000_loud_rattler.sql + 0001_clean_ironclad.sql, en orden,
+# contra un Postgres 16 vacío (contenedor Docker local, sin datos ni
+# esquema previo), para confirmar que el esquema versionado reconstruye la
+# base de datos completa desde cero (sección 3.3 del documento de
+# requisitos). Generado con scripts/test-migrations-empty-db.sh.
+#
+# Resultado: 56 tablas + 5 vistas creadas sin errores — coincide EXACTO con
+# el conteo de tablas/vistas en la base de datos real de producción
+# (Supabase, proyecto restaurant_management), verificado por separado.
+#
+# Nota importante: la primera corrida de esta prueba (no incluida abajo)
+# reveló que 0000_loud_rattler.sql, tal como estaba en el repositorio, era
+# la salida cruda de `drizzle-kit introspect` — todo su contenido SQL
+# estaba envuelto en un comentario de bloque /* ... */, así que "aplicaba"
+# sin crear ninguna tabla. Eso rompía 0001_clean_ironclad.sql en su primer
+# ALTER TABLE. Se corrigió quitando el envoltorio de comentario (ver el
+# encabezado de 0000_loud_rattler.sql). El log de abajo ya es de la corrida
+# después de esa corrección.
+
+--- Removing any leftover container ---
+--- Starting empty Postgres 16 container ---
+--- Waiting for Postgres to accept connections ---
+Postgres is ready.
+--- Enabling required extensions (uuid-ossp for uuid_generate_v4) ---
+CREATE EXTENSION
+--- Applying 0000_loud_rattler.sql ---
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE VIEW
+CREATE VIEW
+CREATE VIEW
+CREATE VIEW
+CREATE VIEW
+0000_loud_rattler.sql applied OK.
+--- Applying 0001_clean_ironclad.sql ---
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+0001_clean_ironclad.sql applied OK.
+--- Tablas y vistas creadas ---
+ VIEW       |     5
+ BASE TABLE |    56
+
+--- Limpiando contenedor de prueba ---
+--- OK: migraciones reproducen el esquema completo desde una base vacía ---

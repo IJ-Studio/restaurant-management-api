@@ -1,6 +1,9 @@
--- Current sql file was generated after introspecting the database
--- If you want to run this migration please uncomment this code before executing migrations
-/*
+-- Generada originalmente por `drizzle-kit introspect` (envuelta en /* */
+-- por default, sin ejecutar nada). Verificado el 2026-07-31 corriendo esta
+-- migración contra un Postgres 16 vacío: el envoltorio de comentario hacía
+-- que "aplicara" sin crear ni una sola tabla, y por lo tanto rompía
+-- silenciosamente 0001_clean_ironclad.sql (que asume que estas tablas ya
+-- existen). Se descomentó para que sea una migración real y ejecutable.
 CREATE TABLE "categorias_menu" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"nombre" varchar(100) NOT NULL,
@@ -818,4 +821,3 @@ CREATE VIEW "public"."v_stock_ingredientes" AS (SELECT i.id, i.nombre, i.stock_a
 CREATE VIEW "public"."v_ventas_platillo" AS (SELECT p.id, p.nombre, p.precio, count(oi.id) AS veces_ordenado, sum(oi.cantidad) AS unidades_vendidas, sum(oi.subtotal) AS ingresos_totales FROM platillos p JOIN orden_items oi ON oi.platillo_id = p.id JOIN ordenes o ON o.id = oi.orden_id AND o.estatus::text = 'pagada'::text GROUP BY p.id, p.nombre, p.precio);--> statement-breakpoint
 CREATE VIEW "public"."v_ventas_por_dia" AS (SELECT date(creado_en) AS fecha, count(DISTINCT id) AS total_ordenes, sum(total) AS total_ventas, avg(total) AS ticket_promedio, sum(propina) AS total_propinas FROM ordenes o WHERE estatus::text = 'pagada'::text GROUP BY (date(creado_en)) ORDER BY (date(creado_en)) DESC);--> statement-breakpoint
 CREATE VIEW "public"."v_usuarios_perfil" AS (SELECT u.id, u.name, u.lastname, u.email, u.phone, u.is_active, r.name AS rol, r.permissions, e.id AS empleado_id, e.numero_empleado, p.nombre AS puesto, d.nombre AS departamento FROM users u JOIN roles r ON r.id = u.role_id LEFT JOIN empleados e ON e.user_id = u.id LEFT JOIN puestos p ON p.id = e.puesto_id LEFT JOIN departamentos d ON d.id = p.departamento_id);
-*/
