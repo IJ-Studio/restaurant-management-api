@@ -3,6 +3,8 @@
 // ML: el volumen de datos de este proyecto (cientos de clientes) no lo
 // amerita y así queda claro cómo se calcula cada número que se muestra.
 
+import { mulberry32 } from '../../reservations/no-show/random-forest.util';
+
 export interface ClientFeatures {
   clienteId: string;
   frecuencia: number;
@@ -44,16 +46,20 @@ function euclidean(a: number[], b: number[]): number {
   return Math.sqrt(a.reduce((s, v, i) => s + (v - b[i]) ** 2, 0));
 }
 
-function kmeansPlusPlusInit(points: Point[], k: number): number[][] {
+function kmeansPlusPlusInit(
+  points: Point[],
+  k: number,
+  rng: () => number,
+): number[][] {
   const centroids: number[][] = [];
-  centroids.push([...points[Math.floor(Math.random() * points.length)].z]);
+  centroids.push([...points[Math.floor(rng() * points.length)].z]);
 
   while (centroids.length < k) {
     const distances = points.map((p) =>
       Math.min(...centroids.map((c) => euclidean(p.z, c) ** 2)),
     );
     const sum = distances.reduce((s, d) => s + d, 0);
-    let r = Math.random() * sum;
+    let r = rng() * sum;
     let idx = 0;
     for (; idx < distances.length - 1; idx++) {
       r -= distances[idx];
@@ -68,9 +74,10 @@ function kmeansPlusPlusInit(points: Point[], k: number): number[][] {
 function runKmeansOnce(
   points: Point[],
   k: number,
+  rng: () => number,
   maxIter = 100,
 ): { assignments: number[]; centroids: number[][]; inertia: number } {
-  let centroids = kmeansPlusPlusInit(points, k);
+  let centroids = kmeansPlusPlusInit(points, k, rng);
   let assignments = new Array(points.length).fill(-1);
 
   for (let iter = 0; iter < maxIter; iter++) {
@@ -112,12 +119,26 @@ function runKmeansOnce(
   return { assignments, centroids, inertia };
 }
 
-export function kmeans(rows: ClientFeatures[], k: number, restarts = 8) {
+// seed fija (77, igual que el Random Forest de no-show y el notebook) para
+// que el resultado sea reproducible y no cambie entre llamadas al mismo
+// endpoint con los mismos datos: antes usaba Math.random() sin semilla,
+// así que dos clientes pidiendo la segmentación en momentos distintos
+// podían ver clústeres distintos aunque la base de datos no hubiera
+// cambiado. Los `restarts` siguen siendo aleatorios entre sí (mismo rng,
+// sin reiniciarlo en cada uno) para no perder la ventaja de probar varias
+// inicializaciones y quedarse con la de menor inercia.
+export function kmeans(
+  rows: ClientFeatures[],
+  k: number,
+  restarts = 8,
+  seed = 77,
+) {
   const points = standardize(rows);
+  const rng = mulberry32(seed);
 
   let best: ReturnType<typeof runKmeansOnce> | null = null;
   for (let r = 0; r < restarts; r++) {
-    const result = runKmeansOnce(points, k);
+    const result = runKmeansOnce(points, k, rng);
     if (!best || result.inertia < best.inertia) best = result;
   }
 
