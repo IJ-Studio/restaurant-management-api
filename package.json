@@ -18,7 +18,8 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "seed:synthetic-reservations": "ts-node -r tsconfig-paths/register scripts/generate-synthetic-reservations.ts"
+    "seed:synthetic-reservations": "ts-node -r tsconfig-paths/register scripts/generate-synthetic-reservations.ts",
+    "backup:anonimizado": "ts-node -r tsconfig-paths/register scripts/export-anonymized-backup.ts"
   },
   "dependencies": {
     "@aikidosec/firewall": "^1.8.22",
