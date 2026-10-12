@@ -1,0 +1,75 @@
+# CI del API: build, lint del código nuevo, pruebas y escaneos de seguridad en cada PR.
+name: CI API
+
+on:
+  push:
+    branches: [main, develop, 'release/**']
+  pull_request:
+    branches: [main, develop, 'release/**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-api-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-test:
+    name: lint-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      # El repo trae deuda de lint previa: el gate aplica a los archivos .ts que cambia cada PR.
+      - name: ESLint del código nuevo
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          FILES=$(git diff --name-only --diff-filter=ACMR "origin/${{ github.base_ref }}...HEAD" -- '*.ts' | grep -E '^(src|test)/' || true)
+          if [ -z "$FILES" ]; then echo "Sin archivos .ts nuevos o modificados."; exit 0; fi
+          echo "$FILES"
+          pnpm exec eslint $FILES
+      - name: Pruebas (Jest)
+        run: pnpm exec jest --ci --passWithNoTests
+
+  # SCA + detección de secretos. Debe ser check obligatorio en main y develop.
+  security:
+    name: security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Audit de dependencias de producción (High/Critical bloquea)
+        run: pnpm audit --prod --audit-level high
+      - name: Gitleaks
+        env:
+          GITLEAKS_VERSION: 8.28.0
+          GITLEAKS_SHA256: a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb
+        run: |
+          set -euo pipefail
+          FILE="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfLO "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${FILE}"
+          echo "${GITLEAKS_SHA256}  ${FILE}" | sha256sum -c -
+          tar -xzf "$FILE" gitleaks
+          ./gitleaks git --redact --verbose --no-banner .
