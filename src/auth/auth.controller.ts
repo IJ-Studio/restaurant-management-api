@@ -28,7 +28,9 @@ export class AuthController {
     return { user };
   }
 
+  // Frena el sondeo de correos registrados: 10 registros por minuto por IP (además del global).
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('sign-up')
   async signUp(
     @Body(createStrictValidationPipe()) signUpDto: SignUpDto,

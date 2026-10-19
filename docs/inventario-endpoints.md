@@ -48,6 +48,12 @@ pero nunca más permisivo.
 No se aceptan `roleId`, `verified` ni `loginAttempts`: el servicio siempre crea clientes con
 `verified = false`.
 
+**Correo ya registrado:** responde `400` con un mensaje genérico (`No se pudo crear la cuenta con esos
+datos. Si ya tienes una cuenta, inicia sesión o recupera tu contraseña.`) que no confirma que el correo
+tenga cuenta. Solo la violación UNIQUE de Postgres (`23505`) produce ese mensaje; cualquier otro fallo
+de base de datos responde `500`. El endpoint limita a 10 registros por minuto por IP. Esto reduce, pero
+no elimina, la enumeración de correos: cerrarla del todo requiere verificación por correo.
+
 ## Menú — HU-03
 
 | Método | Ruta | Acceso | Notas |
