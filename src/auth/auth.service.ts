@@ -1,4 +1,9 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import { InferSelectModel, eq } from 'drizzle-orm';
 
@@ -21,7 +26,55 @@ import { SignInDto } from './dto/sign-in.dto';
 
 type User = InferSelectModel<typeof users>;
 
-const ROLE_ADMIN = 1;
+/**
+ * Lo único que sale en la respuesta del login: lista de campos permitidos, así una columna
+ * sensible nueva en `users` no se filtra por accidente (nunca contraseña ni contadores).
+ */
+export type PublicUser = Pick<
+  User,
+  | 'id'
+  | 'name'
+  | 'lastname'
+  | 'email'
+  | 'phone'
+  | 'verified'
+  | 'roleId'
+  | 'isActive'
+  | 'createdAt'
+>;
+
+export function toPublicUser(user: User): PublicUser {
+  const {
+    id,
+    name,
+    lastname,
+    email,
+    phone,
+    verified,
+    roleId,
+    isActive,
+    createdAt,
+  } = user;
+  return {
+    id,
+    name,
+    lastname,
+    email,
+    phone,
+    verified,
+    roleId,
+    isActive,
+    createdAt,
+  };
+}
+
+// Mismo mensaje para correo inexistente, contraseña incorrecta o cuenta inactiva (no revela qué falló).
+export const INVALID_CREDENTIALS = 'Correo o contraseña incorrectos.';
+
+// Hash bcrypt de un valor aleatorio: se compara aunque el correo no exista para igualar el tiempo de respuesta.
+const DUMMY_HASH =
+  '$2b$10$oJHiB2hZhfyfSowA4DEJM.jlrgAvIfNM2az2feX0sx2llt63s0Qt2';
+
 const ROLE_USER = 3;
 
 @Injectable()
@@ -60,7 +113,7 @@ export class AuthService {
         .returning();
 
       return user[0];
-    } catch (error) {
+    } catch {
       throw new BadRequestException(
         'Error al crear el usuario. El email ya existe.',
       );
@@ -69,29 +122,26 @@ export class AuthService {
 
   async SignIn(
     signInDto: SignInDto,
-  ): Promise<{ accessToken: string; user: User }> {
+  ): Promise<{ accessToken: string; user: PublicUser }> {
     const { email, password } = signInDto;
 
-    const user = await this.db
+    const [userData] = await this.db
       .select()
       .from(users)
       .where(eq(users.email, email));
 
-    if (!user || user.length === 0)
-      throw new BadRequestException('Correo inválido');
-
-    const userData = user[0];
-
     const isPasswordMatch = await this.bcryptService.compare(
       password,
-      userData.password,
+      userData?.password ?? DUMMY_HASH,
     );
 
-    if (!isPasswordMatch) throw new BadRequestException('Contraseña inválida');
+    if (!userData || !isPasswordMatch || !userData.isActive) {
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
+    }
 
     const tokenData = await this.generateAccessToken(userData);
 
-    return { accessToken: tokenData.accessToken, user: userData };
+    return { accessToken: tokenData.accessToken, user: toPublicUser(userData) };
   }
 
   async signOut(userId: number): Promise<void> {
