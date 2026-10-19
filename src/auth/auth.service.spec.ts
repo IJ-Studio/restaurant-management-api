@@ -28,6 +28,15 @@ function setup(rows: unknown[], passwordMatches: boolean) {
     select: () => ({
       from: () => ({ where: jest.fn().mockResolvedValue(rows) }),
     }),
+    // El login ahora escribe loginAttempts/loginLockUntil (el detalle se prueba en auth-lockout.spec.ts).
+    update: () => ({
+      set: () => ({
+        where: () =>
+          Object.assign(Promise.resolve(), {
+            returning: () => Promise.resolve([{ loginAttempts: 1 }]),
+          }),
+      }),
+    }),
   };
   const compare = jest.fn().mockResolvedValue(passwordMatches);
   const bcrypt = { compare } as unknown as BcryptService;
