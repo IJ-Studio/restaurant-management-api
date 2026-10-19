@@ -1,7 +1,15 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Get } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  Get,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
-import { AuthService } from './auth.service';
+import { AuthService, type PublicUser } from './auth.service';
 import { SignInDto } from './dto/sign-in.dto';
 import { SignUpDto } from './dto/sign-up.dto';
 import { Public } from './decorators/public.decorator';
@@ -19,7 +27,7 @@ export class AuthController {
 
   // 👇 AGREGA ESTE ENDPOINT PARA RESPONDERLE AL AUTHPROVIDER
   @Get('me')
-  async getMe(@ActiveUser() user: ActiveUserData) {
+  getMe(@ActiveUser() user: ActiveUserData) {
     return { user };
   }
 
@@ -28,10 +36,14 @@ export class AuthController {
   async signUp(@Body() signUpDto: SignUpDto): Promise<User> {
     return await this.authService.SignUp(signUpDto);
   }
+  // Fuerza bruta: 5 intentos por minuto por IP (además del límite global de 40/min).
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('sign-in')
   @HttpCode(HttpStatus.OK)
-  async signIn(@Body() signInDto: SignInDto): Promise<{ accessToken: string; user: User }> {
+  async signIn(
+    @Body() signInDto: SignInDto,
+  ): Promise<{ accessToken: string; user: PublicUser }> {
     return await this.authService.SignIn(signInDto);
   }
 
