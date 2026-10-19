@@ -15,8 +15,8 @@ importers:
   .:
     dependencies:
       '@aikidosec/firewall':
-        specifier: ^1.8.22
-        version: 1.8.22
+        specifier: ^1.8.45
+        version: 1.8.45
       '@nestjs/common':
         specifier: ^11.2.7
         version: 11.2.7(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1)
@@ -171,8 +171,8 @@ importers:
 
 packages:
 
-  '@aikidosec/firewall@1.8.22':
-    resolution: {integrity: sha512-g1MUYCAqKVFkUlR9LXrQoMFinfceAtxwXsiR4cHgW40Ey/1YN+LvWNKqppK9AiGMmkledtoe74aVRhm+2D/LCw==}
+  '@aikidosec/firewall@1.8.45':
+    resolution: {integrity: sha512-tzpskbLTPOaws0jKl1eflRiZXBE6qmgGWja8EUcf86O4HO+Hb1Qm22MlukE24GcwPQhsXXbGdDDsU5ZLV0l1wg==}
     engines: {node: '>=16'}
 
   '@angular-devkit/core@19.2.17':
@@ -4477,7 +4477,7 @@ packages:
 
 snapshots:
 
-  '@aikidosec/firewall@1.8.22': {}
+  '@aikidosec/firewall@1.8.45': {}
 
   '@angular-devkit/core@19.2.17(chokidar@4.0.3)':
     dependencies:
