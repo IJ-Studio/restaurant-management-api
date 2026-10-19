@@ -87,6 +87,29 @@ export const LOGIN_LOCK_MS = 15 * 60 * 1000;
 export const accountLockedMessage = (seconds: number): string =>
   `Demasiados intentos. Debes esperar ${seconds} segundos.`;
 
+// Registro rechazado por correo repetido: no dice cuál dato falló, para no confirmar qué correos
+// tienen cuenta (enumeración de usuarios), y orienta a quien sí ya se registró.
+export const SIGN_UP_FAILED_MESSAGE =
+  'No se pudo crear la cuenta con esos datos. Si ya tienes una cuenta, inicia sesión o recupera tu contraseña.';
+
+const PG_UNIQUE_VIOLATION = '23505';
+
+/** Drizzle envuelve el error del driver: el código de Postgres puede estar en `cause`. */
+const isUniqueViolation = (error: unknown): boolean => {
+  const codeOf = (e: unknown): unknown =>
+    typeof e === 'object' && e !== null && 'code' in e
+      ? (e as { code?: unknown }).code
+      : undefined;
+  const cause =
+    typeof error === 'object' && error !== null && 'cause' in error
+      ? (error as { cause?: unknown }).cause
+      : undefined;
+  return (
+    codeOf(error) === PG_UNIQUE_VIOLATION ||
+    codeOf(cause) === PG_UNIQUE_VIOLATION
+  );
+};
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -124,10 +147,14 @@ export class AuthService {
 
       // Nunca se devuelve la fila completa: traía el hash de la contraseña.
       return toPublicUser(user[0]);
-    } catch {
-      throw new BadRequestException(
-        'Error al crear el usuario. El email ya existe.',
-      );
+    } catch (error) {
+      // Correo ya registrado (violación de la restricción UNIQUE de `users.email`): mensaje
+      // genérico que no confirma que ese correo tenga cuenta. Cualquier OTRO fallo ya no se
+      // disfraza de "el email ya existe": se deja subir y Nest responde 500.
+      if (isUniqueViolation(error)) {
+        throw new BadRequestException(SIGN_UP_FAILED_MESSAGE);
+      }
+      throw error;
     }
   }
 
