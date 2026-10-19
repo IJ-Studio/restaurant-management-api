@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { createStrictValidationPipe } from '../common/config/validation.config';
 
 import { AuthService, type PublicUser } from './auth.service';
 import { SignInDto } from './dto/sign-in.dto';
@@ -42,7 +43,7 @@ export class AuthController {
   @Post('sign-in')
   @HttpCode(HttpStatus.OK)
   async signIn(
-    @Body() signInDto: SignInDto,
+    @Body(createStrictValidationPipe()) signInDto: SignInDto,
   ): Promise<{ accessToken: string; user: PublicUser }> {
     return await this.authService.SignIn(signInDto);
   }
