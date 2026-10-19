@@ -100,7 +100,7 @@ export class AuthService {
     private readonly cacheService: CacheService,
   ) {}
 
-  async SignUp(signUpDto: SignUpDto): Promise<User> {
+  async SignUp(signUpDto: SignUpDto): Promise<PublicUser> {
     const { name, lastname, phone, email, password } = signUpDto;
 
     if (password !== signUpDto.passwordConfirm) {
@@ -122,7 +122,8 @@ export class AuthService {
         })
         .returning();
 
-      return user[0];
+      // Nunca se devuelve la fila completa: traía el hash de la contraseña.
+      return toPublicUser(user[0]);
     } catch {
       throw new BadRequestException(
         'Error al crear el usuario. El email ya existe.',

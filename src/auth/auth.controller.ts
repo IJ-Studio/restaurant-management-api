@@ -15,11 +15,7 @@ import { SignInDto } from './dto/sign-in.dto';
 import { SignUpDto } from './dto/sign-up.dto';
 import { Public } from './decorators/public.decorator';
 import { ActiveUser } from './decorators/active-user.decorator';
-import { InferSelectModel } from 'drizzle-orm';
-import { users } from './../database/schema/public.schema';
 import type { ActiveUserData } from '../common/interfaces/active-user-data.interface';
-
-type User = InferSelectModel<typeof users>;
 
 @ApiTags('auth')
 @Controller('auth')
@@ -34,7 +30,9 @@ export class AuthController {
 
   @Public()
   @Post('sign-up')
-  async signUp(@Body() signUpDto: SignUpDto): Promise<User> {
+  async signUp(
+    @Body(createStrictValidationPipe()) signUpDto: SignUpDto,
+  ): Promise<PublicUser> {
     return await this.authService.SignUp(signUpDto);
   }
   // Fuerza bruta: 5 intentos por minuto por IP (además del límite global de 40/min).
