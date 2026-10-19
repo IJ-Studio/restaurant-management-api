@@ -1,11 +1,13 @@
 import {
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Inject,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
-import { InferSelectModel, eq } from 'drizzle-orm';
+import { InferSelectModel, eq, sql } from 'drizzle-orm';
 
 import { DRIZZLE } from '../database/drizzle/constants';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
@@ -77,6 +79,14 @@ const DUMMY_HASH =
 
 const ROLE_USER = 3;
 
+// Bloqueo por cuenta: tras 5 contraseñas incorrectas seguidas, 15 minutos sin poder entrar.
+export const MAX_LOGIN_ATTEMPTS = 5;
+export const LOGIN_LOCK_MS = 15 * 60 * 1000;
+// El web (hooks/useLockout) detecta "Demasiados intentos" y toma el primer número como segundos
+// de espera, así que ese número debe ser el primero del mensaje.
+export const accountLockedMessage = (seconds: number): string =>
+  `Demasiados intentos. Debes esperar ${seconds} segundos.`;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -90,7 +100,7 @@ export class AuthService {
     private readonly cacheService: CacheService,
   ) {}
 
-  async SignUp(signUpDto: SignUpDto): Promise<User> {
+  async SignUp(signUpDto: SignUpDto): Promise<PublicUser> {
     const { name, lastname, phone, email, password } = signUpDto;
 
     if (password !== signUpDto.passwordConfirm) {
@@ -112,7 +122,8 @@ export class AuthService {
         })
         .returning();
 
-      return user[0];
+      // Nunca se devuelve la fila completa: traía el hash de la contraseña.
+      return toPublicUser(user[0]);
     } catch {
       throw new BadRequestException(
         'Error al crear el usuario. El email ya existe.',
@@ -130,18 +141,67 @@ export class AuthService {
       .from(users)
       .where(eq(users.email, email));
 
+    // Cuenta bloqueada: se corta antes de comparar la contraseña (no se puede seguir adivinando).
+    // Solo existe para correos registrados; un correo inexistente cae en el 401 genérico de abajo.
+    const lockRemainingMs = (userData?.loginLockUntil ?? 0) - Date.now();
+    if (userData && lockRemainingMs > 0) {
+      const retryAfterSeconds = Math.ceil(lockRemainingMs / 1000);
+      const message = accountLockedMessage(retryAfterSeconds);
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          message,
+          // El proxy de login del web lee `error` (no `message`) para mostrar el texto.
+          error: message,
+          retryAfterSeconds,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     const isPasswordMatch = await this.bcryptService.compare(
       password,
       userData?.password ?? DUMMY_HASH,
     );
 
     if (!userData || !isPasswordMatch || !userData.isActive) {
+      // Solo la contraseña incorrecta de una cuenta real suma intentos (no una cuenta inactiva).
+      if (userData && !isPasswordMatch) {
+        await this.registerFailedLogin(userData.id);
+      }
       throw new UnauthorizedException(INVALID_CREDENTIALS);
+    }
+
+    if (userData.loginAttempts > 0 || userData.loginLockUntil !== 0) {
+      await this.resetLoginAttempts(userData.id);
     }
 
     const tokenData = await this.generateAccessToken(userData);
 
     return { accessToken: tokenData.accessToken, user: toPublicUser(userData) };
+  }
+
+  /** Suma un intento fallido (incremento atómico en SQL) y bloquea la cuenta al llegar al máximo. */
+  private async registerFailedLogin(userId: number): Promise<void> {
+    const [updated] = await this.db
+      .update(users)
+      .set({ loginAttempts: sql`${users.loginAttempts} + 1` })
+      .where(eq(users.id, userId))
+      .returning({ loginAttempts: users.loginAttempts });
+
+    if (updated && updated.loginAttempts >= MAX_LOGIN_ATTEMPTS) {
+      await this.db
+        .update(users)
+        .set({ loginAttempts: 0, loginLockUntil: Date.now() + LOGIN_LOCK_MS })
+        .where(eq(users.id, userId));
+    }
+  }
+
+  private async resetLoginAttempts(userId: number): Promise<void> {
+    await this.db
+      .update(users)
+      .set({ loginAttempts: 0, loginLockUntil: 0 })
+      .where(eq(users.id, userId));
   }
 
   async signOut(userId: number): Promise<void> {
