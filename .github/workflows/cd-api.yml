@@ -1,0 +1,64 @@
+# .github/workflows/cd-api.yml
+# Deploy a staging al fusionar a develop. A main solo llegan release/* y hotfix/*.
+# Preparado: no despliega hasta que exista el secreto STAGING_DEPLOY_HOOK.
+name: CD API (staging)
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-api-staging
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22      # confirma la versión que usa el hosting
+          cache: npm
+      - run: npm ci             # el repo tiene package-lock.json y pnpm-lock.yaml: decidan cuál es el oficial
+      - run: npm run build
+
+  deploy-staging:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    steps:
+      - name: Disparar el despliegue a staging
+        env:
+          STAGING_DEPLOY_HOOK: ${{ secrets.STAGING_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$STAGING_DEPLOY_HOOK" ]; then
+            echo "::notice::STAGING_DEPLOY_HOOK no está configurado: el destino de despliegue sigue por confirmar. No se despliega nada."
+            exit 0
+          fi
+          curl -fsS -X POST "$STAGING_DEPLOY_HOOK" > /dev/null
+          echo "Despliegue a staging solicitado."
+
+      - name: Smoke test
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+          SMOKE_PATH: ${{ vars.STAGING_SMOKE_PATH || '/menu' }}
+        run: |
+          if [ -z "$STAGING_URL" ]; then
+            echo "::notice::STAGING_URL no está configurado: se omite el smoke test."
+            exit 0
+          fi
+          for i in $(seq 1 20); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' "$STAGING_URL$SMOKE_PATH" || true)
+            echo "intento $i/20: HTTP $CODE"
+            if [ "$CODE" = "200" ]; then exit 0; fi
+            sleep 30
+          done
+          echo "::error::El smoke test no obtuvo HTTP 200 en $SMOKE_PATH."
+          exit 1
