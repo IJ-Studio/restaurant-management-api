@@ -17,7 +17,7 @@ concurrency:
 jobs:
   lint-test:
     name: lint-test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -47,7 +47,7 @@ jobs:
   # SCA + detección de secretos. Debe ser check obligatorio en main y develop.
   security:
     name: security
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
