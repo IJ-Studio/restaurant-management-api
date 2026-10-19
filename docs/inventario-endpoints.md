@@ -15,15 +15,38 @@ Se levantó leyendo el código de este repositorio (rama `develop`, commit `befa
 
 | Método | Ruta | Acceso | Body / respuesta |
 |---|---|---|---|
-| POST | `/auth/sign-in` | Público | `{ email, password }` (password ≥ 8) → `200 { accessToken, user }` |
+| POST | `/auth/sign-in` | Público | `{ email, password }` (password ≥ 8) → `200 { accessToken, user }`. `401` genérico si las credenciales fallan; `429` si la cuenta está bloqueada |
 | GET | `/auth/me` | JWT | `{ user: { id, email, roleId, tokenId } }` (payload del JWT) |
 | POST | `/auth/sign-out` | JWT | `200 { message }`: revoca el token en la caché |
-| POST | `/auth/sign-up` | Público | Registro de clientes (rol 5). **La app móvil no lo usa** |
+| POST | `/auth/sign-up` | Público | Registro de clientes (rol 5). **La app móvil no lo usa**. Reglas abajo → `201 { user }` sin contraseña |
 
 - El JWT trae `{ id: string, email, roleId, tokenId }`. Expira en `JWT_ACCESS_TOKEN_TTL` (3600 s
   por defecto) y no hay refresh token: con un 401 se cierra la sesión.
-- `user` en la respuesta de sign-in es la fila completa de `users`: `id, name, lastname, email,
-  phone, roleId, verified, ...`. El mapper de la app solo toma `id, name, lastname, email, roleId`.
+- `user` en la respuesta de sign-in y sign-up es una lista de campos permitidos: `id, name, lastname,
+  email, phone, verified, roleId, isActive, createdAt`. Nunca trae la contraseña ni los contadores
+  de seguridad. El mapper de la app solo toma `id, name, lastname, email, roleId`.
+- **Validación estricta** (`ValidationPipe` con `whitelist` + `forbidNonWhitelisted`) en el body de
+  sign-in y sign-up: un campo que no esté en el DTO responde `400`.
+- **Bloqueo por cuenta:** 5 contraseñas incorrectas seguidas bloquean la cuenta 15 minutos
+  (`429 { message, error, retryAfterSeconds }`, con el texto "Demasiados intentos. Debes esperar N
+  segundos."). Un login correcto reinicia el contador. Además hay un límite de 5 intentos por
+  minuto por IP en sign-in (`429` de Nest).
+
+### Reglas de `POST /auth/sign-up`
+
+La fuente de verdad es `src/auth/dto/sign-up.dto.ts`; el formulario del web puede ser más estricto
+pero nunca más permisivo.
+
+| Campo | Regla |
+|---|---|
+| `name`, `lastname` | texto, 1 a 50 caracteres (columna `varchar(50)`) |
+| `email` | correo válido, hasta 100 caracteres (columna `varchar(100)`) |
+| `phone` | formato internacional: `+` y de 10 a 15 dígitos, sin espacios (`+525512345678`) |
+| `password` | 8 a 64 caracteres, con minúscula, mayúscula, número y un símbolo (cualquier carácter que no sea letra, número ni espacio) |
+| `passwordConfirm` | igual a `password` |
+
+No se aceptan `roleId`, `verified` ni `loginAttempts`: el servicio siempre crea clientes con
+`verified = false`.
 
 ## Menú — HU-03
 
@@ -95,14 +118,11 @@ PaymentIntent de una orden `abierta` con el total calculado en el servidor, y qu
 
 ## Hallazgos de seguridad del API (revisar antes de HU-01/HU-02)
 
-1. **Sign-in devuelve el hash de la contraseña.** `AuthService.SignIn` regresa la fila completa de
-   `users` (`password`, `loginAttempts`, ...). Hay que devolver solo `id, name, lastname, email, roleId`.
-2. **Enumeración de usuarios.** Responde `400 "Correo inválido"` o `400 "Contraseña inválida"`
-   según el caso. HU-01 pide un `401` con un mensaje genérico.
-3. **No hay `ValidationPipe` global** (`main.ts`). Los decoradores de `class-validator` de los DTOs
-   no se aplican. Falta `app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))`.
-4. **Login sin límite propio.** Solo aplica el throttle global (40/min). Para HU-01 conviene `@Throttle`
-   en `sign-in` (p. ej. 5/min) y usar `loginAttempts`/`loginLockUntil`, que ya existen en la tabla.
+1. ~~Sign-in devolvía el hash de la contraseña~~ → resuelto en #90 (y también en sign-up).
+2. ~~Enumeración de usuarios en el login~~ → resuelto en #90: `401` genérico.
+3. ~~Sin `ValidationPipe`~~ → aplicado solo a sign-in y sign-up (no global: varios DTOs de otros
+   módulos no tienen decoradores y `whitelist` les quitaría todos sus campos).
+4. ~~Login sin límite propio~~ → resuelto: 5/min por IP y bloqueo por cuenta.
 5. **Endpoints de pedidos y pagos públicos.** Cualquiera sin token puede crear, confirmar o cancelar
    pedidos. Para la app móvil deben exigir JWT y rol (HU-05/HU-06).
 6. **`GET /users/:id` y `PATCH /users/:id`** solo exigen JWT, sin validar que sea el mismo usuario o Admin (BOLA).
