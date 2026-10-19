@@ -20,11 +20,14 @@ const paramPipes = (method: keyof AuthController): unknown[] => {
 };
 
 describe('Validación estricta de entrada (sign-in)', () => {
-  it('el body de POST /auth/sign-in usa el ValidationPipe estricto', () => {
-    const pipes = paramPipes('signIn');
-    expect(pipes).toHaveLength(1);
-    expect(pipes[0]).toBeInstanceOf(ValidationPipe);
-  });
+  it.each(['signIn', 'signUp'] as const)(
+    'el body de %s usa el ValidationPipe estricto',
+    (method) => {
+      const pipes = paramPipes(method);
+      expect(pipes).toHaveLength(1);
+      expect(pipes[0]).toBeInstanceOf(ValidationPipe);
+    },
+  );
 
   it('acepta exactamente el body que mandan el web y la app móvil', async () => {
     // restaurant-management-web: app/(auth)/login/page.tsx → { email, password }
