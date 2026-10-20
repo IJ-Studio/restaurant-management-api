@@ -19,6 +19,8 @@ Se levantó leyendo el código de este repositorio (rama `develop`, commit `befa
 | GET | `/auth/me` | JWT | `{ user: { id, email, roleId, tokenId } }` (payload del JWT) |
 | POST | `/auth/sign-out` | JWT | `200 { message }`: revoca el token en la caché |
 | POST | `/auth/sign-up` | Público | Registro de clientes (rol 5). **La app móvil no lo usa**. Reglas abajo → `201 { user }` sin contraseña |
+| POST | `/notificaciones/dispositivos` | JWT, roles 1–4 | `{ token, platform: 'android'\|'ios' }` → `204`. Registra el token push de Expo (`ExponentPushToken[...]`) del usuario del JWT; si el token ya existía, pasa a este usuario. 10/min |
+| DELETE | `/notificaciones/dispositivos` | JWT, roles 1–4 | `{ token }` → `204`. Solo borra el token si es del usuario del JWT (cerrar sesión). 10/min |
 
 - El JWT trae `{ id: string, email, roleId, tokenId }`. Expira en `JWT_ACCESS_TOKEN_TTL` (3600 s
   por defecto) y no hay refresh token: con un 401 se cierra la sesión.
@@ -137,3 +139,14 @@ PaymentIntent de una orden `abierta` con el total calculado en el servidor, y qu
 9. **`ReservationsService.findAll` aplica solo el último filtro**: cada `.where()` de Drizzle reemplaza al anterior
    (`fechaDesde` + `estatus` → solo `estatus`). Hay que combinarlos con `and(...)`. La app manda solo `fechaDesde`
    y filtra los estados activos del lado del cliente.
+
+## Notificaciones push (HU-07)
+
+- Tabla `dispositivos_push` (script manual `src/database/sql/2026-10-dispositivos-push.sql`, idempotente;
+  hay que ejecutarlo en staging/prod antes de desplegar, porque el snapshot de drizzle-kit está desfasado).
+- `NotificationsService.sendToRoles(roleIds, { title, body, data })` envía vía Expo Push a usuarios activos
+  del personal con esos roles, en lotes de 100, elimina tokens `DeviceNotRegistered` y **nunca lanza**
+  (una falla de push no debe tumbar el cambio de estado de un pedido). El payload solo lleva texto
+  operativo genérico, sin datos del cliente.
+- Pendiente (#75): llamarlo al cambiar el estado de un pedido (Cocina→Mesero, Mesero→Cajero); hoy la API
+  no tiene el endpoint de cambio de estado de HU-06.

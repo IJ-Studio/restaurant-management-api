@@ -21,6 +21,7 @@ import { RecommendationsModule } from './recommendations/recommendations.module'
 import { PredictiveDemandModule } from './predictive-demand/predictive-demand.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { DashboardModule } from './roles/dashboard.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -30,14 +31,16 @@ import { DashboardModule } from './roles/dashboard.module';
       envFilePath: `.env`,
     }),
     // ─── BLINDAJE CONTRA PETICIONES MASIVAS (RATE LIMITING) ───
-    ThrottlerModule.forRoot([{
-      ttl: 60000, // 1 minuto (en milisegundos)
-      limit: 40,  // Máximo 40 peticiones por minuto por cada IP / Cliente
-    }]),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // 1 minuto (en milisegundos)
+        limit: 40, // Máximo 40 peticiones por minuto por cada IP / Cliente
+      },
+    ]),
     DatabaseModule,
     CacheModule,
     AuthModule,
-      PagosModule,
+    PagosModule,
     ReservationsModule,
     ScheduleModule.forRoot(),
     BackupsModule,
@@ -53,6 +56,7 @@ import { DashboardModule } from './roles/dashboard.module';
     RecommendationsModule,
     PredictiveDemandModule,
     PayrollModule,
+    NotificationsModule,
   ],
   controllers: [],
   providers: [
