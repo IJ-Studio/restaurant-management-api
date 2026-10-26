@@ -94,6 +94,17 @@ lo convierte a número.
 
 Estados que se ven en el código: `pendiente`, `abierta`, `cancelada`, `completada`, `entregada`.
 
+## Notificaciones push — HU-07
+
+| Método | Ruta | Acceso | Notas |
+|---|---|---|---|
+| POST | `/notifications/devices` | Admin, Cajero, Mesero, Cocina | `{ token: "ExponentPushToken[...]", platform: "android" \| "ios" }` → `204`. Si el token ya existía se reasigna al usuario del JWT. `400` si el token no tiene formato de Expo o hay campos de más |
+| DELETE | `/notifications/devices/:token` | Admin, Cajero, Mesero, Cocina | `204`. Al cerrar sesión; solo borra el token si es del usuario del JWT |
+
+Tabla `device_tokens` (`src/database/sql/2026-10-26-device-tokens.sql`, la aplica una persona). Para el envío (#75),
+`DeviceTokensService` expone `findTokensByUserIds`, `findTokensByRoles` (solo personal activo) y `removeTokens`
+(tokens que Expo reporta como `DeviceNotRegistered`).
+
 ## Admin — HU-08
 
 | Método | Ruta | Acceso |
@@ -109,7 +120,7 @@ Estados que se ven en el código: `pendiente`, `abierta`, `cancelada`, `completa
 |---|---|
 | HU-04 | `GET /reservations` solo permite Admin: hay que abrirlo a Mesero (y Cajero) para el listado operativo |
 | HU-06 | No hay un endpoint para que Cocina o Mesero cambien el estado (`abierta → en preparación → lista → entregada`), ni un stream que no sea solo de Admin |
-| HU-07 | No existe el registro de tokens de dispositivo ni el envío de push |
+| HU-07 | Falta el envío de push (#75); el registro de tokens ya existe (`/notifications/devices`) |
 
 ## Cobro en caja (HU-05): bloqueo de diseño
 
