@@ -200,6 +200,61 @@ describe('UsersService.changePassword', () => {
   });
 });
 
+describe('UsersService.deleteUser', () => {
+  const admin = { ...row, id: 1, roleId: ROLES.ADMIN };
+
+  it('hace borrado lógico (isActive=false) en vez de borrar la fila', async () => {
+    const { service, set } = setup([[admin], [row]]);
+
+    await service.deleteUser(7, 1);
+
+    expect(set).toHaveBeenCalledWith({ isActive: false });
+  });
+
+  it('un admin no puede borrarse a sí mismo → 400', async () => {
+    const { service, set } = setup([[admin]]);
+
+    const error: unknown = await service
+      .deleteUser(1, 1)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('no se puede borrar al último admin activo → 400', async () => {
+    const otherAdmin = { ...admin, id: 2 };
+    const { service, set } = setup([[admin], [otherAdmin], [{ count: 1 }]]);
+
+    const error: unknown = await service
+      .deleteUser(2, 1)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('un admin sí puede desactivar a otro admin si hay más de uno', async () => {
+    const otherAdmin = { ...admin, id: 2 };
+    const { service, set } = setup([[admin], [otherAdmin], [{ count: 2 }]]);
+
+    await service.deleteUser(2, 1);
+
+    expect(set).toHaveBeenCalledWith({ isActive: false });
+  });
+
+  it('un usuario que no es admin no puede borrar → 403', async () => {
+    const { service, set } = setup([[row]]);
+
+    const error: unknown = await service
+      .deleteUser(8, 7)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ForbiddenException);
+    expect(set).not.toHaveBeenCalled();
+  });
+});
+
 describe('UsersService.changeRole', () => {
   it('un admin cambia el rol y recibe el perfil sin hash', async () => {
     const admin = { ...row, id: 1, roleId: ROLES.ADMIN };

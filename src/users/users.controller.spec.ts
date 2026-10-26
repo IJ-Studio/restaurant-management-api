@@ -152,6 +152,14 @@ describe('UsersController', () => {
     expect(service.changeRole).toHaveBeenCalledWith(1, ROLES.MESERO, 1);
   });
 
+  it('DELETE /users/:id responde 204 y delega en el servicio', async () => {
+    await request(app.getHttpServer() as Server)
+      .delete('/users/2')
+      .expect(204);
+
+    expect(service.deleteUser).toHaveBeenCalledWith(2, 1);
+  });
+
   it.each(['createUser', 'getAllUsers', 'deleteUser', 'changeRole'])(
     '%s exige el rol admin (ROLES.ADMIN, no el número mágico 1)',
     (method) => {

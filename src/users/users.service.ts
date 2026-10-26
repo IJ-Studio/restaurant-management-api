@@ -8,7 +8,7 @@ import { DRIZZLE } from '../database/drizzle/constants';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../database/schema/public.schema';
 import { users } from '../database/schema/public.schema';
-import { asc, eq, gt } from 'drizzle-orm';
+import { and, asc, count, eq, gt } from 'drizzle-orm';
 import { InferSelectModel } from 'drizzle-orm';
 import { BcryptService } from '../auth/bcrypt.service';
 import { PublicUser, toPublicUser } from '../auth/auth.service';
@@ -93,11 +93,17 @@ export class UsersService {
     }
 
     const limit = query.limit ?? USERS_DEFAULT_LIMIT;
+    const cursorCondition =
+      query.cursor === undefined ? undefined : gt(users.id, query.cursor);
+    const activeCondition = eq(users.isActive, true);
+
     const allUsers = await this.db
       .select()
       .from(users)
       .where(
-        query.cursor === undefined ? undefined : gt(users.id, query.cursor),
+        cursorCondition
+          ? and(activeCondition, cursorCondition)
+          : activeCondition,
       )
       .orderBy(asc(users.id))
       .limit(limit);
@@ -225,6 +231,29 @@ export class UsersService {
       );
     }
 
-    await this.db.delete(users).where(eq(users.id, id));
+    if (id === adminId) {
+      throw new BadRequestException('No puedes eliminar tu propio usuario');
+    }
+
+    const target = await this.findUserById(id);
+
+    if (target.roleId === ROLES.ADMIN && target.isActive) {
+      const [{ count: activeAdmins }] = await this.db
+        .select({ count: count() })
+        .from(users)
+        .where(and(eq(users.roleId, ROLES.ADMIN), eq(users.isActive, true)));
+
+      if (activeAdmins <= 1) {
+        throw new BadRequestException(
+          'No puedes eliminar al último administrador',
+        );
+      }
+    }
+
+    // Borrado lógico: conserva el historial y evita el 500 por filas relacionadas.
+    await this.db
+      .update(users)
+      .set({ isActive: false })
+      .where(eq(users.id, id));
   }
 }
