@@ -14,6 +14,7 @@ import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from './../database/schema/public.schema';
 import { users } from './../database/schema/public.schema';
 
+import { ROLES } from '../common/constants/roles';
 import { ActiveUserData } from '../common/interfaces/active-user-data.interface';
 import { JwtService } from '@nestjs/jwt';
 import jwtConfig from '../common/config/jwt.config';
@@ -77,8 +78,6 @@ export const INVALID_CREDENTIALS = 'Correo o contraseña incorrectos.';
 const DUMMY_HASH =
   '$2b$10$oJHiB2hZhfyfSowA4DEJM.jlrgAvIfNM2az2feX0sx2llt63s0Qt2';
 
-const ROLE_USER = 3;
-
 // Bloqueo por cuenta: tras 5 contraseñas incorrectas seguidas, 15 minutos sin poder entrar.
 export const MAX_LOGIN_ATTEMPTS = 5;
 export const LOGIN_LOCK_MS = 15 * 60 * 1000;
@@ -141,7 +140,7 @@ export class AuthService {
           password: await this.bcryptService.hash(password),
           verified: false,
           loginAttempts: 0,
-          roleId: ROLE_USER,
+          roleId: ROLES.CLIENTE,
         })
         .returning();
 
