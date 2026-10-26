@@ -3,6 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
   Inject,
+  Logger,
 } from '@nestjs/common';
 import { DRIZZLE } from '../database/drizzle/constants';
 import type { DrizzleDB } from '../database/drizzle/drizzle.provider';
@@ -16,6 +17,7 @@ import {
   pagos,
   facturas,
 } from '../database/schema/public.schema';
+import { stripeEvents } from '../database/schema/stripe-events.schema';
 import { eq, and } from 'drizzle-orm';
 import Stripe from 'stripe';
 import Facturapi, { type Invoice } from 'facturapi';
@@ -32,6 +34,8 @@ import {
 export class PagosService {
   private stripe: Stripe;
   private facturapi: Facturapi;
+  private readonly logger = new Logger(PagosService.name);
+  private readonly webhookSecret: string;
 
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {
     // Inicialización de Stripe
@@ -51,6 +55,14 @@ export class PagosService {
       );
     }
     this.facturapi = new Facturapi(facturapiKey);
+
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      throw new Error(
+        'STRIPE_WEBHOOK_SECRET no está definida en las variables de entorno.',
+      );
+    }
+    this.webhookSecret = webhookSecret;
   }
 
   private async resolverClienteId(usuarioId: number): Promise<string> {
@@ -551,6 +563,22 @@ export class PagosService {
     const ordenId = paymentIntent.metadata?.ordenId;
     if (!ordenId) return;
 
+    const [orden] = await this.db
+      .select()
+      .from(ordenes)
+      .where(eq(ordenes.id, ordenId))
+      .limit(1);
+
+    if (!orden) {
+      this.logger.warn(
+        `Webhook de Stripe para una orden inexistente: ${ordenId}`,
+      );
+      return;
+    }
+
+    // Idempotencia por estatus: un reenvío del webhook no vuelve a insertar el pago.
+    if (orden.estatus === 'pagada') return;
+
     const [metodoStripe] = await this.db
       .select()
       .from(metodosPago)
@@ -558,7 +586,7 @@ export class PagosService {
       .limit(1);
 
     if (!metodoStripe) {
-      console.error(
+      this.logger.error(
         'Falta la fila "Tarjeta en línea (Stripe)" en metodos_pago. Créala antes de recibir pagos (ver Fase 0 del plan).',
       );
       return;
@@ -585,19 +613,41 @@ export class PagosService {
       event = this.stripe.webhooks.constructEvent(
         rawBody,
         signature,
-        process.env.STRIPE_WEBHOOK_SECRET as string,
+        this.webhookSecret,
       );
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'error desconocido';
-      throw new BadRequestException(`Firma de webhook inválida: ${message}`);
+    } catch (error: unknown) {
+      this.logger.warn(
+        `Firma de webhook inválida: ${
+          error instanceof Error ? error.message : 'error desconocido'
+        }`,
+      );
+      throw new BadRequestException('Firma de webhook inválida.');
     }
 
-    if (event.type === 'payment_intent.succeeded') {
-      await this.marcarOrdenComoPagada(event.data.object);
+    // Idempotencia por event.id: el UNIQUE de stripe_events evita reprocesar
+    // un reenvío (o dos entregas simultáneas) del mismo evento.
+    const [insertado] = await this.db
+      .insert(stripeEvents)
+      .values({ eventId: event.id, type: event.type })
+      .onConflictDoNothing({ target: stripeEvents.eventId })
+      .returning({ eventId: stripeEvents.eventId });
+
+    if (!insertado) {
+      return { received: true, duplicate: true };
     }
 
-    if (event.type === 'payment_intent.payment_failed') {
-      console.error('Pago fallido en Stripe:', event.data.object.id);
+    try {
+      if (event.type === 'payment_intent.succeeded') {
+        await this.marcarOrdenComoPagada(event.data.object);
+      } else if (event.type === 'payment_intent.payment_failed') {
+        this.logger.warn(`Pago fallido en Stripe: ${event.data.object.id}`);
+      }
+    } catch (error) {
+      // Si falla el procesamiento, se libera el evento para que Stripe reintente.
+      await this.db
+        .delete(stripeEvents)
+        .where(eq(stripeEvents.eventId, event.id));
+      throw error;
     }
 
     return { received: true };

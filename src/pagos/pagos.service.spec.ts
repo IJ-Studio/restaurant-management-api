@@ -5,8 +5,9 @@ import { PagosService } from './pagos.service';
 
 process.env.STRIPE_SECRET_KEY = 'sk_test_falso';
 process.env.FACTURAPI_TEST_KEY = 'sk_test_falso';
+process.env.STRIPE_WEBHOOK_SECRET = 'whsec_falso';
 
-function setup(rowsQueue: unknown[][]) {
+function setup(rowsQueue: unknown[][], eventsInserted: unknown[][] = []) {
   const results = [...rowsQueue];
   const where = jest.fn(() => {
     const rows = results.shift() ?? [];
@@ -14,20 +15,52 @@ function setup(rowsQueue: unknown[][]) {
       limit: jest.fn().mockResolvedValue(rows),
     });
   });
-  const db = { select: () => ({ from: () => ({ where }) }) };
+
+  const insertReturning = jest.fn();
+  for (const result of eventsInserted) {
+    insertReturning.mockResolvedValueOnce(result);
+  }
+  const onConflictDoNothing = jest
+    .fn()
+    .mockReturnValue({ returning: insertReturning });
+  const insertValues = jest.fn(() =>
+    Object.assign(Promise.resolve(undefined), {
+      onConflictDoNothing,
+      returning: insertReturning,
+    }),
+  );
+
+  const updateWhere = jest.fn().mockResolvedValue(undefined);
+  const set = jest.fn().mockReturnValue({ where: updateWhere });
+  const deleteWhere = jest.fn().mockResolvedValue(undefined);
+  const del = jest.fn().mockReturnValue({ where: deleteWhere });
+
+  const db = {
+    select: () => ({ from: () => ({ where }) }),
+    insert: () => ({ values: insertValues }),
+    update: () => ({ set }),
+    delete: del,
+  };
   const service = new PagosService(db as never);
 
   const create = jest.fn().mockResolvedValue({
     client_secret: 'secret',
     status: 'requires_confirmation',
   });
+  const constructEvent = jest.fn();
   (
     service as unknown as {
-      stripe: { paymentIntents: { create: typeof create } };
+      stripe: {
+        paymentIntents: { create: typeof create };
+        webhooks: { constructEvent: typeof constructEvent };
+      };
     }
-  ).stripe = { paymentIntents: { create } };
+  ).stripe = {
+    paymentIntents: { create },
+    webhooks: { constructEvent },
+  };
 
-  return { service, create };
+  return { service, create, constructEvent, set, insertValues };
 }
 
 describe('PagosService.crearIntentoPago (DT-16)', () => {
@@ -130,5 +163,105 @@ describe('PagosService.crearIntentoPago (DT-16)', () => {
 
     expect(error).toBeInstanceOf(BadRequestException);
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe('PagosService.manejarWebhookStripe (DT-D10 / NH-11 / NH-12)', () => {
+  const eventoExitoso = {
+    id: 'evt-1',
+    type: 'payment_intent.succeeded',
+    data: {
+      object: { id: 'pi_1', amount: 11600, metadata: { ordenId: 'orden-1' } },
+    },
+  };
+
+  it('no arranca sin STRIPE_WEBHOOK_SECRET', () => {
+    const anterior = process.env.STRIPE_WEBHOOK_SECRET;
+    delete process.env.STRIPE_WEBHOOK_SECRET;
+
+    try {
+      expect(() => new PagosService({} as never)).toThrow(
+        'STRIPE_WEBHOOK_SECRET',
+      );
+    } finally {
+      process.env.STRIPE_WEBHOOK_SECRET = anterior;
+    }
+  });
+
+  it('firma inválida → 400 genérico, sin el detalle interno', async () => {
+    const { service, constructEvent } = setup([]);
+    constructEvent.mockImplementation(() => {
+      throw new Error('detalle interno de stripe');
+    });
+
+    const error: unknown = await service
+      .manejarWebhookStripe(Buffer.from(''), 'firma-mala')
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect((error as Error).message).toBe('Firma de webhook inválida.');
+    expect((error as Error).message).not.toContain('detalle interno');
+  });
+
+  it('un evento repetido no vuelve a procesar la orden', async () => {
+    const { service, constructEvent, set } = setup([], [[]]);
+    constructEvent.mockReturnValue(eventoExitoso);
+
+    const result = await service.manejarWebhookStripe(Buffer.from(''), 'firma');
+
+    expect(result).toEqual({ received: true, duplicate: true });
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('payment_intent.succeeded marca la orden como pagada una sola vez', async () => {
+    const orden = { id: 'orden-1', estatus: 'abierta' };
+    const metodo = { id: 3 };
+    const { service, constructEvent, set, insertValues } = setup(
+      [[orden], [metodo]],
+      [[{ eventId: 'evt-1' }]],
+    );
+    constructEvent.mockReturnValue(eventoExitoso);
+
+    const result = await service.manejarWebhookStripe(Buffer.from(''), 'firma');
+
+    expect(result).toEqual({ received: true });
+    expect(set).toHaveBeenCalledWith({ estatus: 'pagada' });
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ordenId: 'orden-1',
+        idTransaccionPasarela: 'pi_1',
+      }),
+    );
+  });
+
+  it('si la orden ya está pagada no duplica el pago', async () => {
+    const orden = { id: 'orden-1', estatus: 'pagada' };
+    const { service, constructEvent, set } = setup(
+      [[orden]],
+      [[{ eventId: 'evt-1' }]],
+    );
+    constructEvent.mockReturnValue(eventoExitoso);
+
+    await service.manejarWebhookStripe(Buffer.from(''), 'firma');
+
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('payment_intent.payment_failed no actualiza la orden', async () => {
+    const eventoFallido = {
+      id: 'evt-2',
+      type: 'payment_intent.payment_failed',
+      data: { object: { id: 'pi_2', metadata: { ordenId: 'orden-1' } } },
+    };
+    const { service, constructEvent, set } = setup(
+      [],
+      [[{ eventId: 'evt-2' }]],
+    );
+    constructEvent.mockReturnValue(eventoFallido);
+
+    const result = await service.manejarWebhookStripe(Buffer.from(''), 'firma');
+
+    expect(result).toEqual({ received: true });
+    expect(set).not.toHaveBeenCalled();
   });
 });

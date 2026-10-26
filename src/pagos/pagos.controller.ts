@@ -12,6 +12,7 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { SkipThrottle } from '@nestjs/throttler';
 import { PagosService } from './pagos.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { ActiveUser } from '../auth/decorators/active-user.decorator';
@@ -114,6 +115,7 @@ export class PagosController {
   // validar la firma de Stripe. Ver instrucciones de main.ts — por eso
   // aquí se usa @Req() en vez de @Body().
   @Public()
+  @SkipThrottle()
   @Post('pagos/webhook')
   async webhookStripe(
     @Req() req: Request,
