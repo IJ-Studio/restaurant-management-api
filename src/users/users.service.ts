@@ -13,6 +13,9 @@ import { InferSelectModel } from 'drizzle-orm';
 import { BcryptService } from '../auth/bcrypt.service';
 import { PublicUser, toPublicUser } from '../auth/auth.service';
 import { CreateUserDto } from 'src/users/dto/create-user.dto';
+import { UpdateUserDto } from 'src/users/dto/update-user.dto';
+import { ChangePasswordDto } from 'src/users/dto/change-password.dto';
+import { ChangeRoleDto } from 'src/users/dto/change-role.dto';
 import { ROLES } from '../common/constants/roles';
 
 type User = InferSelectModel<typeof users>;
@@ -118,7 +121,7 @@ export class UsersService {
 
   async updateUser(
     id: number,
-    updateData: Partial<User>,
+    updateData: UpdateUserDto,
     requesterId: number,
   ): Promise<Omit<User, 'password'>> {
     const requester = await this.findUserById(requesterId);
@@ -128,6 +131,10 @@ export class UsersService {
       throw new ForbiddenException(
         'No tienes permisos para actualizar este usuario',
       );
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      throw new BadRequestException('No hay campos para actualizar');
     }
 
     const updatedUser = await this.db
@@ -140,6 +147,59 @@ export class UsersService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _, ...userWithoutPassword } = userRecord;
     return userWithoutPassword;
+  }
+
+  async changePassword(
+    id: number,
+    dto: ChangePasswordDto,
+    requesterId: number,
+  ): Promise<void> {
+    if (requesterId !== id) {
+      throw new ForbiddenException('Solo puedes cambiar tu propia contraseña');
+    }
+
+    const user = await this.findUserById(id);
+    const currentMatches = await this.bcryptService.compare(
+      dto.currentPassword,
+      user.password,
+    );
+
+    if (!currentMatches) {
+      throw new BadRequestException('La contraseña actual no es correcta');
+    }
+
+    await this.db
+      .update(users)
+      .set({
+        password: await this.bcryptService.hash(dto.newPassword),
+        loginAttempts: 0,
+        loginLockUntil: 0,
+      })
+      .where(eq(users.id, id));
+  }
+
+  async changeRole(
+    id: number,
+    roleId: ChangeRoleDto['roleId'],
+    adminId: number,
+  ): Promise<PublicUser> {
+    const admin = await this.findUserById(adminId);
+
+    if (admin.roleId !== ROLES.ADMIN) {
+      throw new ForbiddenException('Solo administradores pueden cambiar roles');
+    }
+
+    const [updated] = await this.db
+      .update(users)
+      .set({ roleId })
+      .where(eq(users.id, id))
+      .returning();
+
+    if (!updated) {
+      throw new BadRequestException('Usuario no encontrado');
+    }
+
+    return toPublicUser(updated);
   }
 
   //! ADMIN only
