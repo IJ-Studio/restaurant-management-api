@@ -20,3 +20,11 @@ export const STRICT_VALIDATION_OPTIONS: ValidationPipeOptions = {
 
 export const createStrictValidationPipe = (): ValidationPipe =>
   new ValidationPipe(STRICT_VALIDATION_OPTIONS);
+
+/**
+ * Validación para endpoints existentes cuyo cliente puede mandar campos de más: descarta los
+ * no declarados (p. ej. `roleId`, `password`, `isActive` en `PATCH /users/:id`) en vez de
+ * responder 400, para no romper a la web mientras migra a los endpoints específicos.
+ */
+export const createWhitelistPipe = (): ValidationPipe =>
+  new ValidationPipe({ whitelist: true });
