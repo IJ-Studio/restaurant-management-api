@@ -28,7 +28,7 @@ async function setup() {
   await cache.set('user-7', 'tok-1');
   const reflector = { getAllAndOverride: () => false } as unknown as Reflector;
   return new JwtAuthGuard(
-    { secret: SECRET, accessTokenTtl: '3600' },
+    { secret: SECRET, accessTokenTtl: 3600 },
     jwt,
     cache,
     reflector,
