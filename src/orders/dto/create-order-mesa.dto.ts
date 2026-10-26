@@ -1,4 +1,11 @@
-import { IsNumber, IsString, IsNotEmpty, IsArray, IsOptional, ValidateNested } from 'class-validator';
+import {
+  IsNumber,
+  IsString,
+  IsNotEmpty,
+  IsArray,
+  IsOptional,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 class OrderItemDto {
@@ -19,10 +26,6 @@ export class CreateOrderMesaDto {
   @IsNumber()
   @IsOptional()
   cantidad?: number;
-
-  @IsNumber()
-  @IsNotEmpty()
-  usuarioId: number;
 
   @IsString()
   @IsOptional()
