@@ -19,6 +19,7 @@ import {
 import { eq, and } from 'drizzle-orm';
 import Stripe from 'stripe';
 import Facturapi, { type Invoice } from 'facturapi';
+import { ROLES } from '../common/constants/roles';
 import {
   CrearDireccionDto,
   GuardarMetodoPagoDto,
@@ -414,9 +415,11 @@ export class PagosService {
   // PROCESAR EL PAGO DE UNA ORDEN
   // ══════════════════════════════════════════════════════════════
 
-  async crearIntentoPago(dto: CrearIntentoPagoDto, usuarioId: number) {
-    const clienteId = await this.resolverClienteId(usuarioId);
-
+  async crearIntentoPago(
+    dto: CrearIntentoPagoDto,
+    usuarioId: number,
+    roleId: number,
+  ) {
     const [orden] = await this.db
       .select()
       .from(ordenes)
@@ -426,13 +429,31 @@ export class PagosService {
     if (!orden) {
       throw new NotFoundException('La orden no existe.');
     }
-    if (orden.clienteId !== clienteId) {
-      throw new BadRequestException('Esta orden no te pertenece.');
-    }
-    if (orden.estatus !== 'pendiente') {
-      throw new BadRequestException(
-        `Esta orden ya no admite pago (estatus actual: ${orden.estatus}).`,
-      );
+
+    // El cajero/admin cobra pedidos de cualquier cliente, ya abiertos en mesa
+    // (HU-05). El cliente solo paga sus propias órdenes pendientes.
+    const esPersonal = roleId === ROLES.ADMIN || roleId === ROLES.CAJERO;
+    let clienteId: string | undefined = orden.clienteId ?? undefined;
+
+    if (esPersonal) {
+      if (
+        !['pendiente', 'para_cobrar', 'abierta'].includes(orden.estatus ?? '')
+      ) {
+        throw new BadRequestException(
+          `Esta orden ya no admite pago (estatus actual: ${orden.estatus}).`,
+        );
+      }
+    } else {
+      clienteId = await this.resolverClienteId(usuarioId);
+
+      if (orden.clienteId !== clienteId) {
+        throw new BadRequestException('Esta orden no te pertenece.');
+      }
+      if (orden.estatus !== 'pendiente') {
+        throw new BadRequestException(
+          `Esta orden ya no admite pago (estatus actual: ${orden.estatus}).`,
+        );
+      }
     }
 
     // Validación para evitar null en el total
@@ -460,6 +481,12 @@ export class PagosService {
     let stripeCustomerId: string | undefined;
 
     if (dto.metodoPagoGuardadoId) {
+      if (!clienteId) {
+        throw new BadRequestException(
+          'La orden no tiene un cliente asociado para usar un método guardado.',
+        );
+      }
+
       const [guardado] = await this.db
         .select()
         .from(metodosPagoGuardados)
@@ -493,6 +520,9 @@ export class PagosService {
     //    key nueva, y Stripe la trata como una petición legítima distinta.
     const idempotencyKey = `orden-${dto.ordenId}-${paymentMethodId ?? 'auto'}-${stripeCustomerId ?? 'sin-customer'}-${montoEnCentavos}`;
 
+    const metadata: Record<string, string> = { ordenId: dto.ordenId };
+    if (clienteId) metadata.clienteId = clienteId;
+
     const paymentIntent = await this.stripe.paymentIntents.create(
       {
         amount: montoEnCentavos,
@@ -504,7 +534,7 @@ export class PagosService {
           ? undefined
           : { enabled: true },
         off_session: !!stripeCustomerId,
-        metadata: { ordenId: dto.ordenId, clienteId },
+        metadata,
       },
       { idempotencyKey },
     );
