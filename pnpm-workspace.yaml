@@ -19,3 +19,7 @@ overrides:
   'brace-expansion@>=1.0.0 <1.1.20': ^1.1.20
   'brace-expansion@>=2.0.0 <2.1.6': ^2.1.6
   'js-yaml@>=4.0.0 <4.3.2': ^4.3.2
+  # DoS en el parseo de peticiones (GHSA-27r3-jxmh-p828, GHSA-q7qp-rjg7-q26m); los trae
+  # @nestjs/platform-express. Se pueden quitar cuando Nest suba a las versiones parchadas.
+  'body-parser@>=2.0.0 <2.4.0': ^2.4.0
+  'multer@<2.5.0': ^2.5.0
