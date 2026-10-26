@@ -1,13 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
   IsEmail,
+  IsIn,
+  IsInt,
   IsNotEmpty,
-  IsNumber,
   IsOptional,
   MinLength,
-  Min,
-  Max,
 } from 'class-validator';
+
+import { CREATABLE_ROLES } from '../../common/constants/roles';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'Juan' })
@@ -36,9 +37,9 @@ export class CreateUserDto {
     example: 2,
     description: '2=Cajero, 3=Mesero, 4=Cocina, 5=Cliente',
   })
-  @IsNumber()
-  @Min(2) // No permitir crear admins
-  @Max(5) // Roles válidos: 2-5
+  @IsOptional()
+  @IsInt()
+  @IsIn(CREATABLE_ROLES)
   readonly roleId?: number;
 
   @ApiProperty({ example: false })

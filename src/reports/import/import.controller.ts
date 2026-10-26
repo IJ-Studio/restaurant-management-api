@@ -6,16 +6,22 @@ import {
   Query,
   UploadedFile,
   UseInterceptors,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ImportService } from './import.service';
 import { ImportType } from './dto/importDTO';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { ROLES } from 'src/common/constants/roles';
 
 type UploadedExcelFile = {
   originalname: string;
   buffer: Buffer;
 };
 
+@UseGuards(RolesGuard)
+@Roles(ROLES.ADMIN)
 @Controller('import')
 export class ImportController {
   constructor(private readonly importService: ImportService) {}
@@ -43,8 +49,8 @@ export class ImportController {
     const importMode = mode || 'insert';
 
     return await this.importService.importFromExcel(file.buffer, {
-      type: importType as ImportType,
-      mode: importMode as 'insert' | 'upsert',
+      type: importType,
+      mode: importMode,
     });
   }
 
@@ -66,7 +72,10 @@ export class ImportController {
       throw new BadRequestException('El archivo debe ser .xlsx');
     }
 
-    return await this.importService.importPlatillos(file.buffer, mode || 'insert');
+    return await this.importService.importPlatillos(
+      file.buffer,
+      mode || 'insert',
+    );
   }
 
   @Post('sales/dishes/excel')
