@@ -103,7 +103,11 @@ export class PagosController {
     @Body() dto: CrearIntentoPagoDto,
     @ActiveUser() user: ActiveUserData,
   ) {
-    return await this.pagosService.crearIntentoPago(dto, Number(user.id));
+    return await this.pagosService.crearIntentoPago(
+      dto,
+      Number(user.id),
+      user.roleId,
+    );
   }
 
   // IMPORTANTE: esta ruta necesita el body SIN parsear (raw) para poder
