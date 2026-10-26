@@ -24,4 +24,7 @@ export const ROLE_NAMES: Record<number, string> = {
 // Roles que el admin puede crear (excluye admin)
 export const CREATABLE_ROLES = [2, 3, 4, 5] as const;
 
+// Personal que puede operar pedidos de mesa (no incluye clientes ni cocina).
+export const STAFF_ROLES: number[] = [ROLES.ADMIN, ROLES.CAJERO, ROLES.MESERO];
+
 export type RoleId = (typeof ROLES)[keyof typeof ROLES];
