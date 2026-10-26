@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Patch, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ReservationsService } from './reservations.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
@@ -19,7 +28,11 @@ export class ReservationsController {
     const fecha = new Date(`${query.fecha}T${query.hora}:00`);
     const duracionDefault = 90; // hardcodeado por ahora
     const duracion = query.duracionMin || duracionDefault;
-    const result = await this.reservationsService.getAvailableTables(fecha, duracion, query.numComensales);
+    const result = await this.reservationsService.getAvailableTables(
+      fecha,
+      duracion,
+      query.numComensales,
+    );
     return {
       fecha: query.fecha,
       hora: query.hora,
@@ -39,7 +52,9 @@ export class ReservationsController {
   @Public()
   @Post()
   async create(@Body() createReservationDto: CreateReservationDto) {
-    return await this.reservationsService.createReservation(createReservationDto);
+    return await this.reservationsService.createReservation(
+      createReservationDto,
+    );
   }
 
   // El personal de piso necesita ver las reservaciones del día (app móvil, HU-04);
@@ -53,7 +68,12 @@ export class ReservationsController {
     @Query('estatus') estatus?: string,
     @Query('clienteNombre') clienteNombre?: string,
   ) {
-    return await this.reservationsService.findAll({ fechaDesde, fechaHasta, estatus, clienteNombre });
+    return await this.reservationsService.findAll({
+      fechaDesde,
+      fechaHasta,
+      estatus,
+      clienteNombre,
+    });
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -66,7 +86,10 @@ export class ReservationsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(ROLES.ADMIN)
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() updateReservationDto: UpdateReservationDto) {
+  async update(
+    @Param('id') id: string,
+    @Body() updateReservationDto: UpdateReservationDto,
+  ) {
     return await this.reservationsService.update(id, updateReservationDto);
   }
 }
