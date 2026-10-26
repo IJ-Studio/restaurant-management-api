@@ -8,18 +8,24 @@ import {
   Res,
   UploadedFile,
   UseInterceptors,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { PlatillosService } from './platillos.service';
 import { ExportService } from '../reports/export/export.service';
 import { ExportFormat, ExportType } from '../reports/export/dto/queryDTO';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { ROLES } from 'src/common/constants/roles';
 
 type UploadedCsvFile = {
   originalname: string;
   buffer: Buffer;
 };
 
+@UseGuards(RolesGuard)
+@Roles(ROLES.ADMIN)
 @Controller('platillos')
 export class PlatillosController {
   constructor(
@@ -61,13 +67,11 @@ export class PlatillosController {
   }
 
   @Get('export/dishes/excel')
-  async exportExcel(
-    @Query() query: any,
-    @Res() res: Response,
-  ) {
+  async exportExcel(@Query() query: any, @Res() res: Response) {
     const platillos = await this.platillosService.getAllPlatillos();
 
-    const { buffer, filename, contentType } = await this.exportService.exportPlatillos(platillos);
+    const { buffer, filename, contentType } =
+      await this.exportService.exportPlatillos(platillos);
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -75,10 +79,7 @@ export class PlatillosController {
   }
 
   @Get('export/sales/excel')
-  async exportSalesExcel(
-    @Query() query: any,
-    @Res() res: Response,
-  ) {
+  async exportSalesExcel(@Query() query: any, @Res() res: Response) {
     const { buffer, filename, contentType } = await this.exportService.export({
       ...query,
       format: ExportFormat.XLSX,

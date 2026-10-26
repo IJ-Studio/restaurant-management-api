@@ -8,10 +8,18 @@ import { DRIZZLE } from '../database/drizzle/constants';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../database/schema/public.schema';
 import { users } from '../database/schema/public.schema';
-import { eq } from 'drizzle-orm';
+import { and, asc, count, eq, gt } from 'drizzle-orm';
 import { InferSelectModel } from 'drizzle-orm';
 import { BcryptService } from '../auth/bcrypt.service';
+import { PublicUser, toPublicUser } from '../auth/auth.service';
 import { CreateUserDto } from 'src/users/dto/create-user.dto';
+import { UpdateUserDto } from 'src/users/dto/update-user.dto';
+import { ChangePasswordDto } from 'src/users/dto/change-password.dto';
+import { ChangeRoleDto } from 'src/users/dto/change-role.dto';
+import {
+  GetUsersQueryDto,
+  USERS_DEFAULT_LIMIT,
+} from 'src/users/dto/get-users-query.dto';
 import { ROLES } from '../common/constants/roles';
 
 type User = InferSelectModel<typeof users>;
@@ -63,14 +71,18 @@ export class UsersService {
         .returning();
 
       // No devolver password
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password: _, ...userWithoutPassword } = newUser[0];
       return userWithoutPassword;
-    } catch (error) {
+    } catch {
       throw new BadRequestException('El email ya existe o hay un error');
     }
   }
 
-  async getAllUsers(adminId: number): Promise<Omit<User, 'password'>[]> {
+  async getAllUsers(
+    adminId: number,
+    query: GetUsersQueryDto = {},
+  ): Promise<PublicUser[]> {
     const admin = await this.db
       .select()
       .from(users)
@@ -80,11 +92,43 @@ export class UsersService {
       throw new ForbiddenException('Solo administradores pueden ver usuarios');
     }
 
-    const allUsers = await this.db.select().from(users);
-    return allUsers.map(({ password: _, ...user }) => user as Omit<User, 'password'>);
+    const limit = query.limit ?? USERS_DEFAULT_LIMIT;
+    const cursorCondition =
+      query.cursor === undefined ? undefined : gt(users.id, query.cursor);
+    const activeCondition = eq(users.isActive, true);
+
+    const allUsers = await this.db
+      .select()
+      .from(users)
+      .where(
+        cursorCondition
+          ? and(activeCondition, cursorCondition)
+          : activeCondition,
+      )
+      .orderBy(asc(users.id))
+      .limit(limit);
+
+    return allUsers.map(toPublicUser);
   }
 
-  async getUserById(id: number): Promise<User> {
+  /** Perfil público: solo el propio usuario o un admin. Nunca incluye el hash de la contraseña. */
+  async getPublicUserById(
+    id: number,
+    requesterId: number,
+  ): Promise<PublicUser> {
+    const requester = await this.findUserById(requesterId);
+
+    if (requesterId !== id && requester.roleId !== ROLES.ADMIN) {
+      throw new ForbiddenException('No tienes permisos para ver este usuario');
+    }
+
+    const user = requesterId === id ? requester : await this.findUserById(id);
+
+    return toPublicUser(user);
+  }
+
+  /** Uso interno del servicio: devuelve la fila completa, incluida la contraseña. */
+  private async findUserById(id: number): Promise<User> {
     const user = await this.db.select().from(users).where(eq(users.id, id));
 
     if (!user || user.length === 0) {
@@ -96,16 +140,20 @@ export class UsersService {
 
   async updateUser(
     id: number,
-    updateData: Partial<User>,
+    updateData: UpdateUserDto,
     requesterId: number,
   ): Promise<Omit<User, 'password'>> {
-    const requester = await this.getUserById(requesterId);
+    const requester = await this.findUserById(requesterId);
 
     // Solo puede actualizar su propio perfil u otro si es admin
     if (requesterId !== id && requester.roleId !== ROLES.ADMIN) {
       throw new ForbiddenException(
         'No tienes permisos para actualizar este usuario',
       );
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      throw new BadRequestException('No hay campos para actualizar');
     }
 
     const updatedUser = await this.db
@@ -115,13 +163,67 @@ export class UsersService {
       .returning();
 
     const userRecord = updatedUser[0];
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _, ...userWithoutPassword } = userRecord;
-    return userWithoutPassword as Omit<User, 'password'>;
+    return userWithoutPassword;
+  }
+
+  async changePassword(
+    id: number,
+    dto: ChangePasswordDto,
+    requesterId: number,
+  ): Promise<void> {
+    if (requesterId !== id) {
+      throw new ForbiddenException('Solo puedes cambiar tu propia contraseña');
+    }
+
+    const user = await this.findUserById(id);
+    const currentMatches = await this.bcryptService.compare(
+      dto.currentPassword,
+      user.password,
+    );
+
+    if (!currentMatches) {
+      throw new BadRequestException('La contraseña actual no es correcta');
+    }
+
+    await this.db
+      .update(users)
+      .set({
+        password: await this.bcryptService.hash(dto.newPassword),
+        loginAttempts: 0,
+        loginLockUntil: 0,
+      })
+      .where(eq(users.id, id));
+  }
+
+  async changeRole(
+    id: number,
+    roleId: ChangeRoleDto['roleId'],
+    adminId: number,
+  ): Promise<PublicUser> {
+    const admin = await this.findUserById(adminId);
+
+    if (admin.roleId !== ROLES.ADMIN) {
+      throw new ForbiddenException('Solo administradores pueden cambiar roles');
+    }
+
+    const [updated] = await this.db
+      .update(users)
+      .set({ roleId })
+      .where(eq(users.id, id))
+      .returning();
+
+    if (!updated) {
+      throw new BadRequestException('Usuario no encontrado');
+    }
+
+    return toPublicUser(updated);
   }
 
   //! ADMIN only
   async deleteUser(id: number, adminId: number): Promise<void> {
-    const admin = await this.getUserById(adminId);
+    const admin = await this.findUserById(adminId);
 
     if (admin.roleId !== ROLES.ADMIN) {
       throw new ForbiddenException(
@@ -129,6 +231,29 @@ export class UsersService {
       );
     }
 
-    await this.db.delete(users).where(eq(users.id, id));
+    if (id === adminId) {
+      throw new BadRequestException('No puedes eliminar tu propio usuario');
+    }
+
+    const target = await this.findUserById(id);
+
+    if (target.roleId === ROLES.ADMIN && target.isActive) {
+      const [{ count: activeAdmins }] = await this.db
+        .select({ count: count() })
+        .from(users)
+        .where(and(eq(users.roleId, ROLES.ADMIN), eq(users.isActive, true)));
+
+      if (activeAdmins <= 1) {
+        throw new BadRequestException(
+          'No puedes eliminar al último administrador',
+        );
+      }
+    }
+
+    // Borrado lógico: conserva el historial y evita el 500 por filas relacionadas.
+    await this.db
+      .update(users)
+      .set({ isActive: false })
+      .where(eq(users.id, id));
   }
 }
