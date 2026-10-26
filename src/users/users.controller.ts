@@ -15,6 +15,13 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { ChangeRoleDto } from './dto/change-role.dto';
+import {
+  createStrictValidationPipe,
+  createWhitelistPipe,
+} from '../common/config/validation.config';
 import { REQUEST_USER_KEY } from 'src/common/constants';
 import { ROLES } from 'src/common/constants/roles';
 import { ActiveUserData } from 'src/common/interfaces/active-user-data.interface';
@@ -69,7 +76,7 @@ export class UsersController {
   @UseGuards(JwtAuthGuard) // 👈 Agregado porque tu lógica interna depende de `request[REQUEST_USER_KEY]`
   async updateUser(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateData: Partial<any>,
+    @Body(createWhitelistPipe()) updateData: UpdateUserDto,
     @Req() request: RequestWithUser,
   ) {
     const user = request[REQUEST_USER_KEY];
@@ -77,6 +84,38 @@ export class UsersController {
       id,
       updateData,
       parseInt(user.id),
+    );
+  }
+
+  @Patch(':id/password')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async changePassword(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(createStrictValidationPipe()) dto: ChangePasswordDto,
+    @Req() request: RequestWithUser,
+  ) {
+    await this.usersService.changePassword(
+      id,
+      dto,
+      parseInt(request[REQUEST_USER_KEY].id),
+    );
+
+    return { message: 'Contraseña actualizada correctamente' };
+  }
+
+  @Patch(':id/role')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(ROLES.ADMIN)
+  async changeRole(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(createStrictValidationPipe()) dto: ChangeRoleDto,
+    @Req() request: RequestWithUser,
+  ) {
+    return await this.usersService.changeRole(
+      id,
+      dto.roleId,
+      parseInt(request[REQUEST_USER_KEY].id),
     );
   }
 

@@ -1,4 +1,8 @@
-import { ExecutionContext, INestApplication } from '@nestjs/common';
+import {
+  BadRequestException,
+  ExecutionContext,
+  INestApplication,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Server } from 'node:http';
 import request from 'supertest';
@@ -12,23 +16,23 @@ import { UsersService } from './users.service';
 
 const user = { id: 1, name: 'Ana', email: 'ana@quijote.mx', roleId: 5 };
 
+const service = {
+  getPublicUserById: jest.fn().mockResolvedValue(user),
+  getAllUsers: jest.fn().mockResolvedValue([user]),
+  createUser: jest.fn().mockResolvedValue(user),
+  deleteUser: jest.fn().mockResolvedValue(undefined),
+  updateUser: jest.fn().mockResolvedValue(user),
+  changePassword: jest.fn().mockResolvedValue(undefined),
+  changeRole: jest.fn().mockResolvedValue({ ...user, roleId: ROLES.MESERO }),
+};
+
 describe('UsersController', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [UsersController],
-      providers: [
-        {
-          provide: UsersService,
-          useValue: {
-            getPublicUserById: jest.fn().mockResolvedValue(user),
-            getAllUsers: jest.fn().mockResolvedValue([user]),
-            createUser: jest.fn().mockResolvedValue(user),
-            deleteUser: jest.fn().mockResolvedValue(undefined),
-          },
-        },
-      ],
+      providers: [{ provide: UsersService, useValue: service }],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({
@@ -70,7 +74,63 @@ describe('UsersController', () => {
       .expect(user);
   });
 
-  it.each(['createUser', 'getAllUsers', 'deleteUser'])(
+  it('PATCH /users/:id solo actualiza el perfil y descarta roleId, password e isActive', async () => {
+    await request(app.getHttpServer() as Server)
+      .patch('/users/1')
+      .send({
+        name: 'Ana María',
+        roleId: ROLES.ADMIN,
+        password: 'sin-hash',
+        isActive: false,
+      })
+      .expect(200);
+
+    expect(service.updateUser).toHaveBeenCalledWith(
+      1,
+      { name: 'Ana María' },
+      1,
+    );
+  });
+
+  it('PATCH /users/:id/password responde 200 si la contraseña actual es correcta', async () => {
+    const body = {
+      currentPassword: 'Vieja#2026',
+      newPassword: 'Nueva#2026',
+    };
+
+    await request(app.getHttpServer() as Server)
+      .patch('/users/1/password')
+      .send(body)
+      .expect(200);
+
+    expect(service.changePassword).toHaveBeenCalledWith(1, body, 1);
+  });
+
+  it('PATCH /users/:id/password responde 400 si la contraseña actual no es correcta', async () => {
+    service.changePassword.mockRejectedValueOnce(
+      new BadRequestException('La contraseña actual no es correcta'),
+    );
+
+    await request(app.getHttpServer() as Server)
+      .patch('/users/1/password')
+      .send({
+        currentPassword: 'incorrecta',
+        newPassword: 'Nueva#2026',
+      })
+      .expect(400);
+  });
+
+  it('PATCH /users/:id/role responde 200 con admin', async () => {
+    await request(app.getHttpServer() as Server)
+      .patch('/users/1/role')
+      .send({ roleId: ROLES.MESERO })
+      .expect(200)
+      .expect({ ...user, roleId: ROLES.MESERO });
+
+    expect(service.changeRole).toHaveBeenCalledWith(1, ROLES.MESERO, 1);
+  });
+
+  it.each(['createUser', 'getAllUsers', 'deleteUser', 'changeRole'])(
     '%s exige el rol admin (ROLES.ADMIN, no el número mágico 1)',
     (method) => {
       const handler = Object.getOwnPropertyDescriptor(
