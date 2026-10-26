@@ -2,7 +2,7 @@ import { Injectable, BadRequestException, NotFoundException, Inject } from '@nes
 import { DRIZZLE } from '../../src/database/drizzle/constants';
 import type { DrizzleDB } from '../../src/database/drizzle/drizzle.provider';
 import { reservaciones, mesas, areasSalon, horarios, horariosEspeciales, restaurante } from '../../src/database/schema/public.schema';
-import { eq, and, gte, lte, sql, inArray, desc, asc, or, ne } from 'drizzle-orm';
+import { eq, and, gte, lte, sql, inArray, desc, asc, or, ne, ilike, type SQL } from 'drizzle-orm';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
 
@@ -190,26 +190,29 @@ export class ReservationsService {
   }
 
   async findAll(filters: { fechaDesde?: string; fechaHasta?: string; estatus?: string; clienteNombre?: string }) {
-    let query = this.db.select().from(reservaciones).$dynamic();
-    if (filters.fechaDesde) {
-      const from = new Date(filters.fechaDesde);
-      if (!isNaN(from.getTime())) {
-        query = query.where(gte(reservaciones.fechaHora, from.toISOString()));
-      }
+    // Las condiciones se combinan con AND: encadenar `.where()` dejaba solo la última.
+    const conditions: SQL[] = [];
+    const from = filters.fechaDesde ? new Date(filters.fechaDesde) : null;
+    if (from && !isNaN(from.getTime())) {
+      conditions.push(gte(reservaciones.fechaHora, from.toISOString()));
     }
-    if (filters.fechaHasta) {
-      const to = new Date(filters.fechaHasta);
-      if (!isNaN(to.getTime())) {
-        query = query.where(lte(reservaciones.fechaHora, to.toISOString()));
-      }
+    const to = filters.fechaHasta ? new Date(filters.fechaHasta) : null;
+    if (to && !isNaN(to.getTime())) {
+      conditions.push(lte(reservaciones.fechaHora, to.toISOString()));
     }
     if (filters.estatus) {
-      query = query.where(eq(reservaciones.estatus, filters.estatus));
+      conditions.push(eq(reservaciones.estatus, filters.estatus));
     }
     if (filters.clienteNombre) {
-      query = query.where(sql`${reservaciones.clienteNombre} ILIKE ${'%' + filters.clienteNombre + '%'}`);
+      // `%` y `_` del texto se buscan tal cual, no como comodines.
+      const nombre = filters.clienteNombre.replace(/[\\%_]/g, '\\$&');
+      conditions.push(ilike(reservaciones.clienteNombre, `%${nombre}%`));
     }
-    return await query.orderBy(desc(reservaciones.fechaHora));
+    return await this.db
+      .select()
+      .from(reservaciones)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(reservaciones.fechaHora));
   }
 
   async findOne(id: string) {
