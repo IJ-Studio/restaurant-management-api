@@ -20,3 +20,19 @@ export const STRICT_VALIDATION_OPTIONS: ValidationPipeOptions = {
 
 export const createStrictValidationPipe = (): ValidationPipe =>
   new ValidationPipe(STRICT_VALIDATION_OPTIONS);
+
+/**
+ * Validación global del API (DT-07): transforma query/body a las clases DTO,
+ * descarta campos no declarados y rechaza los que sobran con 400.
+ *
+ * OJO: cualquier DTO nuevo debe declarar TODOS los campos que manda el cliente;
+ * un campo de más (o un DTO sin decoradores) ahora responde 400.
+ */
+export const GLOBAL_VALIDATION_OPTIONS: ValidationPipeOptions = {
+  whitelist: true,
+  forbidNonWhitelisted: true,
+  transform: true,
+};
+
+export const createGlobalValidationPipe = (): ValidationPipe =>
+  new ValidationPipe(GLOBAL_VALIDATION_OPTIONS);

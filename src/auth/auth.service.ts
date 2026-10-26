@@ -239,7 +239,7 @@ export class AuthService {
     user: Partial<User>,
   ): Promise<{ accessToken: string }> {
     const tokenId = randomUUID();
-    const ttl = +(this.jwtConfiguration.accessTokenTtl || 3600);
+    const ttl = this.jwtConfiguration.accessTokenTtl;
 
     // ✅ Guardar tokenId en caché
     await this.cacheService.set(`user-${String(user.id)}`, tokenId, ttl);

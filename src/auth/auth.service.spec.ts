@@ -47,7 +47,7 @@ function setup(rows: unknown[], passwordMatches: boolean) {
   const cache = { set: cacheSet } as unknown as CacheService;
   const service = new AuthService(
     db as never,
-    { secret: 's', accessTokenTtl: '3600' },
+    { secret: 's', accessTokenTtl: 3600 },
     bcrypt,
     jwt,
     cache,
