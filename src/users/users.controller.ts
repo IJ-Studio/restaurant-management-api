@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseIntPipe,
   Patch,
   Post,
   Req,
@@ -15,10 +16,13 @@ import { ApiTags } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { REQUEST_USER_KEY } from 'src/common/constants';
+import { ROLES } from 'src/common/constants/roles';
 import { ActiveUserData } from 'src/common/interfaces/active-user-data.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guards';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+
+type RequestWithUser = { [REQUEST_USER_KEY]: ActiveUserData };
 
 @ApiTags('users')
 @Controller('users')
@@ -28,9 +32,12 @@ export class UsersController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(1)
-  async createUser(@Body() createUserDto: CreateUserDto, @Req() request: any) {
-    const admin = request[REQUEST_USER_KEY] as ActiveUserData;
+  @Roles(ROLES.ADMIN)
+  async createUser(
+    @Body() createUserDto: CreateUserDto,
+    @Req() request: RequestWithUser,
+  ) {
+    const admin = request[REQUEST_USER_KEY];
     return await this.usersService.createUser(
       createUserDto,
       parseInt(admin.id),
@@ -39,29 +46,29 @@ export class UsersController {
 
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(1)
-  async getAllUsers(@Req() request: any) {
-    const admin = request[REQUEST_USER_KEY] as ActiveUserData;
+  @Roles(ROLES.ADMIN)
+  async getAllUsers(@Req() request: RequestWithUser) {
+    const admin = request[REQUEST_USER_KEY];
     return await this.usersService.getAllUsers(parseInt(admin.id));
   }
 
   // ─── ENDPOINT PARA AUT COLLABORATION / ME ───
   @Get(':id')
   @UseGuards(JwtAuthGuard) // 👈 Agregado para validar el token que envía Next.js y obtener la data limpia
-  async getUserById(@Param('id') id: string) {
-    return await this.usersService.getUserById(parseInt(id));
+  async getUserById(@Param('id', ParseIntPipe) id: number) {
+    return await this.usersService.getUserById(id);
   }
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard) // 👈 Agregado porque tu lógica interna depende de `request[REQUEST_USER_KEY]`
   async updateUser(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() updateData: Partial<any>,
-    @Req() request: any,
+    @Req() request: RequestWithUser,
   ) {
-    const user = request[REQUEST_USER_KEY] as ActiveUserData;
+    const user = request[REQUEST_USER_KEY];
     return await this.usersService.updateUser(
-      parseInt(id),
+      id,
       updateData,
       parseInt(user.id),
     );
@@ -70,9 +77,12 @@ export class UsersController {
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(1)
-  async deleteUser(@Param('id') id: string, @Req() request: any) {
-    const admin = request[REQUEST_USER_KEY] as ActiveUserData;
-    return await this.usersService.deleteUser(parseInt(id), parseInt(admin.id));
+  @Roles(ROLES.ADMIN)
+  async deleteUser(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() request: RequestWithUser,
+  ) {
+    const admin = request[REQUEST_USER_KEY];
+    return await this.usersService.deleteUser(id, parseInt(admin.id));
   }
 }
