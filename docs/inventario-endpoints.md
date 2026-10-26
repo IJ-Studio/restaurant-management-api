@@ -74,7 +74,7 @@ lo convierte a número.
 | GET | `/reservations/availability` | Público | Disponibilidad |
 | GET | `/reservations/map` | Público | Mapa de mesas |
 | POST | `/reservations` | Público | `{ clienteNombre, clienteTelefono, clienteEmail, fechaHora (ISO), numComensales 1–50, mesaId?, peticionesEspeciales?, ocasion?, canal? }` |
-| GET | `/reservations` | Admin | `?fechaDesde&fechaHasta&estatus&clienteNombre` |
+| GET | `/reservations` | Admin, Cajero, Mesero | `?fechaDesde&fechaHasta&estatus&clienteNombre` (los filtros se combinan) |
 | GET / PATCH | `/reservations/:id` | Admin | Detalle / actualizar |
 | GET | `/mesas` | Público | Mesas |
 
@@ -107,7 +107,6 @@ Estados que se ven en el código: `pendiente`, `abierta`, `cancelada`, `completa
 
 | Historia | Falta |
 |---|---|
-| HU-04 | `GET /reservations` solo permite Admin: hay que abrirlo a Mesero (y Cajero) para el listado operativo |
 | HU-06 | No hay un endpoint para que Cocina o Mesero cambien el estado (`abierta → en preparación → lista → entregada`), ni un stream que no sea solo de Admin |
 | HU-07 | No existe el registro de tokens de dispositivo ni el envío de push |
 
@@ -134,6 +133,4 @@ PaymentIntent de una orden `abierta` con el total calculado en el servidor, y qu
 6. **`GET /users/:id` y `PATCH /users/:id`** solo exigen JWT, sin validar que sea el mismo usuario o Admin (BOLA).
 7. **`GET /menu` hace `select *`**: expone `precioCosto` en un endpoint público.
 8. No hay `helmet` (cabeceras de seguridad) ni `/db-metrics` protegido (`@Public()`).
-9. **`ReservationsService.findAll` aplica solo el último filtro**: cada `.where()` de Drizzle reemplaza al anterior
-   (`fechaDesde` + `estatus` → solo `estatus`). Hay que combinarlos con `and(...)`. La app manda solo `fechaDesde`
-   y filtra los estados activos del lado del cliente.
+9. ~~`ReservationsService.findAll` aplicaba solo el último filtro~~ → resuelto en #70: los filtros se combinan con `and(...)`.
