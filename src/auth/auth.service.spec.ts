@@ -2,6 +2,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 
 import { CacheService } from '../cache/cache.service';
+import { ROLES } from '../common/constants/roles';
 import { AuthService, INVALID_CREDENTIALS, toPublicUser } from './auth.service';
 import { BcryptService } from './bcrypt.service';
 
@@ -102,6 +103,42 @@ describe('AuthService.SignIn', () => {
       'Pass#2026',
       expect.stringMatching(/^\$2b\$10\$/),
     );
+  });
+});
+
+describe('AuthService.SignUp', () => {
+  it('asigna el rol de cliente (5), no el de mesero (3)', async () => {
+    const values = jest
+      .fn()
+      .mockImplementation((row: Record<string, unknown>) => ({
+        returning: () => Promise.resolve([{ ...dbUser, ...row, id: 42 }]),
+      }));
+    const db = { insert: () => ({ values }) };
+    const bcrypt = {
+      hash: jest.fn().mockResolvedValue('$2b$10$hash'),
+    } as unknown as BcryptService;
+    const service = new AuthService(
+      db as never,
+      { secret: 's', accessTokenTtl: '3600' },
+      bcrypt,
+      {} as JwtService,
+      {} as CacheService,
+    );
+
+    const result = await service.SignUp({
+      name: 'Ana',
+      lastname: 'López',
+      phone: '+525512345678',
+      email: 'ana@quijote.mx',
+      password: 'Pass#2026x',
+      passwordConfirm: 'Pass#2026x',
+    });
+
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({ roleId: ROLES.CLIENTE }),
+    );
+    expect(result.roleId).toBe(ROLES.CLIENTE);
+    expect(result.roleId).not.toBe(ROLES.MESERO);
   });
 });
 
