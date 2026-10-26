@@ -16,10 +16,12 @@ import { Texto, TextoNegocio } from '../../common/normalizacion/normalizar';
 class OrderItemDto {
   @IsNumber()
   @IsNotEmpty()
+  @Min(1)
   platilloId: number;
 
   @IsNumber()
   @IsNotEmpty()
+  @Min(1)
   cantidad: number;
 
   /** Indicación para cocina sobre este platillo ("sin cebolla"). */
@@ -33,10 +35,12 @@ class OrderItemDto {
 export class CreateOrderMesaDto {
   @IsNumber()
   @IsOptional()
+  @Min(1)
   platilloId?: number;
 
   @IsNumber()
   @IsOptional()
+  @Min(1)
   cantidad?: number;
 
   @Texto()
