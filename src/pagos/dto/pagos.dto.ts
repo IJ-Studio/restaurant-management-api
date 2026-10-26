@@ -9,10 +9,6 @@ import {
 } from 'class-validator';
 
 export class CrearDireccionDto {
-  @IsNumber()
-  @IsNotEmpty()
-  usuarioId: number;
-
   @IsString()
   @IsOptional()
   alias?: string;
@@ -34,7 +30,9 @@ export class CrearDireccionDto {
   referencias?: string;
 
   @IsString()
-  @Length(5, 5, { message: 'El código postal debe tener exactamente 5 dígitos.' })
+  @Length(5, 5, {
+    message: 'El código postal debe tener exactamente 5 dígitos.',
+  })
   codigoPostal: string;
 
   @IsString()
@@ -73,7 +71,9 @@ export class ActualizarDireccionDto {
 
   @IsString()
   @IsOptional()
-  @Length(5, 5, { message: 'El código postal debe tener exactamente 5 dígitos.' })
+  @Length(5, 5, {
+    message: 'El código postal debe tener exactamente 5 dígitos.',
+  })
   codigoPostal?: string;
 
   @IsString()
@@ -90,10 +90,6 @@ export class ActualizarDireccionDto {
 }
 
 export class GuardarMetodoPagoDto {
-  @IsNumber()
-  @IsNotEmpty()
-  usuarioId: number;
-
   // Este es el token que Stripe regresa DESPUÉS de haber capturado la
   // tarjeta directo en el navegador del cliente (stripe.confirmCardSetup).
   // Nunca es el número de tarjeta ni el CVC.
@@ -107,10 +103,6 @@ export class GuardarMetodoPagoDto {
 }
 
 export class CrearIntentoPagoDto {
-  @IsNumber()
-  @IsNotEmpty()
-  usuarioId: number;
-
   @IsUUID()
   @IsNotEmpty()
   ordenId: string;
@@ -134,10 +126,6 @@ export class CrearIntentoPagoDto {
 }
 
 export class CrearFacturaDto {
-  @IsNumber()
-  @IsNotEmpty()
-  usuarioId: number;
-
   @IsUUID()
   @IsNotEmpty()
   ordenId: string;
@@ -150,7 +138,10 @@ export class CrearFacturaDto {
 
   @IsString()
   @IsOptional()
-  @Length(12, 13, { message: 'El RFC debe tener 12 (persona moral) o 13 (persona física) caracteres.' })
+  @Length(12, 13, {
+    message:
+      'El RFC debe tener 12 (persona moral) o 13 (persona física) caracteres.',
+  })
   rfc?: string;
 
   @IsString()
@@ -167,7 +158,9 @@ export class CrearFacturaDto {
 
   @IsString()
   @IsOptional()
-  @Length(5, 5, { message: 'El código postal fiscal debe tener exactamente 5 dígitos.' })
+  @Length(5, 5, {
+    message: 'El código postal fiscal debe tener exactamente 5 dígitos.',
+  })
   codigoPostalFiscal?: string;
 
   @IsString()
@@ -182,12 +175,11 @@ export class CrearFacturaDto {
 }
 
 export class GuardarPerfilFacturacionDto {
-  @IsNumber()
-  @IsNotEmpty()
-  usuarioId: number;
-
   @IsString()
-  @Length(12, 13, { message: 'El RFC debe tener 12 (persona moral) o 13 (persona física) caracteres.' })
+  @Length(12, 13, {
+    message:
+      'El RFC debe tener 12 (persona moral) o 13 (persona física) caracteres.',
+  })
   rfc: string;
 
   @IsString()
@@ -203,7 +195,9 @@ export class GuardarPerfilFacturacionDto {
   regimenFiscal: string;
 
   @IsString()
-  @Length(5, 5, { message: 'El código postal fiscal debe tener exactamente 5 dígitos.' })
+  @Length(5, 5, {
+    message: 'El código postal fiscal debe tener exactamente 5 dígitos.',
+  })
   codigoPostalFiscal: string;
 
   @IsString()

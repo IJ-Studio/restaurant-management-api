@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, NotFoundException, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  Inject,
+} from '@nestjs/common';
 import { DRIZZLE } from '../database/drizzle/constants';
 import type { DrizzleDB } from '../database/drizzle/drizzle.provider';
 import {
@@ -13,7 +18,7 @@ import {
 } from '../database/schema/public.schema';
 import { eq, and } from 'drizzle-orm';
 import Stripe from 'stripe';
-import Facturapi from 'facturapi';
+import Facturapi, { type Invoice } from 'facturapi';
 import {
   CrearDireccionDto,
   GuardarMetodoPagoDto,
@@ -25,24 +30,27 @@ import {
 @Injectable()
 export class PagosService {
   private stripe: Stripe;
-  private facturapi: any; // o el tipo Facturapi si lo prefieres
+  private facturapi: Facturapi;
 
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {
     // Inicialización de Stripe
     const stripeKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeKey) {
-      throw new Error('STRIPE_SECRET_KEY no está definida en las variables de entorno.');
+      throw new Error(
+        'STRIPE_SECRET_KEY no está definida en las variables de entorno.',
+      );
     }
     this.stripe = new Stripe(stripeKey);
 
     // Inicialización de Facturapi
     const facturapiKey = process.env.FACTURAPI_TEST_KEY;
     if (!facturapiKey) {
-      throw new Error('FACTURAPI_API_KEY no está definida en las variables de entorno.');
+      throw new Error(
+        'FACTURAPI_API_KEY no está definida en las variables de entorno.',
+      );
     }
     this.facturapi = new Facturapi(facturapiKey);
   }
-
 
   private async resolverClienteId(usuarioId: number): Promise<string> {
     const [clienteExistente] = await this.db
@@ -65,8 +73,8 @@ export class PagosService {
   // DIRECCIONES DE ENVÍO
   // ══════════════════════════════════════════════════════════════
 
-  async crearDireccion(dto: CrearDireccionDto) {
-    const clienteId = await this.resolverClienteId(dto.usuarioId);
+  async crearDireccion(dto: CrearDireccionDto, usuarioId: number) {
+    const clienteId = await this.resolverClienteId(usuarioId);
 
     if (dto.esPrincipal) {
       await this.db
@@ -109,13 +117,22 @@ export class PagosService {
       .where(eq(direccionesCliente.clienteId, cliente.id));
   }
 
-  async actualizarDireccion(id: number, usuarioId: number, dto: Partial<CrearDireccionDto>) {
+  async actualizarDireccion(
+    id: number,
+    usuarioId: number,
+    dto: Partial<CrearDireccionDto>,
+  ) {
     const clienteId = await this.resolverClienteId(usuarioId);
 
     const [direccion] = await this.db
       .select()
       .from(direccionesCliente)
-      .where(and(eq(direccionesCliente.id, id), eq(direccionesCliente.clienteId, clienteId)))
+      .where(
+        and(
+          eq(direccionesCliente.id, id),
+          eq(direccionesCliente.clienteId, clienteId),
+        ),
+      )
       .limit(1);
 
     if (!direccion) {
@@ -154,14 +171,21 @@ export class PagosService {
     const [direccion] = await this.db
       .select()
       .from(direccionesCliente)
-      .where(and(eq(direccionesCliente.id, id), eq(direccionesCliente.clienteId, clienteId)))
+      .where(
+        and(
+          eq(direccionesCliente.id, id),
+          eq(direccionesCliente.clienteId, clienteId),
+        ),
+      )
       .limit(1);
 
     if (!direccion) {
       throw new NotFoundException('Esa dirección no existe o no te pertenece.');
     }
 
-    await this.db.delete(direccionesCliente).where(eq(direccionesCliente.id, id));
+    await this.db
+      .delete(direccionesCliente)
+      .where(eq(direccionesCliente.id, id));
     return { success: true, message: 'Dirección eliminada.' };
   }
 
@@ -188,7 +212,10 @@ export class PagosService {
   //
   // Requiere agregar la columna `stripeCustomerId: text('stripe_customer_id')`
   // (nullable) a la tabla `clientes` en tu schema de Drizzle + su migración.
-  private async resolverStripeCustomerId(clienteId: string, usuarioId: number): Promise<string> {
+  private async resolverStripeCustomerId(
+    clienteId: string,
+    usuarioId: number,
+  ): Promise<string> {
     const [cliente] = await this.db
       .select()
       .from(clientes)
@@ -223,7 +250,10 @@ export class PagosService {
   // paymentMethodId que luego manda a guardarMetodoPago().
   async crearSetupIntent(usuarioId: number) {
     const clienteId = await this.resolverClienteId(usuarioId);
-    const stripeCustomerId = await this.resolverStripeCustomerId(clienteId, usuarioId);
+    const stripeCustomerId = await this.resolverStripeCustomerId(
+      clienteId,
+      usuarioId,
+    );
 
     const setupIntent = await this.stripe.setupIntents.create({
       customer: stripeCustomerId,
@@ -235,17 +265,24 @@ export class PagosService {
     };
   }
 
-  async guardarMetodoPago(dto: GuardarMetodoPagoDto) {
-    const clienteId = await this.resolverClienteId(dto.usuarioId);
-    const stripeCustomerId = await this.resolverStripeCustomerId(clienteId, dto.usuarioId);
+  async guardarMetodoPago(dto: GuardarMetodoPagoDto, usuarioId: number) {
+    const clienteId = await this.resolverClienteId(usuarioId);
+    const stripeCustomerId = await this.resolverStripeCustomerId(
+      clienteId,
+      usuarioId,
+    );
 
     // Trae la metadata (marca, últimos 4, expiración) directo de Stripe.
     // El número completo y el CVC ya no existen en ningún lado en este
     // punto — Stripe los descarta después de la tokenización.
-    const paymentMethod = await this.stripe.paymentMethods.retrieve(dto.paymentMethodId);
+    const paymentMethod = await this.stripe.paymentMethods.retrieve(
+      dto.paymentMethodId,
+    );
 
     if (!paymentMethod.card) {
-      throw new BadRequestException('El método de pago recibido no es una tarjeta válida.');
+      throw new BadRequestException(
+        'El método de pago recibido no es una tarjeta válida.',
+      );
     }
 
     if (dto.esPrincipal) {
@@ -313,11 +350,18 @@ export class PagosService {
     const [metodo] = await this.db
       .select()
       .from(metodosPagoGuardados)
-      .where(and(eq(metodosPagoGuardados.id, id), eq(metodosPagoGuardados.clienteId, clienteId)))
+      .where(
+        and(
+          eq(metodosPagoGuardados.id, id),
+          eq(metodosPagoGuardados.clienteId, clienteId),
+        ),
+      )
       .limit(1);
 
     if (!metodo) {
-      throw new NotFoundException('Ese método de pago no existe o no te pertenece.');
+      throw new NotFoundException(
+        'Ese método de pago no existe o no te pertenece.',
+      );
     }
 
     await this.db
@@ -340,17 +384,28 @@ export class PagosService {
     const [metodo] = await this.db
       .select()
       .from(metodosPagoGuardados)
-      .where(and(eq(metodosPagoGuardados.id, id), eq(metodosPagoGuardados.clienteId, clienteId)))
+      .where(
+        and(
+          eq(metodosPagoGuardados.id, id),
+          eq(metodosPagoGuardados.clienteId, clienteId),
+        ),
+      )
       .limit(1);
 
     if (!metodo) {
-      throw new NotFoundException('Ese método de pago no existe o no te pertenece.');
+      throw new NotFoundException(
+        'Ese método de pago no existe o no te pertenece.',
+      );
     }
 
     // Best-effort: si falla en Stripe (ya estaba desvinculada, etc.) no
     // bloqueamos el borrado en nuestra BD.
-    await this.stripe.paymentMethods.detach(metodo.stripePaymentMethodId).catch(() => null);
-    await this.db.delete(metodosPagoGuardados).where(eq(metodosPagoGuardados.id, id));
+    await this.stripe.paymentMethods
+      .detach(metodo.stripePaymentMethodId)
+      .catch(() => null);
+    await this.db
+      .delete(metodosPagoGuardados)
+      .where(eq(metodosPagoGuardados.id, id));
 
     return { success: true, message: 'Método de pago eliminado.' };
   }
@@ -359,8 +414,8 @@ export class PagosService {
   // PROCESAR EL PAGO DE UNA ORDEN
   // ══════════════════════════════════════════════════════════════
 
-  async crearIntentoPago(dto: CrearIntentoPagoDto) {
-    const clienteId = await this.resolverClienteId(dto.usuarioId);
+  async crearIntentoPago(dto: CrearIntentoPagoDto, usuarioId: number) {
+    const clienteId = await this.resolverClienteId(usuarioId);
 
     const [orden] = await this.db
       .select()
@@ -396,7 +451,9 @@ export class PagosService {
     // el backend. Nunca se confía en un monto mandado desde el frontend.
     const montoEnCentavos = Math.round(parseFloat(orden.total) * 100);
     if (montoEnCentavos <= 0) {
-      throw new BadRequestException('El total de la orden debe ser mayor a cero.');
+      throw new BadRequestException(
+        'El total de la orden debe ser mayor a cero.',
+      );
     }
 
     let paymentMethodId = dto.paymentMethodId;
@@ -415,7 +472,9 @@ export class PagosService {
         .limit(1);
 
       if (!guardado) {
-        throw new NotFoundException('Ese método de pago guardado no existe o no te pertenece.');
+        throw new NotFoundException(
+          'Ese método de pago guardado no existe o no te pertenece.',
+        );
       }
 
       paymentMethodId = guardado.stripePaymentMethodId;
@@ -441,7 +500,9 @@ export class PagosService {
         customer: stripeCustomerId,
         payment_method: paymentMethodId,
         confirm: !!paymentMethodId,
-        automatic_payment_methods: paymentMethodId ? undefined : { enabled: true },
+        automatic_payment_methods: paymentMethodId
+          ? undefined
+          : { enabled: true },
         off_session: !!stripeCustomerId,
         metadata: { ordenId: dto.ordenId, clienteId },
       },
@@ -473,7 +534,10 @@ export class PagosService {
       return;
     }
 
-    await this.db.update(ordenes).set({ estatus: 'pagada' }).where(eq(ordenes.id, ordenId));
+    await this.db
+      .update(ordenes)
+      .set({ estatus: 'pagada' })
+      .where(eq(ordenes.id, ordenId));
 
     await this.db.insert(pagos).values({
       ordenId,
@@ -493,19 +557,17 @@ export class PagosService {
         signature,
         process.env.STRIPE_WEBHOOK_SECRET as string,
       );
-    } catch (err: any) {
-      throw new BadRequestException(`Firma de webhook inválida: ${err.message}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'error desconocido';
+      throw new BadRequestException(`Firma de webhook inválida: ${message}`);
     }
 
     if (event.type === 'payment_intent.succeeded') {
-      await this.marcarOrdenComoPagada(event.data.object as Stripe.PaymentIntent);
+      await this.marcarOrdenComoPagada(event.data.object);
     }
 
     if (event.type === 'payment_intent.payment_failed') {
-      console.error(
-        'Pago fallido en Stripe:',
-        (event.data.object as Stripe.PaymentIntent).id,
-      );
+      console.error('Pago fallido en Stripe:', event.data.object.id);
     }
 
     return { received: true };
@@ -515,8 +577,11 @@ export class PagosService {
   // PERFILES DE FACTURACIÓN (REUSABLES)
   // ══════════════════════════════════════════════════════════════
 
-  async guardarPerfilFacturacion(dto: GuardarPerfilFacturacionDto) {
-    const clienteId = await this.resolverClienteId(dto.usuarioId);
+  async guardarPerfilFacturacion(
+    dto: GuardarPerfilFacturacionDto,
+    usuarioId: number,
+  ) {
+    const clienteId = await this.resolverClienteId(usuarioId);
 
     if (dto.esPrincipal) {
       await this.db
@@ -563,14 +628,23 @@ export class PagosService {
     const [perfil] = await this.db
       .select()
       .from(perfilesFacturacion)
-      .where(and(eq(perfilesFacturacion.id, id), eq(perfilesFacturacion.clienteId, clienteId)))
+      .where(
+        and(
+          eq(perfilesFacturacion.id, id),
+          eq(perfilesFacturacion.clienteId, clienteId),
+        ),
+      )
       .limit(1);
 
     if (!perfil) {
-      throw new NotFoundException('Ese perfil de facturación no existe o no te pertenece.');
+      throw new NotFoundException(
+        'Ese perfil de facturación no existe o no te pertenece.',
+      );
     }
 
-    await this.db.delete(perfilesFacturacion).where(eq(perfilesFacturacion.id, id));
+    await this.db
+      .delete(perfilesFacturacion)
+      .where(eq(perfilesFacturacion.id, id));
     return { success: true, message: 'Perfil de facturación eliminado.' };
   }
 
@@ -578,8 +652,8 @@ export class PagosService {
   // FACTURACIÓN (CFDI VÍA FACTURAPI)
   // ══════════════════════════════════════════════════════════════
 
-  async crearFactura(dto: CrearFacturaDto) {
-    const clienteId = await this.resolverClienteId(dto.usuarioId);
+  async crearFactura(dto: CrearFacturaDto, usuarioId: number) {
+    const clienteId = await this.resolverClienteId(usuarioId);
 
     const [orden] = await this.db
       .select()
@@ -594,7 +668,9 @@ export class PagosService {
       throw new BadRequestException('Esta orden no te pertenece.');
     }
     if (orden.estatus !== 'pagada') {
-      throw new BadRequestException('Solo se puede facturar una orden ya pagada.');
+      throw new BadRequestException(
+        'Solo se puede facturar una orden ya pagada.',
+      );
     }
 
     // Validación para evitar null en el total
@@ -609,7 +685,9 @@ export class PagosService {
       .limit(1);
 
     if (facturaExistente) {
-      throw new BadRequestException('Esta orden ya tiene una factura generada.');
+      throw new BadRequestException(
+        'Esta orden ya tiene una factura generada.',
+      );
     }
 
     // Resuelve los datos fiscales: o vienen de un perfil guardado, o
@@ -636,7 +714,9 @@ export class PagosService {
         .limit(1);
 
       if (!perfil) {
-        throw new NotFoundException('Ese perfil de facturación no existe o no te pertenece.');
+        throw new NotFoundException(
+          'Ese perfil de facturación no existe o no te pertenece.',
+        );
       }
 
       datosFiscales = perfil;
@@ -666,7 +746,7 @@ export class PagosService {
     const subtotal = +(total / 1.16).toFixed(2);
     const iva = +(total - subtotal).toFixed(2);
 
-    let facturapiInvoice: any;
+    let facturapiInvoice: Invoice;
     try {
       facturapiInvoice = await this.facturapi.invoices.create({
         customer: {
@@ -690,10 +770,11 @@ export class PagosService {
         use: datosFiscales.usoCfdi,
         payment_form: '31', // "Intermediario pagos" (cobro con tarjeta en línea vía pasarela)
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error de Facturapi al timbrar:', err);
+      const message = err instanceof Error ? err.message : 'error desconocido';
       throw new BadRequestException(
-        `No se pudo generar la factura: ${err.message || 'error desconocido de Facturapi'}`,
+        `No se pudo generar la factura: ${message || 'error desconocido de Facturapi'}`,
       );
     }
 
@@ -715,7 +796,7 @@ export class PagosService {
       .insert(facturas)
       .values({
         ordenId: dto.ordenId,
-        userId: dto.usuarioId,
+        userId: usuarioId,
         folioFiscal: facturapiInvoice.uuid ?? null,
         facturapiInvoiceId: facturapiInvoice.id,
         rfcReceptor: datosFiscales.rfc,
@@ -731,11 +812,11 @@ export class PagosService {
     return facturaGuardada;
   }
 
-  async obtenerFacturaPorOrden(ordenId: string) {
+  async obtenerFacturaPorOrden(ordenId: string, usuarioId: number) {
     const [factura] = await this.db
       .select()
       .from(facturas)
-      .where(eq(facturas.ordenId, ordenId))
+      .where(and(eq(facturas.ordenId, ordenId), eq(facturas.userId, usuarioId)))
       .limit(1);
 
     if (!factura) {
@@ -747,11 +828,17 @@ export class PagosService {
 
   // Descarga el PDF/XML bajo demanda directo de Facturapi (no guardamos
   // el archivo nosotros mismos, solo el ID de la factura en Facturapi).
-  async descargarFacturaArchivo(ordenId: string, tipo: 'pdf' | 'xml'): Promise<Buffer> {
-    const factura = await this.obtenerFacturaPorOrden(ordenId);
+  async descargarFacturaArchivo(
+    ordenId: string,
+    tipo: 'pdf' | 'xml',
+    usuarioId: number,
+  ): Promise<Buffer> {
+    const factura = await this.obtenerFacturaPorOrden(ordenId, usuarioId);
 
     if (!factura.facturapiInvoiceId) {
-      throw new BadRequestException('Esta factura no tiene un ID de Facturapi asociado.');
+      throw new BadRequestException(
+        'Esta factura no tiene un ID de Facturapi asociado.',
+      );
     }
 
     const archivo =
@@ -759,6 +846,6 @@ export class PagosService {
         ? await this.facturapi.invoices.downloadPdf(factura.facturapiInvoiceId)
         : await this.facturapi.invoices.downloadXml(factura.facturapiInvoiceId);
 
-    return Buffer.from(archivo as any);
+    return Buffer.from(archivo as unknown as Uint8Array);
   }
 }
