@@ -230,6 +230,20 @@ export class AuthService {
       .where(eq(users.id, userId));
   }
 
+  /** Usuario actual desde la BD (no el payload del token), sin tokenId ni campos sensibles. */
+  async getCurrentUser(userId: number): Promise<PublicUser> {
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId));
+
+    if (!user) {
+      throw new UnauthorizedException('Usuario no encontrado');
+    }
+
+    return toPublicUser(user);
+  }
+
   async signOut(userId: number): Promise<void> {
     await this.cacheService.delete(`user-${String(userId)}`);
   }

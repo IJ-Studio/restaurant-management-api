@@ -11,6 +11,7 @@ import { users } from '../database/schema/public.schema';
 import { eq } from 'drizzle-orm';
 import { InferSelectModel } from 'drizzle-orm';
 import { BcryptService } from '../auth/bcrypt.service';
+import { PublicUser, toPublicUser } from '../auth/auth.service';
 import { CreateUserDto } from 'src/users/dto/create-user.dto';
 import { ROLES } from '../common/constants/roles';
 
@@ -63,9 +64,10 @@ export class UsersService {
         .returning();
 
       // No devolver password
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password: _, ...userWithoutPassword } = newUser[0];
       return userWithoutPassword;
-    } catch (error) {
+    } catch {
       throw new BadRequestException('El email ya existe o hay un error');
     }
   }
@@ -81,10 +83,30 @@ export class UsersService {
     }
 
     const allUsers = await this.db.select().from(users);
-    return allUsers.map(({ password: _, ...user }) => user as Omit<User, 'password'>);
+    return allUsers.map(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      ({ password: _, ...user }) => user,
+    );
   }
 
-  async getUserById(id: number): Promise<User> {
+  /** Perfil público: solo el propio usuario o un admin. Nunca incluye el hash de la contraseña. */
+  async getPublicUserById(
+    id: number,
+    requesterId: number,
+  ): Promise<PublicUser> {
+    const requester = await this.findUserById(requesterId);
+
+    if (requesterId !== id && requester.roleId !== ROLES.ADMIN) {
+      throw new ForbiddenException('No tienes permisos para ver este usuario');
+    }
+
+    const user = requesterId === id ? requester : await this.findUserById(id);
+
+    return toPublicUser(user);
+  }
+
+  /** Uso interno del servicio: devuelve la fila completa, incluida la contraseña. */
+  private async findUserById(id: number): Promise<User> {
     const user = await this.db.select().from(users).where(eq(users.id, id));
 
     if (!user || user.length === 0) {
@@ -99,7 +121,7 @@ export class UsersService {
     updateData: Partial<User>,
     requesterId: number,
   ): Promise<Omit<User, 'password'>> {
-    const requester = await this.getUserById(requesterId);
+    const requester = await this.findUserById(requesterId);
 
     // Solo puede actualizar su propio perfil u otro si es admin
     if (requesterId !== id && requester.roleId !== ROLES.ADMIN) {
@@ -115,13 +137,14 @@ export class UsersService {
       .returning();
 
     const userRecord = updatedUser[0];
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _, ...userWithoutPassword } = userRecord;
-    return userWithoutPassword as Omit<User, 'password'>;
+    return userWithoutPassword;
   }
 
   //! ADMIN only
   async deleteUser(id: number, adminId: number): Promise<void> {
-    const admin = await this.getUserById(adminId);
+    const admin = await this.findUserById(adminId);
 
     if (admin.roleId !== ROLES.ADMIN) {
       throw new ForbiddenException(

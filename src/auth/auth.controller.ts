@@ -24,8 +24,10 @@ export class AuthController {
 
   // 👇 AGREGA ESTE ENDPOINT PARA RESPONDERLE AL AUTHPROVIDER
   @Get('me')
-  getMe(@ActiveUser() user: ActiveUserData) {
-    return { user };
+  async getMe(
+    @ActiveUser() user: ActiveUserData,
+  ): Promise<{ user: PublicUser }> {
+    return { user: await this.authService.getCurrentUser(parseInt(user.id)) };
   }
 
   // Frena el sondeo de correos registrados: 10 registros por minuto por IP (además del global).

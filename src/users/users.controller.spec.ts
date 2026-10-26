@@ -1,10 +1,11 @@
-import { INestApplication } from '@nestjs/common';
+import { ExecutionContext, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Server } from 'node:http';
 import request from 'supertest';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guards';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { REQUEST_USER_KEY } from '../common/constants';
 import { ROLES } from '../common/constants/roles';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
@@ -21,7 +22,7 @@ describe('UsersController', () => {
         {
           provide: UsersService,
           useValue: {
-            getUserById: jest.fn().mockResolvedValue(user),
+            getPublicUserById: jest.fn().mockResolvedValue(user),
             getAllUsers: jest.fn().mockResolvedValue([user]),
             createUser: jest.fn().mockResolvedValue(user),
             deleteUser: jest.fn().mockResolvedValue(undefined),
@@ -30,7 +31,20 @@ describe('UsersController', () => {
       ],
     })
       .overrideGuard(JwtAuthGuard)
-      .useValue({ canActivate: () => true })
+      .useValue({
+        canActivate: (context: ExecutionContext) => {
+          const req = context
+            .switchToHttp()
+            .getRequest<{ [REQUEST_USER_KEY]?: unknown }>();
+          req[REQUEST_USER_KEY] = {
+            id: '1',
+            email: 'ana@quijote.mx',
+            roleId: ROLES.CLIENTE,
+            tokenId: 'tok-1',
+          };
+          return true;
+        },
+      })
       .overrideGuard(RolesGuard)
       .useValue({ canActivate: () => true })
       .compile();
