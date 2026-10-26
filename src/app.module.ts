@@ -31,14 +31,16 @@ import { NotificationsModule } from './notifications/notifications.module';
       envFilePath: `.env`,
     }),
     // ─── BLINDAJE CONTRA PETICIONES MASIVAS (RATE LIMITING) ───
-    ThrottlerModule.forRoot([{
-      ttl: 60000, // 1 minuto (en milisegundos)
-      limit: 40,  // Máximo 40 peticiones por minuto por cada IP / Cliente
-    }]),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // 1 minuto (en milisegundos)
+        limit: 40, // Máximo 40 peticiones por minuto por cada IP / Cliente
+      },
+    ]),
     DatabaseModule,
     CacheModule,
     AuthModule,
-      PagosModule,
+    PagosModule,
     ReservationsModule,
     ScheduleModule.forRoot(),
     BackupsModule,
