@@ -142,6 +142,38 @@ describe('AuthService.SignUp', () => {
   });
 });
 
+describe('AuthService.getCurrentUser', () => {
+  function setupUser(rows: unknown[]) {
+    const db = {
+      select: () => ({
+        from: () => ({ where: jest.fn().mockResolvedValue(rows) }),
+      }),
+    };
+    return new AuthService(
+      db as never,
+      { secret: 's', accessTokenTtl: '3600' },
+      {} as BcryptService,
+      {} as JwtService,
+      {} as CacheService,
+    );
+  }
+
+  it('lee el usuario actual de la BD y no devuelve tokenId', async () => {
+    const result = await setupUser([dbUser]).getCurrentUser(7);
+
+    expect(result).toEqual(toPublicUser(dbUser));
+    expect(result).not.toHaveProperty('tokenId');
+  });
+
+  it('usuario inexistente → 401', async () => {
+    const error: unknown = await setupUser([])
+      .getCurrentUser(99)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(UnauthorizedException);
+  });
+});
+
 describe('toPublicUser', () => {
   it('quita los campos sensibles y conserva los demás', () => {
     expect(Object.keys(toPublicUser(dbUser)).sort()).toEqual(

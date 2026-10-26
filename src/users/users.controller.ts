@@ -55,8 +55,14 @@ export class UsersController {
   // ─── ENDPOINT PARA AUT COLLABORATION / ME ───
   @Get(':id')
   @UseGuards(JwtAuthGuard) // 👈 Agregado para validar el token que envía Next.js y obtener la data limpia
-  async getUserById(@Param('id', ParseIntPipe) id: number) {
-    return await this.usersService.getUserById(id);
+  async getUserById(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() request: RequestWithUser,
+  ) {
+    return await this.usersService.getPublicUserById(
+      id,
+      parseInt(request[REQUEST_USER_KEY].id),
+    );
   }
 
   @Patch(':id')
