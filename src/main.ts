@@ -4,16 +4,18 @@ import { NestFactory } from '@nestjs/core';
 import * as express from 'express';
 import { AppModule } from './app.module';
 import { origenesCors } from './common/config/cors';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   // app.useGlobalGuards(new ZenGuard());
   // CORS_ORIGINS (separados por comas); sin ella, los orígenes de siempre.
   app.enableCors({ origin: origenesCors() });
-    app.use('/pagos/webhook', express.raw({ type: 'application/json' }));
+  app.use('/pagos/webhook', express.raw({ type: 'application/json' }));
   app.use(express.json());
 
   await app.listen(process.env.PORT ?? 10000, '0.0.0.0');
 }
-bootstrap();
+void bootstrap();
