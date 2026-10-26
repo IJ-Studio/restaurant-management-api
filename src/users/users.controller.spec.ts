@@ -74,6 +74,28 @@ describe('UsersController', () => {
       .expect(user);
   });
 
+  it('GET /users sigue devolviendo un arreglo y agrega X-Next-Cursor si la página viene llena', async () => {
+    const page = [user, { ...user, id: 2 }];
+    service.getAllUsers.mockResolvedValueOnce(page);
+
+    const response = await request(app.getHttpServer() as Server)
+      .get('/users?limit=2')
+      .expect(200)
+      .expect(page);
+
+    expect(response.headers['x-next-cursor']).toBe('2');
+    expect(service.getAllUsers).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ limit: 2 }),
+    );
+  });
+
+  it('GET /users con limit inválido responde 400', async () => {
+    await request(app.getHttpServer() as Server)
+      .get('/users?limit=abc')
+      .expect(400);
+  });
+
   it('PATCH /users/:id solo actualiza el perfil y descarta roleId, password e isActive', async () => {
     await request(app.getHttpServer() as Server)
       .patch('/users/1')
