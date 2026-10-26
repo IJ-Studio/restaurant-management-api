@@ -61,7 +61,7 @@ function buildService(db: unknown, passwordOk: boolean) {
   const cache = { set: jest.fn().mockResolvedValue(undefined) };
   const service = new AuthService(
     db as never,
-    { secret: 'test-secret', accessTokenTtl: '3600' },
+    { secret: 'test-secret', accessTokenTtl: 3600 },
     bcrypt as never,
     jwt as never,
     cache as never,

@@ -132,7 +132,7 @@ describe('AuthService.SignUp', () => {
     };
     const service = new AuthService(
       db as never,
-      { secret: 's', accessTokenTtl: '3600' },
+      { secret: 's', accessTokenTtl: 3600 },
       { hash: jest.fn().mockResolvedValue(fila.password) } as never,
       {} as never,
       {} as never,
