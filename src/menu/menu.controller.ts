@@ -1,6 +1,15 @@
-import { Controller, Get, Query, Param, ParseIntPipe, Post, Body } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Query,
+  Param,
+  ParseIntPipe,
+  Post,
+  Body,
+} from '@nestjs/common';
 import { Public } from '../auth/decorators/public.decorator';
 import { MenuService } from './menu.service';
+import { CreateMenuOrderDto } from './dto/create-menu-order.dto';
 
 @Controller('menu')
 export class MenuController {
@@ -43,7 +52,7 @@ export class MenuController {
   // Vinculado a la ruta: POST /menu/orders
   @Public()
   @Post('orders')
-  async createOrder(@Body() orderData: any) {
+  async createOrder(@Body() orderData: CreateMenuOrderDto) {
     // Delegamos la lógica de negocio e inserción en la BD al servicio
     return await this.menuService.createOrderFromMenu(orderData);
   }

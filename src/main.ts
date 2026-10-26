@@ -4,10 +4,12 @@ import { NestFactory } from '@nestjs/core';
 import * as express from 'express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { createGlobalValidationPipe } from './common/config/validation.config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
   app.useGlobalFilters(new AllExceptionsFilter());
+  app.useGlobalPipes(createGlobalValidationPipe());
 
   // app.useGlobalGuards(new ZenGuard());
   app.enableCors({

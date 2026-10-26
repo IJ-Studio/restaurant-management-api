@@ -1,11 +1,17 @@
-import { Injectable, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import {
+  Injectable,
+  Inject,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { eq, type InferSelectModel } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 
 // 1. Importamos el Token correcto desde tus constantes
 import { DRIZZLE } from '../database/drizzle/constants';
 // 2. Importamos tus tablas de Drizzle mapeadas
 import * as schema from '../database/schema/public.schema';
+import { CreateMenuOrderDto } from './dto/create-menu-order.dto';
 
 @Injectable()
 export class MenuService {
@@ -47,11 +53,16 @@ export class MenuService {
         .from(schema.categoriasMenu)
         .leftJoin(
           schema.platillos,
-          eq(schema.platillos.categoriaId, schema.categoriasMenu.id)
+          eq(schema.platillos.categoriaId, schema.categoriasMenu.id),
         );
 
       // 2. Agrupamos en memoria los platillos dentro de sus respectivas categorías
-      const categoriasMap = new Map<number, any>();
+      type CategoriaConPlatillos = InferSelectModel<
+        typeof schema.categoriasMenu
+      > & {
+        platillos: InferSelectModel<typeof schema.platillos>[];
+      };
+      const categoriasMap = new Map<number, CategoriaConPlatillos>();
 
       for (const row of rows) {
         const catId = row.categoria.id;
@@ -64,15 +75,17 @@ export class MenuService {
         }
 
         if (row.platillo) {
-          categoriasMap.get(catId).platillos.push(row.platillo);
+          categoriasMap.get(catId)?.platillos.push(row.platillo);
         }
       }
 
       // Devuelve el array estructurado tal y como lo espera el Frontend
       return Array.from(categoriasMap.values());
-
     } catch (error) {
-      console.error('Error al compilar el menú estructurado mediante Join:', error);
+      console.error(
+        'Error al compilar el menú estructurado mediante Join:',
+        error,
+      );
       throw new BadRequestException('Error al compilar el menú estructurado.');
     }
   }
@@ -95,7 +108,9 @@ export class MenuService {
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
       console.error(`Error al obtener el platillo ${id}:`, error);
-      throw new BadRequestException('Error al procesar la solicitud del platillo.');
+      throw new BadRequestException(
+        'Error al procesar la solicitud del platillo.',
+      );
     }
   }
 
@@ -103,33 +118,43 @@ export class MenuService {
    * 🚀 Registra pedidos (En Mesa o Domicilio) en la Base de Datos
    * Garantiza la inserción atómica mediante una transacción de Drizzle ORM.
    */
-  async createOrderFromMenu(orderData: any) {
+  async createOrderFromMenu(orderData: CreateMenuOrderDto) {
     try {
       if (!orderData.productos || orderData.productos.length === 0) {
-        throw new BadRequestException('La orden debe contener al menos un platillo.');
+        throw new BadRequestException(
+          'La orden debe contener al menos un platillo.',
+        );
       }
 
       return await this.db.transaction(async (tx) => {
-
         // 1. Mapeamos cada producto para registrar la venta en la tabla 'ventas'
-        const ventasPromesas = orderData.productos.map((prod: any) => {
-          const totalPlatillo = (prod.cantidad * prod.precioUnitario).toFixed(2);
+        const ventasPromesas = orderData.productos.map((prod) => {
+          const totalPlatillo = (prod.cantidad * prod.precioUnitario).toFixed(
+            2,
+          );
 
-          return tx.insert(schema.ventas).values({
-            platilloId: prod.platilloId,
-            cantidad: prod.cantidad,
-            precioUnitario: prod.precioUnitario.toString(),
-            total: totalPlatillo.toString(),
-          }).returning({ id: schema.ventas.id });
+          return tx
+            .insert(schema.ventas)
+            .values({
+              platilloId: prod.platilloId,
+              cantidad: prod.cantidad,
+              precioUnitario: prod.precioUnitario.toString(),
+              total: totalPlatillo.toString(),
+            })
+            .returning({ id: schema.ventas.id });
         });
 
         const ventasInsertadas = await Promise.all(ventasPromesas);
 
         // Generamos un identificador de orden / folio amigable combinando el ID de la primera venta
-        const primerVentaId = ventasInsertadas[0]?.[0]?.id || Math.floor(1000 + Math.random() * 9000);
+        const primerVentaId =
+          ventasInsertadas[0]?.[0]?.id ||
+          Math.floor(1000 + Math.random() * 9000);
         const orderIdGenerado = parseInt(`2026${primerVentaId}`);
 
-        console.log(`[Pedido Interno] Tipo: ${orderData.tipoPedido} registrado exitosamente bajo control #${orderIdGenerado}`);
+        console.log(
+          `[Pedido Interno] Tipo: ${orderData.tipoPedido} registrado exitosamente bajo control #${orderIdGenerado}`,
+        );
 
         return {
           success: true,
@@ -140,7 +165,9 @@ export class MenuService {
     } catch (error) {
       console.error('Error crítico al guardar la orden en la BD:', error);
       if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException('Hubo un problema interno al guardar tu pedido. Intenta de nuevo.');
+      throw new BadRequestException(
+        'Hubo un problema interno al guardar tu pedido. Intenta de nuevo.',
+      );
     }
   }
 }
