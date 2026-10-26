@@ -28,9 +28,18 @@ const changePassword = {
   newPassword: 'Nueva#2026',
 };
 
-function setup(rows: unknown[][] = [], options: { compare?: boolean } = {}) {
-  const selectWhere = jest.fn();
-  for (const result of rows) selectWhere.mockResolvedValueOnce(result);
+function setup(
+  rows: unknown[][] = [],
+  options: { compare?: boolean; listRows?: unknown[] } = {},
+) {
+  const results = [...rows];
+  const listLimit = jest.fn().mockResolvedValue(options.listRows ?? []);
+  const listOrderBy = jest.fn().mockReturnValue({ limit: listLimit });
+  const selectWhere = jest.fn(() =>
+    Object.assign(Promise.resolve(results.shift() ?? []), {
+      orderBy: listOrderBy,
+    }),
+  );
 
   const returning = jest.fn().mockResolvedValue([row]);
   const updateWhere = jest.fn().mockReturnValue({ returning });
@@ -47,7 +56,7 @@ function setup(rows: unknown[][] = [], options: { compare?: boolean } = {}) {
   } as unknown as BcryptService;
   const service = new UsersService(db as never, bcrypt);
 
-  return { service, set, updateWhere, compare, hash, selectWhere };
+  return { service, set, updateWhere, compare, hash, selectWhere, listLimit };
 }
 
 describe('UsersService.getPublicUserById', () => {
@@ -87,6 +96,43 @@ describe('UsersService.getPublicUserById', () => {
 
     const error: unknown = await service
       .getPublicUserById(8, 7)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('UsersService.getAllUsers', () => {
+  const admin = { ...row, id: 1, roleId: ROLES.ADMIN };
+  const listed = [admin, { ...row, id: 8 }];
+
+  it('devuelve solo campos públicos, sin hash ni contadores', async () => {
+    const { service } = setup([[admin]], { listRows: listed });
+
+    const result = await service.getAllUsers(1, { limit: 50 });
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).not.toHaveProperty('password');
+    expect(result[0]).not.toHaveProperty('loginAttempts');
+    expect(JSON.stringify(result)).not.toContain('hashDeLaContrasena');
+  });
+
+  it('aplica el límite y el cursor', async () => {
+    const { service, listLimit, selectWhere } = setup([[admin]], {
+      listRows: [row],
+    });
+
+    await service.getAllUsers(1, { limit: 2, cursor: 7 });
+
+    expect(listLimit).toHaveBeenCalledWith(2);
+    expect(selectWhere).toHaveBeenCalledTimes(2);
+  });
+
+  it('un usuario que no es admin no puede listar → 403', async () => {
+    const { service } = setup([[row]]);
+
+    const error: unknown = await service
+      .getAllUsers(7, {})
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(ForbiddenException);

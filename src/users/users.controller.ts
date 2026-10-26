@@ -9,15 +9,22 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ChangeRoleDto } from './dto/change-role.dto';
+import {
+  GetUsersQueryDto,
+  USERS_DEFAULT_LIMIT,
+} from './dto/get-users-query.dto';
 import {
   createStrictValidationPipe,
   createWhitelistPipe,
@@ -54,9 +61,22 @@ export class UsersController {
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(ROLES.ADMIN)
-  async getAllUsers(@Req() request: RequestWithUser) {
+  async getAllUsers(
+    @Query(createWhitelistPipe()) query: GetUsersQueryDto,
+    @Req() request: RequestWithUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const admin = request[REQUEST_USER_KEY];
-    return await this.usersService.getAllUsers(parseInt(admin.id));
+    const users = await this.usersService.getAllUsers(
+      parseInt(admin.id),
+      query,
+    );
+
+    if (users.length === (query.limit ?? USERS_DEFAULT_LIMIT)) {
+      res.setHeader('X-Next-Cursor', String(users[users.length - 1].id));
+    }
+
+    return users;
   }
 
   // ─── ENDPOINT PARA AUT COLLABORATION / ME ───
