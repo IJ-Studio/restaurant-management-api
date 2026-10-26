@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 
 import { BcryptService } from '../auth/bcrypt.service';
 import { ROLES } from '../common/constants/roles';
@@ -22,17 +22,37 @@ const row = {
   createdAt: new Date('2026-10-01'),
 };
 
-function setup(...results: unknown[][]) {
-  const where = jest.fn();
-  for (const result of results) where.mockResolvedValueOnce(result);
-  const db = { select: () => ({ from: () => ({ where }) }) };
-  const service = new UsersService(db as never, {} as BcryptService);
-  return { service };
+const updateProfile = { name: 'Ana María', phone: '+525598765432' };
+const changePassword = {
+  currentPassword: 'Vieja#2026',
+  newPassword: 'Nueva#2026',
+};
+
+function setup(rows: unknown[][] = [], options: { compare?: boolean } = {}) {
+  const selectWhere = jest.fn();
+  for (const result of rows) selectWhere.mockResolvedValueOnce(result);
+
+  const returning = jest.fn().mockResolvedValue([row]);
+  const updateWhere = jest.fn().mockReturnValue({ returning });
+  const set = jest.fn().mockReturnValue({ where: updateWhere });
+  const db = {
+    select: () => ({ from: () => ({ where: selectWhere }) }),
+    update: () => ({ set }),
+  };
+  const compare = jest.fn().mockResolvedValue(options.compare ?? true);
+  const hash = jest.fn().mockResolvedValue('$2b$10$nuevoHash');
+  const bcrypt = {
+    compare,
+    hash,
+  } as unknown as BcryptService;
+  const service = new UsersService(db as never, bcrypt);
+
+  return { service, set, updateWhere, compare, hash, selectWhere };
 }
 
 describe('UsersService.getPublicUserById', () => {
   it('el propio usuario ve su perfil sin hash ni campos de seguridad', async () => {
-    const { service } = setup([row]);
+    const { service } = setup([[row]]);
 
     const result = await service.getPublicUserById(7, 7);
 
@@ -54,7 +74,7 @@ describe('UsersService.getPublicUserById', () => {
 
   it('un admin puede ver el perfil de otro usuario, sin hash', async () => {
     const admin = { ...row, id: 1, roleId: ROLES.ADMIN };
-    const { service } = setup([admin], [row]);
+    const { service } = setup([[admin], [row]]);
 
     const result = await service.getPublicUserById(7, 1);
 
@@ -63,12 +83,104 @@ describe('UsersService.getPublicUserById', () => {
   });
 
   it('un usuario normal no puede ver el perfil de otro → 403', async () => {
-    const { service } = setup([row]);
+    const { service } = setup([[row]]);
 
     const error: unknown = await service
       .getPublicUserById(8, 7)
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('UsersService.updateUser', () => {
+  it('solo escribe los campos del DTO de perfil', async () => {
+    const { service, set } = setup([[row]]);
+
+    const result = await service.updateUser(7, updateProfile, 7);
+
+    expect(set).toHaveBeenCalledWith(updateProfile);
+    expect(result).not.toHaveProperty('password');
+  });
+
+  it('un usuario normal no puede actualizar a otro → 403', async () => {
+    const { service } = setup([[row]]);
+
+    const error: unknown = await service
+      .updateUser(8, updateProfile, 7)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('UsersService.changePassword', () => {
+  it('hashea la nueva contraseña y limpia intentos y bloqueo', async () => {
+    const { service, set, compare, hash } = setup([[row]]);
+
+    await service.changePassword(7, changePassword, 7);
+
+    expect(compare).toHaveBeenCalledWith('Vieja#2026', row.password);
+    expect(hash).toHaveBeenCalledWith('Nueva#2026');
+    expect(set).toHaveBeenCalledWith({
+      password: '$2b$10$nuevoHash',
+      loginAttempts: 0,
+      loginLockUntil: 0,
+    });
+    const [payload] = set.mock.calls[0] as [Record<string, unknown>];
+    expect(JSON.stringify(payload)).not.toContain('Nueva#2026');
+  });
+
+  it('contraseña actual incorrecta → 400 y no actualiza', async () => {
+    const { service, set } = setup([[row]], { compare: false });
+
+    const error: unknown = await service
+      .changePassword(7, changePassword, 7)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('no puede cambiar la contraseña de otro usuario → 403', async () => {
+    const { service, selectWhere } = setup();
+
+    const error: unknown = await service
+      .changePassword(8, changePassword, 7)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ForbiddenException);
+    expect(selectWhere).not.toHaveBeenCalled();
+  });
+});
+
+describe('UsersService.changeRole', () => {
+  it('un admin cambia el rol y recibe el perfil sin hash', async () => {
+    const admin = { ...row, id: 1, roleId: ROLES.ADMIN };
+    const { service, set } = setup([[admin]], {});
+    set.mockReturnValue({
+      where: jest.fn().mockReturnValue({
+        returning: jest
+          .fn()
+          .mockResolvedValue([{ ...row, roleId: ROLES.MESERO }]),
+      }),
+    });
+
+    const result = await service.changeRole(7, ROLES.MESERO, 1);
+
+    expect(set).toHaveBeenCalledWith({ roleId: ROLES.MESERO });
+    expect(result.roleId).toBe(ROLES.MESERO);
+    expect(result).not.toHaveProperty('password');
+  });
+
+  it('un usuario que no es admin no puede cambiar roles → 403', async () => {
+    const { service, set } = setup([[row]]);
+
+    const error: unknown = await service
+      .changeRole(8, ROLES.MESERO, 7)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ForbiddenException);
+    expect(set).not.toHaveBeenCalled();
   });
 });
