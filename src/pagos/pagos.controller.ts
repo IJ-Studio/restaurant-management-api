@@ -1,7 +1,22 @@
-import {Controller,Post,Get,Put,Delete,Body,Query,Param,Req,Res,Headers,BadRequestException,} from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Headers,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  Res,
+} from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { SkipThrottle } from '@nestjs/throttler';
 import { PagosService } from './pagos.service';
 import { Public } from '../auth/decorators/public.decorator';
+import { ActiveUser } from '../auth/decorators/active-user.decorator';
+import type { ActiveUserData } from '../common/interfaces/active-user-data.interface';
 import {
   CrearDireccionDto,
   ActualizarDireccionDto,
@@ -17,132 +32,171 @@ export class PagosController {
 
   // ── DIRECCIONES ────────────────────────────────────────────────
 
-  @Public()
   @Post('direcciones')
-  async crearDireccion(@Body() dto: CrearDireccionDto) {
-    return await this.pagosService.crearDireccion(dto);
+  async crearDireccion(
+    @Body() dto: CrearDireccionDto,
+    @ActiveUser() user: ActiveUserData,
+  ) {
+    return await this.pagosService.crearDireccion(dto, Number(user.id));
   }
 
-  @Public()
   @Get('direcciones')
-  async listarDirecciones(@Query('usuarioId') usuarioId: string) {
-    if (!usuarioId) throw new BadRequestException('El parámetro usuarioId es requerido.');
-    return await this.pagosService.listarDirecciones(Number(usuarioId));
+  async listarDirecciones(@ActiveUser() user: ActiveUserData) {
+    return await this.pagosService.listarDirecciones(Number(user.id));
   }
 
-  @Public()
   @Put('direcciones/:id')
   async actualizarDireccion(
     @Param('id') id: string,
-    @Query('usuarioId') usuarioId: string,
+    @ActiveUser() user: ActiveUserData,
     @Body() dto: ActualizarDireccionDto,
   ) {
-    if (!usuarioId) throw new BadRequestException('El parámetro usuarioId es requerido.');
-    return await this.pagosService.actualizarDireccion(Number(id), Number(usuarioId), dto);
+    return await this.pagosService.actualizarDireccion(
+      Number(id),
+      Number(user.id),
+      dto,
+    );
   }
 
-  @Public()
   @Delete('direcciones/:id')
-  async eliminarDireccion(@Param('id') id: string, @Query('usuarioId') usuarioId: string) {
-    if (!usuarioId) throw new BadRequestException('El parámetro usuarioId es requerido.');
-    return await this.pagosService.eliminarDireccion(Number(id), Number(usuarioId));
+  async eliminarDireccion(
+    @Param('id') id: string,
+    @ActiveUser() user: ActiveUserData,
+  ) {
+    return await this.pagosService.eliminarDireccion(
+      Number(id),
+      Number(user.id),
+    );
   }
 
   // ── MÉTODOS DE PAGO GUARDADOS ────────────────────────────────────
 
-  @Public()
   @Post('metodos-pago/setup-intent')
-  async crearSetupIntent(@Body('usuarioId') usuarioId: number) {
-    if (!usuarioId) throw new BadRequestException('El parámetro usuarioId es requerido.');
-    return await this.pagosService.crearSetupIntent(usuarioId);
+  async crearSetupIntent(@ActiveUser() user: ActiveUserData) {
+    return await this.pagosService.crearSetupIntent(Number(user.id));
   }
 
-  @Public()
   @Post('metodos-pago')
-  async guardarMetodoPago(@Body() dto: GuardarMetodoPagoDto) {
-    return await this.pagosService.guardarMetodoPago(dto);
+  async guardarMetodoPago(
+    @Body() dto: GuardarMetodoPagoDto,
+    @ActiveUser() user: ActiveUserData,
+  ) {
+    return await this.pagosService.guardarMetodoPago(dto, Number(user.id));
   }
 
-  @Public()
   @Get('metodos-pago')
-  async listarMetodosPago(@Query('usuarioId') usuarioId: string) {
-    if (!usuarioId) throw new BadRequestException('El parámetro usuarioId es requerido.');
-    return await this.pagosService.listarMetodosPago(Number(usuarioId));
+  async listarMetodosPago(@ActiveUser() user: ActiveUserData) {
+    return await this.pagosService.listarMetodosPago(Number(user.id));
   }
 
-  @Public()
   @Delete('metodos-pago/:id')
-  async eliminarMetodoPago(@Param('id') id: string, @Query('usuarioId') usuarioId: string) {
-    if (!usuarioId) throw new BadRequestException('El parámetro usuarioId es requerido.');
-    return await this.pagosService.eliminarMetodoPago(id, Number(usuarioId));
+  async eliminarMetodoPago(
+    @Param('id') id: string,
+    @ActiveUser() user: ActiveUserData,
+  ) {
+    return await this.pagosService.eliminarMetodoPago(id, Number(user.id));
   }
 
   // ── PAGOS ─────────────────────────────────────────────────────
 
-  @Public()
   @Post('pagos/crear-intento')
-  async crearIntentoPago(@Body() dto: CrearIntentoPagoDto) {
-    return await this.pagosService.crearIntentoPago(dto);
+  async crearIntentoPago(
+    @Body() dto: CrearIntentoPagoDto,
+    @ActiveUser() user: ActiveUserData,
+  ) {
+    return await this.pagosService.crearIntentoPago(
+      dto,
+      Number(user.id),
+      user.roleId,
+    );
   }
 
   // IMPORTANTE: esta ruta necesita el body SIN parsear (raw) para poder
   // validar la firma de Stripe. Ver instrucciones de main.ts — por eso
   // aquí se usa @Req() en vez de @Body().
   @Public()
+  @SkipThrottle()
   @Post('pagos/webhook')
-  async webhookStripe(@Req() req: Request, @Headers('stripe-signature') signature: string) {
-    return await this.pagosService.manejarWebhookStripe(req.body, signature);
+  async webhookStripe(
+    @Req() req: Request,
+    @Headers('stripe-signature') signature: string,
+  ) {
+    return await this.pagosService.manejarWebhookStripe(
+      req.body as Buffer,
+      signature,
+    );
   }
 
   // ── PERFILES DE FACTURACIÓN ──────────────────────────────────
 
-  @Public()
   @Post('perfiles-facturacion')
-  async guardarPerfilFacturacion(@Body() dto: GuardarPerfilFacturacionDto) {
-    return await this.pagosService.guardarPerfilFacturacion(dto);
+  async guardarPerfilFacturacion(
+    @Body() dto: GuardarPerfilFacturacionDto,
+    @ActiveUser() user: ActiveUserData,
+  ) {
+    return await this.pagosService.guardarPerfilFacturacion(
+      dto,
+      Number(user.id),
+    );
   }
 
-  @Public()
   @Get('perfiles-facturacion')
-  async listarPerfilesFacturacion(@Query('usuarioId') usuarioId: string) {
-    if (!usuarioId) throw new BadRequestException('El parámetro usuarioId es requerido.');
-    return await this.pagosService.listarPerfilesFacturacion(Number(usuarioId));
+  async listarPerfilesFacturacion(@ActiveUser() user: ActiveUserData) {
+    return await this.pagosService.listarPerfilesFacturacion(Number(user.id));
   }
 
-  @Public()
   @Delete('perfiles-facturacion/:id')
-  async eliminarPerfilFacturacion(@Param('id') id: string, @Query('usuarioId') usuarioId: string) {
-    if (!usuarioId) throw new BadRequestException('El parámetro usuarioId es requerido.');
-    return await this.pagosService.eliminarPerfilFacturacion(id, Number(usuarioId));
+  async eliminarPerfilFacturacion(
+    @Param('id') id: string,
+    @ActiveUser() user: ActiveUserData,
+  ) {
+    return await this.pagosService.eliminarPerfilFacturacion(
+      id,
+      Number(user.id),
+    );
   }
 
   // ── FACTURACIÓN ───────────────────────────────────────────────
 
-  @Public()
   @Post('facturas')
-  async crearFactura(@Body() dto: CrearFacturaDto) {
-    return await this.pagosService.crearFactura(dto);
+  async crearFactura(
+    @Body() dto: CrearFacturaDto,
+    @ActiveUser() user: ActiveUserData,
+  ) {
+    return await this.pagosService.crearFactura(dto, Number(user.id));
   }
 
-  @Public()
   @Get('facturas/:ordenId')
-  async obtenerFactura(@Param('ordenId') ordenId: string) {
-    return await this.pagosService.obtenerFacturaPorOrden(ordenId);
+  async obtenerFactura(
+    @Param('ordenId') ordenId: string,
+    @ActiveUser() user: ActiveUserData,
+  ) {
+    return await this.pagosService.obtenerFacturaPorOrden(
+      ordenId,
+      Number(user.id),
+    );
   }
 
-  @Public()
   @Get('facturas/:ordenId/descargar')
   async descargarFactura(
     @Param('ordenId') ordenId: string,
     @Query('tipo') tipo: 'pdf' | 'xml' = 'pdf',
+    @ActiveUser() user: ActiveUserData,
     @Res() res: Response,
   ) {
-    const archivo = await this.pagosService.descargarFacturaArchivo(ordenId, tipo);
+    const archivo = await this.pagosService.descargarFacturaArchivo(
+      ordenId,
+      tipo,
+      Number(user.id),
+    );
     res.setHeader(
       'Content-Type',
       tipo === 'pdf' ? 'application/pdf' : 'application/xml',
     );
-    res.setHeader('Content-Disposition', `attachment; filename=factura-${ordenId}.${tipo}`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=factura-${ordenId}.${tipo}`,
+    );
     res.send(archivo);
   }
 }
