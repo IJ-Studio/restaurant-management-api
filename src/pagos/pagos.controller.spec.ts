@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { APP_GUARD, Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
+import { THROTTLER_SKIP } from '@nestjs/throttler/dist/throttler.constants';
 import { Test } from '@nestjs/testing';
 import { Server } from 'node:http';
 import request from 'supertest';
@@ -185,5 +186,14 @@ describe('PagosController (DT-03)', () => {
       .expect(201);
 
     expect(pagosService.manejarWebhookStripe).toHaveBeenCalled();
+  });
+
+  it('el webhook no está sujeto al ThrottlerGuard (NH-12)', () => {
+    const handler = Object.getOwnPropertyDescriptor(
+      PagosController.prototype,
+      'webhookStripe',
+    )?.value as object;
+
+    expect(Reflect.getMetadata(`${THROTTLER_SKIP}default`, handler)).toBe(true);
   });
 });
