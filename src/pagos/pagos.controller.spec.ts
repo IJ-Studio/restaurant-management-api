@@ -56,6 +56,7 @@ const protectedRoutes = [
 describe('PagosController (DT-03)', () => {
   let app: INestApplication;
   let token: string;
+  let cajeroToken: string;
 
   function call(method: string, path: string) {
     const server = app.getHttpServer() as Server;
@@ -77,6 +78,16 @@ describe('PagosController (DT-03)', () => {
       { secret: SECRET, expiresIn: 60 },
     );
     await cache.set('user-7', 'tok-7');
+    cajeroToken = await jwt.signAsync(
+      {
+        id: '8',
+        email: 'cajero@quijote.mx',
+        roleId: ROLES.CAJERO,
+        tokenId: 'tok-8',
+      },
+      { secret: SECRET, expiresIn: 60 },
+    );
+    await cache.set('user-8', 'tok-8');
 
     const moduleRef = await Test.createTestingModule({
       controllers: [PagosController],
@@ -136,6 +147,21 @@ describe('PagosController (DT-03)', () => {
     expect(pagosService.crearIntentoPago).toHaveBeenCalledWith(
       expect.objectContaining({ ordenId: 'orden-1' }),
       7,
+      ROLES.CLIENTE,
+    );
+  });
+
+  it('el cajero inicia el cobro con su rol del token (DT-16)', async () => {
+    await request(app.getHttpServer() as Server)
+      .post('/pagos/crear-intento')
+      .set('Authorization', `Bearer ${cajeroToken}`)
+      .send({ ordenId: 'orden-2' })
+      .expect(201);
+
+    expect(pagosService.crearIntentoPago).toHaveBeenCalledWith(
+      expect.objectContaining({ ordenId: 'orden-2' }),
+      8,
+      ROLES.CAJERO,
     );
   });
 
