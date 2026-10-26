@@ -8,7 +8,7 @@ import { DRIZZLE } from '../database/drizzle/constants';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../database/schema/public.schema';
 import { users } from '../database/schema/public.schema';
-import { eq } from 'drizzle-orm';
+import { asc, eq, gt } from 'drizzle-orm';
 import { InferSelectModel } from 'drizzle-orm';
 import { BcryptService } from '../auth/bcrypt.service';
 import { PublicUser, toPublicUser } from '../auth/auth.service';
@@ -16,6 +16,10 @@ import { CreateUserDto } from 'src/users/dto/create-user.dto';
 import { UpdateUserDto } from 'src/users/dto/update-user.dto';
 import { ChangePasswordDto } from 'src/users/dto/change-password.dto';
 import { ChangeRoleDto } from 'src/users/dto/change-role.dto';
+import {
+  GetUsersQueryDto,
+  USERS_DEFAULT_LIMIT,
+} from 'src/users/dto/get-users-query.dto';
 import { ROLES } from '../common/constants/roles';
 
 type User = InferSelectModel<typeof users>;
@@ -75,7 +79,10 @@ export class UsersService {
     }
   }
 
-  async getAllUsers(adminId: number): Promise<Omit<User, 'password'>[]> {
+  async getAllUsers(
+    adminId: number,
+    query: GetUsersQueryDto = {},
+  ): Promise<PublicUser[]> {
     const admin = await this.db
       .select()
       .from(users)
@@ -85,11 +92,17 @@ export class UsersService {
       throw new ForbiddenException('Solo administradores pueden ver usuarios');
     }
 
-    const allUsers = await this.db.select().from(users);
-    return allUsers.map(
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      ({ password: _, ...user }) => user,
-    );
+    const limit = query.limit ?? USERS_DEFAULT_LIMIT;
+    const allUsers = await this.db
+      .select()
+      .from(users)
+      .where(
+        query.cursor === undefined ? undefined : gt(users.id, query.cursor),
+      )
+      .orderBy(asc(users.id))
+      .limit(limit);
+
+    return allUsers.map(toPublicUser);
   }
 
   /** Perfil público: solo el propio usuario o un admin. Nunca incluye el hash de la contraseña. */
