@@ -60,6 +60,10 @@ type OrdenReciente = {
   table: string;
   status: string | null;
   total: number;
+  /** Hora de apertura en ISO 8601 (la app calcula tiempos de espera). */
+  openedAt: string | null;
+  /** Todos los platillos del pedido (cocina los necesita para preparar). */
+  items: Array<{ nombre: string; cantidad: number }>;
 };
 
 /** Mensaje seguro para un error de Postgres/Drizzle, sin exponer el objeto. */
@@ -731,6 +735,7 @@ export class OrdersService {
             ),
           time: ordenes.tiempoApertura,
           item: platillos.nombre,
+          cantidad: ordenItems.cantidad,
           table: mesas.numero,
           tipo: ordenes.tipo,
           status: ordenes.estatus,
@@ -744,7 +749,9 @@ export class OrdersService {
         .leftJoin(platillos, eq(ordenItems.platilloId, platillos.id))
         .where(
           and(
-            sql`${ordenes.estatus} NOT IN ('cancelada', 'completada', 'entregada')`,
+            // Activos = siguen en el restaurante: sin cancelados, completados ni pagados.
+            // "entregada" se queda porque falta cobrarla.
+            sql`${ordenes.estatus} NOT IN ('cancelada', 'completada', 'pagada')`,
             sql`${ordenes.tiempoApertura} >= ${inicioDia}`,
             sql`${ordenes.tiempoApertura} < ${finDia}`,
           ),
@@ -773,7 +780,14 @@ export class OrdersService {
                 : 'N/A',
             status: row.status,
             total: Number(row.total ?? 0),
+            openedAt: row.time ? new Date(row.time).toISOString() : null,
+            items: [],
           });
+        }
+        if (row.item) {
+          orderMap
+            .get(row.id)!
+            .items.push({ nombre: row.item, cantidad: row.cantidad ?? 1 });
         }
       }
 
