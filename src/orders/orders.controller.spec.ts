@@ -130,6 +130,7 @@ describe('OrdersController (DT-04)', () => {
     expect(ordersService.createOrderMesa).toHaveBeenCalledWith(
       expect.objectContaining({ mesa: '1' }),
       7,
+      ROLES.CLIENTE,
     );
   });
 
@@ -219,7 +220,7 @@ describe('OrdersController (DT-04)', () => {
       await server()
         .post(`/pedidos/${ORDEN}/cobrar`)
         .set('Authorization', `Bearer ${cajeroToken}`)
-        .send({ metodoPagoId: 1, monto: 1 })
+        .send({ metodoPagoId: 1, total: 1 })
         .expect(400);
       await server()
         .post(`/pedidos/${ORDEN}/cobrar`)

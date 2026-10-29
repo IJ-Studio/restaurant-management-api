@@ -7,6 +7,7 @@ import {
 import { DRIZZLE } from '../../src/database/drizzle/constants';
 import type { DrizzleDB } from '../../src/database/drizzle/drizzle.provider';
 import { eq, and, desc, inArray, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { CreateOrderMesaDto } from './dto/create-order-mesa.dto';
 import {
   ordenes,
@@ -55,6 +56,9 @@ type OrdenDomicilioAgrupada = {
 type OrdenReciente = {
   id: string;
   customer: string;
+  /** Mesero que levantó el pedido (vacío en pedidos del cliente desde la web). */
+  waiter: string | null;
+  guests: number;
   time: string;
   item: string;
   table: string;
@@ -65,6 +69,34 @@ type OrdenReciente = {
   /** Todos los platillos del pedido (cocina los necesita para preparar). */
   items: Array<{ nombre: string; cantidad: number }>;
 };
+
+type ItemPedido = {
+  platilloId: number;
+  cantidad: number;
+  notas?: string | null;
+};
+
+/** Datos del pedido que manda el personal desde la app (todos opcionales). */
+type DatosMesa = {
+  atendidoPor?: number;
+  numComensales?: number;
+  notasCocina?: string;
+};
+
+/**
+ * Esta ruta no tiene ValidationPipe (la web manda campos de más), así que los campos nuevos se
+ * limpian aquí: texto recortado y con tope, comensales entero entre 1 y 50.
+ */
+function texto(valor: unknown, max: number): string | undefined {
+  if (typeof valor !== 'string') return undefined;
+  const limpio = valor.trim().slice(0, max);
+  return limpio || undefined;
+}
+
+function comensales(valor: unknown): number | undefined {
+  const n = Number(valor);
+  return Number.isInteger(n) && n >= 1 && n <= 50 ? n : undefined;
+}
 
 /** Mensaje seguro para un error de Postgres/Drizzle, sin exponer el objeto. */
 function mensajeDeError(error: unknown): string {
@@ -173,12 +205,27 @@ export class OrdersService {
     return nuevoTotal.toString();
   }
 
-  async createOrderMesa(dto: CreateOrderMesaDto, usuarioId: number) {
-    const listaItems = dto.items?.length
-      ? dto.items
+  async createOrderMesa(
+    dto: CreateOrderMesaDto,
+    usuarioId: number,
+    roleId?: number,
+  ) {
+    const listaItems: ItemPedido[] = dto.items?.length
+      ? dto.items.map((i) => ({
+          platilloId: i.platilloId,
+          cantidad: i.cantidad,
+          notas: texto(i.notas, 200) ?? null,
+        }))
       : dto.platilloId
         ? [{ platilloId: dto.platilloId, cantidad: dto.cantidad ?? 1 }]
         : [];
+    // Si lo levanta el personal, queda registrado quién atendió la mesa (ventas por mesero).
+    const esPersonal = roleId !== undefined && STAFF_ROLES.includes(roleId);
+    const datosMesa: DatosMesa = {
+      atendidoPor: esPersonal ? usuarioId : undefined,
+      numComensales: comensales(dto.numComensales),
+      notasCocina: texto(dto.notasCocina, 500),
+    };
 
     if (!listaItems.length) {
       throw new BadRequestException('Debes especificar al menos un platillo.');
@@ -216,6 +263,7 @@ export class OrdersService {
         dto.mesa!,
         listaItems,
         platillosMap,
+        datosMesa,
       );
     } catch (error: unknown) {
       if (
@@ -240,8 +288,9 @@ export class OrdersService {
     clienteId: string,
     mesaDbId: number,
     mesaNumero: string,
-    listaItems: { platilloId: number; cantidad: number }[],
+    listaItems: ItemPedido[],
     platillosMap: Map<number, Platillo>,
+    datosMesa: DatosMesa = {},
   ) {
     const [ordenExistente] = await this.db
       .select()
@@ -259,6 +308,23 @@ export class OrdersService {
     let ordenId: string;
     if (ordenExistente) {
       ordenId = ordenExistente.id;
+      const cambios = {
+        ...(datosMesa.atendidoPor
+          ? { atendidoPor: datosMesa.atendidoPor }
+          : {}),
+        ...(datosMesa.numComensales
+          ? { numComensales: datosMesa.numComensales }
+          : {}),
+        ...(datosMesa.notasCocina
+          ? { notasCocina: datosMesa.notasCocina }
+          : {}),
+      };
+      if (Object.keys(cambios).length > 0) {
+        await this.db
+          .update(ordenes)
+          .set(cambios)
+          .where(eq(ordenes.id, ordenId));
+      }
     } else {
       const [nuevaOrden] = await this.db
         .insert(ordenes)
@@ -269,7 +335,9 @@ export class OrdersService {
           estatus: 'pendiente',
           subtotal: '0',
           total: '0',
-          numComensales: 1,
+          numComensales: datosMesa.numComensales ?? 1,
+          atendidoPor: datosMesa.atendidoPor ?? null,
+          notasCocina: datosMesa.notasCocina ?? null,
         })
         .returning();
       ordenId = nuevaOrden.id;
@@ -284,6 +352,9 @@ export class OrdersService {
       }
       const precioUnitario = parseFloat(platilloInfo.precio.toString());
 
+      // Mismo platillo con la misma nota se acumula; con otra nota va en su propia línea
+      // para que cocina vea "2 sin cebolla" y "1 normal" por separado.
+      const notas = item.notas ?? null;
       const [itemExistente] = await this.db
         .select()
         .from(ordenItems)
@@ -291,6 +362,9 @@ export class OrdersService {
           and(
             eq(ordenItems.ordenId, ordenId),
             eq(ordenItems.platilloId, item.platilloId),
+            notas === null
+              ? sql`${ordenItems.notas} IS NULL`
+              : eq(ordenItems.notas, notas),
           ),
         )
         .limit(1);
@@ -311,6 +385,7 @@ export class OrdersService {
           cantidad: item.cantidad,
           precioUnitario: precioUnitario.toString(),
           subtotal: (item.cantidad * precioUnitario).toString(),
+          notas,
         });
       }
     }
@@ -712,6 +787,7 @@ export class OrdersService {
   // NUEVO: Obtener órdenes recientes para administración
   // Dentro de la clase OrdersService
   async getRecentOrdersForAdmin(): Promise<OrdenReciente[]> {
+    const mesero = alias(users, 'mesero');
     try {
       // Fechas límite del día de hoy
       const hoy = new Date();
@@ -734,6 +810,10 @@ export class OrdersService {
               'customer',
             ),
           time: ordenes.tiempoApertura,
+          waiter: sql<
+            string | null
+          >`CONCAT(${mesero.name}, ' ', ${mesero.lastname})`.as('waiter'),
+          guests: ordenes.numComensales,
           item: platillos.nombre,
           cantidad: ordenItems.cantidad,
           table: mesas.numero,
@@ -744,6 +824,7 @@ export class OrdersService {
         .from(ordenes)
         .leftJoin(clientes, eq(ordenes.clienteId, clientes.id))
         .leftJoin(users, eq(clientes.userId, users.id))
+        .leftJoin(mesero, eq(ordenes.atendidoPor, mesero.id))
         .leftJoin(mesas, eq(ordenes.mesaId, mesas.id))
         .leftJoin(ordenItems, eq(ordenes.id, ordenItems.ordenId))
         .leftJoin(platillos, eq(ordenItems.platilloId, platillos.id))
@@ -766,6 +847,8 @@ export class OrdersService {
           orderMap.set(row.id, {
             id: row.id,
             customer: row.customer || 'Sin cliente',
+            waiter: row.waiter?.trim() || null,
+            guests: row.guests ?? 1,
             time: row.time
               ? new Date(row.time).toLocaleTimeString('es-MX', {
                   hour: '2-digit',

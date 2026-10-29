@@ -27,6 +27,7 @@ function setup(results: unknown[]) {
       'leftJoin',
       'orderBy',
       'returning',
+      'for',
     ]) {
       chain[method] = jest.fn(() => chain);
     }
@@ -257,11 +258,20 @@ describe('OrderWorkflowService', () => {
   });
 
   describe('cobrar', () => {
-    it('en efectivo calcula el cambio, cierra el pedido y registra el pago', async () => {
+    // Orden de las consultas: pedido, método y, dentro de la transacción: pedido bloqueado,
+    // suma de pagos previos, insert del pago y update del pedido.
+    const cobrable = (overrides = {}) => [
+      orden({ estatus: 'entregada', ...overrides }),
+    ];
+    const sinPagos = [{ pagado: '0', propinas: '0' }];
+
+    it('en efectivo cobra todo lo que falta, calcula el cambio y cierra el pedido', async () => {
       const { service, writes } = setup([
-        [orden({ estatus: 'entregada' })],
+        cobrable(),
         [efectivo],
-        [{ id: 'orden-1' }],
+        cobrable(),
+        sinPagos,
+        [],
         [],
       ]);
 
@@ -277,10 +287,9 @@ describe('OrderWorkflowService', () => {
         propina: '20.00',
         totalCobrado: '235.00',
         cambio: '65.00',
-      });
-      expect(writes.set[0]).toMatchObject({
-        estatus: 'pagada',
-        propina: '20.00',
+        pagado: '215.00',
+        restante: '0.00',
+        cerrada: true,
       });
       expect(writes.values[0]).toMatchObject({
         ordenId: 'orden-1',
@@ -291,34 +300,90 @@ describe('OrderWorkflowService', () => {
         cobradoPor: 5,
         estatus: 'completado',
       });
+      expect(writes.set[0]).toMatchObject({
+        estatus: 'pagada',
+        propina: '20.00',
+      });
     });
 
-    it('con terminal no pide efectivo y guarda la referencia', async () => {
+    it('cuenta separada: cobra una parte, deja el pedido abierto y guarda para quién es', async () => {
       const { service, writes } = setup([
-        [orden()],
+        cobrable(),
         [terminal],
-        [{ id: 'orden-1' }],
+        cobrable(),
+        sinPagos,
+        [],
+        [],
+      ]);
+
+      const result = await service.cobrar(
+        'orden-1',
+        { metodoPagoId: 2, monto: 100, propina: 10, etiqueta: ' Persona 1 ' },
+        5,
+      );
+
+      expect(result).toMatchObject({
+        total: '100.00',
+        totalCobrado: '110.00',
+        pagado: '100.00',
+        restante: '115.00',
+        cerrada: false,
+        message: 'Pago registrado. Faltan $115.00 por cobrar.',
+      });
+      expect(writes.values[0]).toMatchObject({
+        monto: '100.00',
+        referencia: 'Persona 1',
+      });
+      // No cambia el estatus: solo acumula la propina.
+      expect(writes.set[0]).toEqual({
+        propina: '10.00',
+        actualizadoEn: expect.any(String) as unknown,
+      });
+    });
+
+    it('el último pago de la cuenta separada cierra el pedido y suma las propinas', async () => {
+      const { service, writes } = setup([
+        cobrable(),
+        [terminal],
+        cobrable(),
+        [{ pagado: '100.00', propinas: '10.00' }],
+        [],
         [],
       ]);
 
       await expect(
-        service.cobrar(
-          'orden-1',
-          { metodoPagoId: 2, referencia: ' AUT-123 ' },
-          5,
-        ),
-      ).resolves.toMatchObject({ cambio: '0.00', totalCobrado: '215.00' });
-      expect(writes.values[0]).toMatchObject({
-        referencia: 'AUT-123',
-        propina: '0.00',
+        service.cobrar('orden-1', { metodoPagoId: 2, propina: 5 }, 5),
+      ).resolves.toMatchObject({
+        total: '115.00',
+        restante: '0.00',
+        cerrada: true,
       });
+      expect(writes.set[0]).toMatchObject({
+        estatus: 'pagada',
+        propina: '15.00',
+      });
+    });
+
+    it('no deja cobrar más de lo que falta', async () => {
+      const { service, writes } = setup([
+        cobrable(),
+        [terminal],
+        cobrable(),
+        [{ pagado: '200.00', propinas: '0' }],
+      ]);
+      await expect(
+        service.cobrar('orden-1', { metodoPagoId: 2, monto: 20 }, 5),
+      ).rejects.toThrow('El monto excede lo que falta por cobrar ($15.00).');
+      expect(writes.values).toHaveLength(0);
     });
 
     it('si el método no acepta propina, no la suma', async () => {
       const { service } = setup([
-        [orden()],
+        cobrable(),
         [{ ...terminal, aplicaPropina: false }],
-        [{ id: 'orden-1' }],
+        cobrable(),
+        sinPagos,
+        [],
         [],
       ]);
       await expect(
@@ -329,13 +394,33 @@ describe('OrderWorkflowService', () => {
       });
     });
 
+    it('con terminal guarda la referencia', async () => {
+      const { service, writes } = setup([
+        cobrable(),
+        [terminal],
+        cobrable(),
+        sinPagos,
+        [],
+        [],
+      ]);
+      await service.cobrar(
+        'orden-1',
+        { metodoPagoId: 2, referencia: ' AUT-123 ' },
+        5,
+      );
+      expect(writes.values[0]).toMatchObject({
+        referencia: 'AUT-123',
+        propina: '0.00',
+      });
+    });
+
     it('en efectivo exige lo recibido y que alcance', async () => {
-      const sinMonto = setup([[orden()], [efectivo]]);
+      const sinMonto = setup([cobrable(), [efectivo], cobrable(), sinPagos]);
       await expect(
         sinMonto.service.cobrar('orden-1', { metodoPagoId: 1 }, 5),
       ).rejects.toThrow('Indica con cuánto pagó el cliente.');
 
-      const noAlcanza = setup([[orden()], [efectivo]]);
+      const noAlcanza = setup([cobrable(), [efectivo], cobrable(), sinPagos]);
       await expect(
         noAlcanza.service.cobrar(
           'orden-1',
@@ -345,7 +430,7 @@ describe('OrderWorkflowService', () => {
       ).rejects.toThrow('faltan $15.00');
     });
 
-    it('un pedido pagado → 409; uno pendiente o cancelado → 400', async () => {
+    it('un pedido pagado → 409; uno pendiente → 400; total en cero o método inválido → 400', async () => {
       await expect(
         setup([[orden({ estatus: 'pagada' })]]).service.cobrar(
           'orden-1',
@@ -360,9 +445,6 @@ describe('OrderWorkflowService', () => {
           5,
         ),
       ).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it('un total en cero o un método inválido → 400', async () => {
       await expect(
         setup([[orden({ total: '0' })]]).service.cobrar(
           'orden-1',
@@ -371,7 +453,7 @@ describe('OrderWorkflowService', () => {
         ),
       ).rejects.toThrow('mayor a cero');
       await expect(
-        setup([[orden()], []]).service.cobrar(
+        setup([cobrable(), []]).service.cobrar(
           'orden-1',
           { metodoPagoId: 99 },
           5,
@@ -379,18 +461,32 @@ describe('OrderWorkflowService', () => {
       ).rejects.toThrow('método de pago válido');
       await expect(
         setup([
-          [orden()],
+          cobrable(),
           [{ ...terminal, nombre: 'Tarjeta en línea (Stripe)' }],
         ]).service.cobrar('orden-1', { metodoPagoId: 3 }, 5),
       ).rejects.toThrow('método de pago válido');
     });
 
-    it('si otra caja lo cobró al mismo tiempo → 409 y no registra un segundo pago', async () => {
-      const { service, writes } = setup([[orden()], [terminal], []]);
+    it('si otra caja lo cerró mientras tanto → 409 y no registra un segundo pago', async () => {
+      const cerrada = setup([
+        cobrable(),
+        [terminal],
+        [orden({ estatus: 'pagada' })],
+      ]);
       await expect(
-        service.cobrar('orden-1', { metodoPagoId: 2 }, 5),
-      ).rejects.toBeInstanceOf(ConflictException);
-      expect(writes.values).toHaveLength(0);
+        cerrada.service.cobrar('orden-1', { metodoPagoId: 2 }, 5),
+      ).rejects.toThrow('Este pedido ya fue cobrado.');
+      const cubierta = setup([
+        cobrable(),
+        [terminal],
+        cobrable(),
+        [{ pagado: '215.00', propinas: '0' }],
+      ]);
+      await expect(
+        cubierta.service.cobrar('orden-1', { metodoPagoId: 2 }, 5),
+      ).rejects.toThrow('Este pedido ya quedó cubierto.');
+      expect(cerrada.writes.values).toHaveLength(0);
+      expect(cubierta.writes.values).toHaveLength(0);
     });
   });
 });
