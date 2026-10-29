@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -13,7 +14,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { OrdersService, type OrderRequester } from './orders.service';
+import { OrderWorkflowService } from './order-workflow.service';
 import { CreateOrderMesaDto } from './dto/create-order-mesa.dto';
+import { ChargeOrderDto } from './dto/charge-order.dto';
+import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { createStrictValidationPipe } from '../common/config/validation.config';
 import type { Response, Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guards';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -24,7 +29,10 @@ import type { ActiveUserData } from '../common/interfaces/active-user-data.inter
 
 @Controller('pedidos')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly workflow: OrderWorkflowService,
+  ) {}
 
   private requester(user: ActiveUserData): OrderRequester {
     return { id: Number(user.id), roleId: user.roleId };
@@ -95,9 +103,10 @@ export class OrdersController {
     return await this.ordersService.cancelarOrden(id, this.requester(user));
   }
 
-  // NUEVO: Endpoint para el panel de administración (solo admin)
+  // Pedidos activos del día: panel de administración y app móvil del personal
+  // (cajero, mesero y cocina los consultan en la pestaña Pedidos). Solo lectura.
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(ROLES.ADMIN)
+  @Roles(ROLES.ADMIN, ROLES.CAJERO, ROLES.MESERO, ROLES.COCINA)
   @Get('admin/recent')
   async getRecentOrdersForAdmin() {
     return await this.ordersService.getRecentOrdersForAdmin();
@@ -125,5 +134,52 @@ export class OrdersController {
     req.on('close', () => {
       clearInterval(interval);
     });
+  }
+
+  // ── App móvil del personal: flujo del pedido en el restaurante ──────────────
+
+  // Métodos con los que caja puede cobrar (sin la pasarela en línea).
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(ROLES.ADMIN, ROLES.CAJERO)
+  @Get('metodos-pago')
+  async listarMetodosPago() {
+    return await this.workflow.listarMetodosPago();
+  }
+
+  // Cocina: abierta → en_preparacion → lista. Piso: lista → entregada.
+  // El servicio valida el paso y el rol.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(ROLES.ADMIN, ROLES.CAJERO, ROLES.MESERO, ROLES.COCINA)
+  @Patch(':id/estatus')
+  async cambiarEstatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(createStrictValidationPipe()) dto: UpdateOrderStatusDto,
+    @ActiveUser() user: ActiveUserData,
+  ) {
+    return await this.workflow.cambiarEstatus(
+      id,
+      dto.estatus,
+      this.requester(user),
+    );
+  }
+
+  // Cobro en caja (efectivo o terminal física). El monto sale de la orden.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(ROLES.ADMIN, ROLES.CAJERO)
+  @Post(':id/cobrar')
+  async cobrar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(createStrictValidationPipe()) dto: ChargeOrderDto,
+    @ActiveUser() user: ActiveUserData,
+  ) {
+    return await this.workflow.cobrar(id, dto, Number(user.id));
+  }
+
+  // Detalle de un pedido. Va al final: `:id` no debe capturar las rutas fijas de arriba.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(ROLES.ADMIN, ROLES.CAJERO, ROLES.MESERO, ROLES.COCINA)
+  @Get(':id')
+  async obtenerDetalle(@Param('id', ParseUUIDPipe) id: string) {
+    return await this.workflow.obtenerDetalle(id);
   }
 }
