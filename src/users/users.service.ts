@@ -256,4 +256,19 @@ export class UsersService {
       .set({ isActive: false })
       .where(eq(users.id, id));
   }
+
+  //! ADMIN only: deshace la baja lógica de deleteUser.
+  async reactivateUser(id: number, adminId: number): Promise<void> {
+    const admin = await this.findUserById(adminId);
+    if (admin.roleId !== ROLES.ADMIN) {
+      throw new ForbiddenException(
+        'Solo administradores pueden reactivar usuarios',
+      );
+    }
+    await this.findUserById(id);
+    await this.db
+      .update(users)
+      .set({ isActive: true, loginAttempts: 0, loginLockUntil: 0 })
+      .where(eq(users.id, id));
+  }
 }

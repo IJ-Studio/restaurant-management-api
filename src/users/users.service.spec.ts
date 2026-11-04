@@ -285,3 +285,30 @@ describe('UsersService.changeRole', () => {
     expect(set).not.toHaveBeenCalled();
   });
 });
+
+describe('UsersService.reactivateUser', () => {
+  const admin = { ...row, id: 1, roleId: ROLES.ADMIN };
+
+  it('reactiva y desbloquea la cuenta (deshace la baja lógica)', async () => {
+    const { service, set } = setup([[admin], [{ ...row, isActive: false }]]);
+
+    await service.reactivateUser(7, 1);
+
+    expect(set).toHaveBeenCalledWith({
+      isActive: true,
+      loginAttempts: 0,
+      loginLockUntil: 0,
+    });
+  });
+
+  it('solo un administrador puede reactivar → 403', async () => {
+    const { service, set } = setup([[{ ...row, id: 3, roleId: ROLES.CAJERO }]]);
+
+    const error: unknown = await service
+      .reactivateUser(7, 3)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ForbiddenException);
+    expect(set).not.toHaveBeenCalled();
+  });
+});

@@ -160,7 +160,13 @@ describe('UsersController', () => {
     expect(service.deleteUser).toHaveBeenCalledWith(2, 1);
   });
 
-  it.each(['createUser', 'getAllUsers', 'deleteUser', 'changeRole'])(
+  it.each([
+    'createUser',
+    'getAllUsers',
+    'deleteUser',
+    'reactivateUser',
+    'changeRole',
+  ])(
     '%s exige el rol admin (ROLES.ADMIN, no el número mágico 1)',
     (method) => {
       const handler = Object.getOwnPropertyDescriptor(
