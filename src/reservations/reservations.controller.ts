@@ -42,8 +42,10 @@ export class ReservationsController {
     return await this.reservationsService.createReservation(createReservationDto);
   }
 
+  // El personal de piso necesita ver las reservaciones del día (app móvil, HU-04);
+  // el detalle y la edición siguen siendo solo del Admin.
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(ROLES.ADMIN)
+  @Roles(ROLES.ADMIN, ROLES.CAJERO, ROLES.MESERO)
   @Get()
   async findAll(
     @Query('fechaDesde') fechaDesde?: string,
