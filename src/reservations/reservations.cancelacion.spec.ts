@@ -35,11 +35,12 @@ describe('PATCH /reservations/:id: motivo de cancelación (Prioridad 3.3)', () =
       { estatus: 'cancelada', motivoCancelacion: 'EL CLIENTE LLAMÓ' },
       4,
     );
-    expect(set.mock.calls[0][0]).toMatchObject({
+    const [[cambios]] = set.mock.calls as [[Record<string, unknown>]];
+    expect(cambios).toMatchObject({
       estatus: 'cancelada',
       motivoCancelacion: 'EL CLIENTE LLAMÓ',
       canceladoPor: 4,
-      canceladoEn: expect.any(String),
+      canceladoEn: expect.any(String) as unknown,
     });
   });
 
