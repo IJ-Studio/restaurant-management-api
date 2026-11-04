@@ -177,6 +177,8 @@ export class OperationsService {
         category: inventarioProductos.category,
         unit: inventarioProductos.unit,
         stock: inventarioProductos.stock,
+        // Aditivo (web, cocina): el mínimo para marcar existencias bajas. La móvil ignora el campo.
+        minStock: inventarioProductos.minStock,
         costPerUnit: inventarioProductos.costPerUnit,
       })
       .from(inventarioProductos)
