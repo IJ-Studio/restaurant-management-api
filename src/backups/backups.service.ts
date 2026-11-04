@@ -5,7 +5,7 @@ import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../database/schema';
 import { backups } from '../database/schema';
 import { GoogleDriveService } from './google-drive.service';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 
 @Injectable()
 export class BackupsService {
@@ -18,22 +18,40 @@ export class BackupsService {
 
   // ── Exporta todas las tablas a JSON ────────────────────────────────────────
   private async exportAllTables() {
-    const [roles, users] = await Promise.all([
-      this.db.select().from(schema.roles),
-      this.db.select().from(schema.users),
-    ]);
+    const tableNamesResult = await this.db.execute<{ table_name: string }>(
+      sql`
+        select table_name
+        from information_schema.tables
+        where table_schema = ${'public'}
+          and table_type = 'BASE TABLE'
+        order by table_name
+      `,
+    );
 
-    // Sanitiza passwords del backup
-    const safeUsers = users.map(({ ...rest }) => rest);
+    const tables: Record<string, { count: number; data: unknown[] }> = {};
 
-    return {
-      exportedAt: new Date().toISOString(),
-      version: '1.0',
-      tables: {
-        roles: { count: roles.length, data: roles },
-        users: { count: safeUsers.length, data: safeUsers },
-      },
-    };
+    const tableNames = tableNamesResult as unknown as Array<{
+      table_name: string;
+    }>;
+
+    for (const { table_name } of tableNames) {
+      const rowsResult = await this.db.execute<Record<string, unknown>>(
+        sql`select * from ${sql.identifier('public')}.${sql.identifier(table_name)}`,
+      );
+      const rows = rowsResult as unknown as Array<Record<string, unknown>>;
+
+      const data =
+        table_name === 'users'
+          ? rows.map(({ password, ...rest }) => rest)
+          : rows;
+
+      tables[table_name] = {
+        count: Array.isArray(data) ? data.length : 0,
+        data: (Array.isArray(data) ? data : []) as unknown[],
+      };
+    }
+
+    return { exportedAt: new Date().toISOString(), version: '1.0', tables };
   }
 
   // ── Crear backup (manual o auto) ────────────────────────────────────────────
@@ -44,7 +62,11 @@ export class BackupsService {
     try {
       // 1. Exportar datos
       const data = await this.exportAllTables();
-      const json = JSON.stringify(data, null, 2);
+      const json = JSON.stringify(
+        data,
+        (_, value) => (typeof value === 'bigint' ? value.toString() : value),
+        2,
+      );
       const sizeBytes = Buffer.byteLength(json, 'utf-8');
       const rowCount = Object.values(data.tables).reduce(
         (sum, t) => sum + t.count,
