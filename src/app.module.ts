@@ -23,6 +23,8 @@ import { PredictiveDemandModule } from './predictive-demand/predictive-demand.mo
 import { PayrollModule } from './payroll/payroll.module';
 import { DashboardModule } from './roles/dashboard.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { ReportesProblemasModule } from './reportes-problemas/reportes-problemas.module';
+import { ImagenesModule } from './imagenes/imagenes.module';
 
 @Module({
   imports: [
@@ -59,6 +61,8 @@ import { NotificationsModule } from './notifications/notifications.module';
     PredictiveDemandModule,
     PayrollModule,
     NotificationsModule,
+    ReportesProblemasModule,
+    ImagenesModule,
   ],
   controllers: [],
   providers: [
