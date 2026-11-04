@@ -1,5 +1,16 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { sql } from 'drizzle-orm';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { eq, sql } from 'drizzle-orm';
+import {
+  ETIQUETAS_PLATILLO,
+  type ActualizarPlatilloDto,
+  type CrearPlatilloDto,
+} from './dto/platillo.dto';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { DRIZZLE } from '../database/drizzle/constants';
 import * as schema from '../database/schema/public.schema';
@@ -116,8 +127,16 @@ export class PlatillosService {
           : null;
       if (!keyColumn || !nameColumn) return null;
 
-      const iconColumn = cols.has('icono') ? 'icono' : cols.has('icon') ? 'icon' : undefined;
-      const orderColumn = cols.has('orden') ? 'orden' : cols.has('order') ? 'order' : undefined;
+      const iconColumn = cols.has('icono')
+        ? 'icono'
+        : cols.has('icon')
+          ? 'icon'
+          : undefined;
+      const orderColumn = cols.has('orden')
+        ? 'orden'
+        : cols.has('order')
+          ? 'order'
+          : undefined;
       const activeColumn = cols.has('activa')
         ? 'activa'
         : cols.has('is_active')
@@ -157,7 +176,9 @@ export class PlatillosService {
         order by table_name
       `,
     );
-    const candidates = candidatesResult as unknown as Array<{ table_name: string }>;
+    const candidates = candidatesResult as unknown as Array<{
+      table_name: string;
+    }>;
 
     for (const row of candidates) {
       const tableName = row.table_name;
@@ -605,6 +626,76 @@ export class PlatillosService {
 
     return rowsResult as unknown as Array<Record<string, unknown>>;
   }
+
+  /** Alta de un platillo desde la carta del admin (D-31). */
+  async crear(dto: CrearPlatilloDto): Promise<{ id: number }> {
+    const [fila] = await this.db
+      .insert(schema.platillos)
+      .values({
+        categoriaId: dto.categoria_id,
+        ...columnasDe(dto),
+        nombre: dto.nombre.trim(),
+        precio: String(dto.precio),
+      })
+      .returning({ id: schema.platillos.id });
+    return { id: fila.id };
+  }
+
+  /** Edición parcial: solo cambian los campos que llegan (agotar u ofrecer manda solo `disponible`). */
+  async actualizar(
+    id: number,
+    dto: ActualizarPlatilloDto,
+  ): Promise<{ success: true }> {
+    const cambios = columnasDe(dto);
+    if (Object.keys(cambios).length === 0)
+      throw new BadRequestException('No hay cambios que guardar.');
+    const filas = await this.db
+      .update(schema.platillos)
+      .set({ ...cambios, actualizadoEn: sql`now()` })
+      .where(eq(schema.platillos.id, id))
+      .returning({ id: schema.platillos.id });
+    if (filas.length === 0)
+      throw new NotFoundException('El platillo no existe.');
+    return { success: true };
+  }
+
+  /** Borrado definitivo; si algún pedido lo usa, 409: se agota en lugar de borrarse. */
+  async eliminar(id: number): Promise<{ success: true }> {
+    try {
+      const filas = await this.db
+        .delete(schema.platillos)
+        .where(eq(schema.platillos.id, id))
+        .returning({ id: schema.platillos.id });
+      if (filas.length === 0)
+        throw new NotFoundException('El platillo no existe.');
+    } catch (error: unknown) {
+      if ((error as { code?: string })?.code === '23503') {
+        throw new ConflictException(
+          'Este platillo ya está en pedidos: agótalo en lugar de eliminarlo.',
+        );
+      }
+      throw error;
+    }
+    return { success: true };
+  }
+}
+
+/** Del DTO (nombres de la web) a las columnas de Drizzle; solo lo que llegó. */
+function columnasDe(dto: ActualizarPlatilloDto) {
+  const c: Partial<typeof schema.platillos.$inferInsert> = {};
+  if (dto.nombre !== undefined) c.nombre = dto.nombre.trim();
+  if (dto.descripcion_corta !== undefined)
+    c.descripcionCorta = dto.descripcion_corta.trim();
+  if (dto.precio !== undefined) c.precio = String(dto.precio);
+  if (dto.disponible !== undefined) c.disponible = dto.disponible;
+  if (dto.tiempo_preparacion !== undefined)
+    c.tiempoPreparacion = dto.tiempo_preparacion;
+  if (dto.imagen_url !== undefined) c.imagenUrl = dto.imagen_url;
+  if (dto.tags !== undefined) {
+    for (const [etiqueta, columna] of Object.entries(ETIQUETAS_PLATILLO))
+      c[columna] = dto.tags.includes(etiqueta);
+  }
+  return c;
 }
 
 const DB_DEFAULT = Symbol('db_default');
