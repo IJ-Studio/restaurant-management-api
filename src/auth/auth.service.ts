@@ -109,6 +109,10 @@ const isUniqueViolation = (error: unknown): boolean => {
   );
 };
 
+/** Compara el correo sin distinguir mayúsculas ni espacios (compatible con filas antiguas). */
+const correoIgual = (email: string) =>
+  sql`lower(${users.email}) = ${email.trim().toLowerCase()}`;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -129,6 +133,17 @@ export class AuthService {
       throw new BadRequestException('Las contraseñas no coinciden');
     }
 
+    // El hash va primero aunque el correo exista: el tiempo de respuesta no delata cuentas.
+    const hash = await this.bcryptService.hash(password);
+
+    // El índice único de `users.email` distingue mayúsculas y quedan correos antiguos con ellas:
+    // un correo que solo difiere en mayúsculas cuenta como ya registrado (mismo mensaje genérico).
+    const [existente] = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(correoIgual(email));
+    if (existente) throw new BadRequestException(SIGN_UP_FAILED_MESSAGE);
+
     try {
       const user = await this.db
         .insert(users)
@@ -137,7 +152,7 @@ export class AuthService {
           lastname,
           phone,
           email,
-          password: await this.bcryptService.hash(password),
+          password: hash,
           verified: false,
           loginAttempts: 0,
           roleId: ROLES.CLIENTE,
@@ -165,7 +180,7 @@ export class AuthService {
     const [userData] = await this.db
       .select()
       .from(users)
-      .where(eq(users.email, email));
+      .where(correoIgual(email));
 
     // Cuenta bloqueada: se corta antes de comparar la contraseña (no se puede seguir adivinando).
     // Solo existe para correos registrados; un correo inexistente cae en el 401 genérico de abajo.

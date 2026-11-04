@@ -13,9 +13,12 @@ const dto = {
 } as SignUpDto;
 
 /** Servicio cuyo INSERT falla con el error indicado. */
-function serviceWhoseInsertFails(error: Error) {
+function serviceWhoseInsertFails(error: Error, existentes: unknown[] = []) {
   const hash = jest.fn().mockResolvedValue('$2b$10$hash');
   const db = {
+    select: () => ({
+      from: () => ({ where: () => Promise.resolve(existentes) }),
+    }),
     insert: () => ({
       values: () => ({ returning: () => Promise.reject(error) }),
     }),
@@ -34,6 +37,16 @@ const postgresError = (code: string) =>
   Object.assign(new Error('error de postgres'), { code });
 
 describe('AuthService.SignUp — correo ya registrado', () => {
+  it('un correo que solo difiere en mayúsculas cuenta como registrado y también calcula el hash', async () => {
+    const { service, hash } = serviceWhoseInsertFails(
+      new Error('no se llega al insert'),
+      [{ id: 3 }],
+    );
+
+    await expect(service.SignUp(dto)).rejects.toThrow(SIGN_UP_FAILED_MESSAGE);
+    expect(hash).toHaveBeenCalledWith(dto.password);
+  });
+
   it('violación UNIQUE: responde 400 con un mensaje que no confirma que el correo exista', async () => {
     const { service } = serviceWhoseInsertFails(postgresError('23505'));
 
