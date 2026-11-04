@@ -22,6 +22,8 @@ import { ExportFormat, ExportType } from '../reports/export/dto/queryDTO';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { ROLES } from 'src/common/constants/roles';
+import { ActiveUser } from 'src/auth/decorators/active-user.decorator';
+import type { ActiveUserData } from 'src/common/interfaces/active-user-data.interface';
 import { createStrictValidationPipe } from 'src/common/config/validation.config';
 import { ActualizarPlatilloDto, CrearPlatilloDto } from './dto/platillo.dto';
 
@@ -144,7 +146,14 @@ export class PlatillosController {
   }
 
   @Delete(':id')
-  eliminar(@Param('id', ParseIntPipe) id: number) {
-    return this.platillosService.eliminar(id);
+  eliminar(
+    @Param('id', ParseIntPipe) id: number,
+    @ActiveUser() usuario: ActiveUserData,
+    @Query('motivo') motivo?: string,
+  ) {
+    return this.platillosService.eliminar(id, {
+      motivo,
+      autorId: Number(usuario.id),
+    });
   }
 }

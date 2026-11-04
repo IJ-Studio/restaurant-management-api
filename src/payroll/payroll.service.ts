@@ -3,6 +3,10 @@ import { eq, isNotNull } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle/constants';
 import type { DrizzleDB } from '../database/drizzle/drizzle.provider';
 import {
+  archivarYBorrar,
+  type DatosBaja,
+} from '../registros-eliminados/archivar';
+import {
   empleados,
   puestos,
   departamentos,
@@ -138,7 +142,7 @@ export class PayrollService {
     return this.findOne(id);
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, baja: DatosBaja = {}): Promise<void> {
     const [empleado] = await this.db
       .select()
       .from(empleados)
@@ -146,7 +150,7 @@ export class PayrollService {
 
     if (!empleado) throw new NotFoundException('Empleado no encontrado');
 
-    await this.db.delete(empleados).where(eq(empleados.id, id));
+    await archivarYBorrar(this.db, 'empleados', id, baja);
 
     if (empleado.puestoId) {
       const others = await this.db
@@ -154,7 +158,7 @@ export class PayrollService {
         .from(empleados)
         .where(eq(empleados.puestoId, empleado.puestoId));
       if (others.length === 0) {
-        await this.db.delete(puestos).where(eq(puestos.id, empleado.puestoId));
+        await archivarYBorrar(this.db, 'puestos', empleado.puestoId, baja);
       }
     }
   }
