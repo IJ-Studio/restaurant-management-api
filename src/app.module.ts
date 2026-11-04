@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'; // 👈 AGREGADO
-import { APP_GUARD } from '@nestjs/core'; // 👈 AGREGADO
+import { APP_GUARD, APP_PIPE } from '@nestjs/core'; // 👈 AGREGADO
 import { PagosModule } from './pagos/pagos.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { AuthModule } from './auth/auth.module';
@@ -24,6 +24,7 @@ import { PayrollModule } from './payroll/payroll.module';
 import { DashboardModule } from './roles/dashboard.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReportesProblemasModule } from './reportes-problemas/reportes-problemas.module';
+import { NormalizarPipe } from './common/normalizacion/normalizar.pipe';
 import { RegistrosEliminadosModule } from './registros-eliminados/registros-eliminados.module';
 import { ImagenesModule } from './imagenes/imagenes.module';
 
@@ -73,6 +74,8 @@ import { ImagenesModule } from './imagenes/imagenes.module';
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
+    // Normaliza los textos de cada cuerpo (trim, mayúsculas, correos) sin validar ni quitar campos.
+    { provide: APP_PIPE, useClass: NormalizarPipe },
   ],
 })
 export class AppModule {}
