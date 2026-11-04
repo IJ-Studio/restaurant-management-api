@@ -29,6 +29,7 @@ describe('inventario del administrador', () => {
     expect(await errores(OrdenCompraDto, { status: 'perdida' })).toContain(
       'status',
     );
+    expect(await errores(OrdenCompraDto, { status: 'en_camino' })).toEqual([]);
   });
 
   it('el alta exige nombre y categoría (no se hereda un @IsOptional)', async () => {
