@@ -549,3 +549,16 @@ describe('resumen del día', () => {
     });
   });
 });
+
+describe('listarProductos', () => {
+  it('incluye el mínimo de existencias (aditivo para la web; la móvil lo ignora)', async () => {
+    const { service } = setup([
+      [{ id: 1, name: 'Tortillas', stock: '2', minStock: '5' }],
+    ]);
+    const db = (service as unknown as { db: { select: jest.Mock } }).db;
+    await service.listarProductos();
+    expect(
+      Object.keys((db.select.mock.calls as Record<string, unknown>[][])[0][0]),
+    ).toContain('minStock');
+  });
+});
