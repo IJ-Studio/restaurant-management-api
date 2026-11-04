@@ -477,6 +477,24 @@ export class PagosService {
     }
 
     if (dto.direccionId) {
+      // La dirección de envío tiene que ser del cliente de la orden (antes se aceptaba cualquiera).
+      const [direccion] = clienteId
+        ? await this.db
+            .select({ id: direccionesCliente.id })
+            .from(direccionesCliente)
+            .where(
+              and(
+                eq(direccionesCliente.id, dto.direccionId),
+                eq(direccionesCliente.clienteId, clienteId),
+              ),
+            )
+            .limit(1)
+        : [];
+      if (!direccion) {
+        throw new BadRequestException(
+          'Esa dirección no existe o no pertenece al cliente de la orden.',
+        );
+      }
       await this.db
         .update(ordenes)
         .set({ direccionEnvioId: dto.direccionId })
