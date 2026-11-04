@@ -827,6 +827,9 @@ export const ordenes = pgTable("ordenes", {
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	direccionEnvioId: integer("direccion_envio_id"), // 👈 NUEVO
+	// Datos sintéticos del modelo de cancelaciones (no-show); no los escribe el API.
+	probCancelacionSintetica: numeric("prob_cancelacion_sintetica"),
+	cancelacionSintetica: boolean("cancelacion_sintetica"),
 
 }, (table) => [
 	index("idx_ordenes_atendido_por").using("btree", table.atendidoPor.asc().nullsLast().op("int4_ops")),
@@ -991,6 +994,8 @@ export const reservaciones = pgTable("reservaciones", {
 	notas: text(),
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+	// Marca de las reservas sintéticas del modelo de no-show; no la escribe el API.
+	esSintetica: boolean("es_sintetica"),
 }, (table) => [
 	index("idx_reservaciones_fecha").using("btree", table.fechaHora.asc().nullsLast().op("timestamptz_ops")),
 	foreignKey({
@@ -1034,6 +1039,12 @@ export const clientes = pgTable("clientes", {
 	razonSocial: varchar("razon_social", { length: 200 }),
 	requiereFactura: boolean("requiere_factura").default(false),
 	stripeCustomerId: text("stripe_customer_id"),   // 👈 NUEVO
+	fechaNacimiento: date("fecha_nacimiento"),
+	sexo: varchar({ length: 10 }),
+	ciudad: varchar({ length: 60 }),
+	colonia: varchar({ length: 80 }),
+	codigoPostal: varchar("codigo_postal", { length: 5 }),
+	alergias: varchar({ length: 120 }),
 	notas: text(),
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
@@ -1216,3 +1227,23 @@ export const vUsuariosPerfil = pgView("v_usuarios_perfil", {	id: integer(),
 	puesto: varchar({ length: 100 }),
 	departamento: varchar({ length: 100 }),
 }).as(sql`SELECT u.id, u.name, u.lastname, u.email, u.phone, u.is_active, r.name AS rol, r.permissions, e.id AS empleado_id, e.numero_empleado, p.nombre AS puesto, d.nombre AS departamento FROM users u JOIN roles r ON r.id = u.role_id LEFT JOIN empleados e ON e.user_id = u.id LEFT JOIN puestos p ON p.id = e.puesto_id LEFT JOIN departamentos d ON d.id = p.departamento_id`);
+
+// Existía en la BD sin definición en Drizzle (deriva corregida el 2026-11-04).
+export const promociones = pgTable("promociones", {
+	id: serial().primaryKey().notNull(),
+	titulo: text().notNull(),
+	descripcion: text(),
+	badge: text(),
+	emoji: text(),
+	color: text(),
+	precioOriginal: numeric("precio_original", { precision: 10, scale:  2 }),
+	precioDescuento: numeric("precio_descuento", { precision: 10, scale:  2 }),
+	imagenUrl: text("imagen_url"),
+	imagenPublicId: text("imagen_public_id"),
+	activa: boolean().default(true).notNull(),
+	orden: integer().default(0).notNull(),
+	fechaInicio: date("fecha_inicio"),
+	fechaFin: date("fecha_fin"),
+	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+});

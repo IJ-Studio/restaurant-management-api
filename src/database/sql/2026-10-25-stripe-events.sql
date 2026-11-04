@@ -5,3 +5,6 @@ CREATE TABLE IF NOT EXISTS stripe_events (
   type text,
   processed_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Sin políticas: la anon key no puede leerla ni escribirla; el API entra con un rol con BYPASSRLS.
+ALTER TABLE stripe_events ENABLE ROW LEVEL SECURITY;
