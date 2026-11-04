@@ -1,4 +1,4 @@
-import { pgTable, unique, serial, varchar, text, smallint, boolean, time, char, integer, bigint, timestamp, numeric, foreignKey, json, jsonb, index, uuid, check, date, bigserial, inet, primaryKey, pgView } from "drizzle-orm/pg-core"
+import { pgTable, unique, uniqueIndex, serial, varchar, text, smallint, boolean, time, char, integer, bigint, timestamp, numeric, foreignKey, json, jsonb, index, uuid, check, date, bigserial, inet, primaryKey, pgView } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 
@@ -58,6 +58,8 @@ export const users = pgTable("users", {
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
 	unique("users_email_unique").on(table.email),
+	// Único sin distinguir mayúsculas (migración 2026-11-05-email-unico-minusculas.sql).
+	uniqueIndex("users_email_lower_key").using("btree", sql`lower(${table.email})`),
 ]);
 
 export const inventarioProductos = pgTable("inventario_productos", {
