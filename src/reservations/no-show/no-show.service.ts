@@ -1,10 +1,20 @@
-import { Injectable, Inject, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 
 import { DRIZZLE } from '../../database/drizzle/constants';
 import * as schema from '../../database/schema/public.schema';
-import { fitRandomForest, predictProba, mulberry32, RandomForestModel } from './random-forest.util';
+import {
+  fitRandomForest,
+  predictProba,
+  mulberry32,
+  RandomForestModel,
+} from './random-forest.util';
 
 const MIN_MUESTRAS = 30;
 const UMBRAL_ALTO = 0.25;
@@ -14,7 +24,13 @@ const UMBRAL_MEDIO = 0.1;
 // real aunque no aparezca en las 450 filas sintéticas, así que debe quedar
 // en el encoding igual — si se infiriera de los datos de entrenamiento se
 // perdería esa columna y el modelo no podría representarla nunca.
-const OCASIONES = ['casual', 'cumpleaños', 'aniversario', 'negocios', 'otro'] as const;
+const OCASIONES = [
+  'casual',
+  'cumpleaños',
+  'aniversario',
+  'negocios',
+  'otro',
+] as const;
 const CANALES = ['telefono', 'web', 'app', 'redes_sociales', 'alexa'] as const;
 
 const FEATURE_NAMES = [
@@ -79,7 +95,12 @@ function toFeatureInput(r: RawFeatureRow): FeatureInput {
 
 interface ModelCache {
   model: RandomForestModel;
-  matrizConfusion: { verdaderosPositivos: number; falsosPositivos: number; falsosNegativos: number; verdaderosNegativos: number };
+  matrizConfusion: {
+    verdaderosPositivos: number;
+    falsosPositivos: number;
+    falsosNegativos: number;
+    verdaderosNegativos: number;
+  };
   precision: number;
   recall: number;
   f1: number;
@@ -116,7 +137,9 @@ export class NoShowService {
 
   private normalizeOcasion(raw: string | null): (typeof OCASIONES)[number] {
     const v = (raw ?? '').trim().toLowerCase();
-    return (OCASIONES as readonly string[]).includes(v) ? (v as (typeof OCASIONES)[number]) : 'otro';
+    return (OCASIONES as readonly string[]).includes(v)
+      ? (v as (typeof OCASIONES)[number])
+      : 'otro';
   }
 
   private featurize(row: FeatureInput): number[] {
@@ -142,12 +165,14 @@ export class NoShowService {
     if (this.cache) return this.cache;
     if (this.trainingPromise) return this.trainingPromise;
 
-    this.trainingPromise = this.trainModel().then((result) => {
-      this.cache = result;
-      return result;
-    }).finally(() => {
-      this.trainingPromise = null;
-    });
+    this.trainingPromise = this.trainModel()
+      .then((result) => {
+        this.cache = result;
+        return result;
+      })
+      .finally(() => {
+        this.trainingPromise = null;
+      });
 
     return this.trainingPromise;
   }
@@ -212,14 +237,22 @@ export class NoShowService {
     }
     const precision = tp + fp > 0 ? tp / (tp + fp) : 0;
     const recall = tp + fn > 0 ? tp / (tp + fn) : 0;
-    const f1 = precision + recall > 0 ? (2 * precision * recall) / (precision + recall) : 0;
+    const f1 =
+      precision + recall > 0
+        ? (2 * precision * recall) / (precision + recall)
+        : 0;
 
     const reales = parsed.filter((r) => !r.es_sintetica).length;
     const sinteticas = parsed.length - reales;
 
     return {
       model,
-      matrizConfusion: { verdaderosPositivos: tp, falsosPositivos: fp, falsosNegativos: fn, verdaderosNegativos: tn },
+      matrizConfusion: {
+        verdaderosPositivos: tp,
+        falsosPositivos: fp,
+        falsosNegativos: fn,
+        verdaderosNegativos: tn,
+      },
       precision: Math.round(precision * 1000) / 1000,
       recall: Math.round(recall * 1000) / 1000,
       f1: Math.round(f1 * 1000) / 1000,
@@ -227,8 +260,10 @@ export class NoShowService {
         totalMuestras: parsed.length,
         reales,
         sinteticas,
-        porcentajeSintetico: Math.round((sinteticas / parsed.length) * 1000) / 10,
-        tasaClasePositiva: Math.round((y.reduce((s, v) => s + v, 0) / y.length) * 1000) / 10,
+        porcentajeSintetico:
+          Math.round((sinteticas / parsed.length) * 1000) / 10,
+        tasaClasePositiva:
+          Math.round((y.reduce((s, v) => s + v, 0) / y.length) * 1000) / 10,
         nEntrenamiento: trainIdx.length,
         nPrueba: testIdx.length,
       },
@@ -237,7 +272,10 @@ export class NoShowService {
 
   // Split 80/20 estratificado por clase (obligatorio: la clase positiva es
   // ~11%, un split aleatorio simple puede desbalancear aún más el test set).
-  private stratifiedSplit(y: (0 | 1)[]): { trainIdx: number[]; testIdx: number[] } {
+  private stratifiedSplit(y: (0 | 1)[]): {
+    trainIdx: number[];
+    testIdx: number[];
+  } {
     const rng = mulberry32(77);
     const idx0: number[] = [];
     const idx1: number[] = [];
@@ -255,11 +293,15 @@ export class NoShowService {
 
     const s0 = splitOne(idx0);
     const s1 = splitOne(idx1);
-    return { trainIdx: [...s0.train, ...s1.train], testIdx: [...s0.test, ...s1.test] };
+    return {
+      trainIdx: [...s0.train, ...s1.train],
+      testIdx: [...s0.test, ...s1.test],
+    };
   }
 
   async getModelMetrics() {
-    const { matrizConfusion, precision, recall, f1, datasetInfo, model } = await this.ensureModel();
+    const { matrizConfusion, precision, recall, f1, datasetInfo, model } =
+      await this.ensureModel();
 
     const importanciaVariables = FEATURE_NAMES.map((variable, i) => ({
       variable,
@@ -306,7 +348,11 @@ export class NoShowService {
     const x = this.featurize(toFeatureInput(row));
     const probabilidad = predictProba(model, x);
     const clasificacion =
-      probabilidad >= UMBRAL_ALTO ? 'Alto' : probabilidad >= UMBRAL_MEDIO ? 'Medio' : 'Bajo';
+      probabilidad >= UMBRAL_ALTO
+        ? 'Alto'
+        : probabilidad >= UMBRAL_MEDIO
+          ? 'Medio'
+          : 'Bajo';
 
     return {
       probabilidad: Math.round(probabilidad * 1000) / 1000,

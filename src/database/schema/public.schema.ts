@@ -1,4 +1,4 @@
-import { pgTable, unique, uniqueIndex, serial, varchar, text, smallint, boolean, time, char, integer, bigint, timestamp, numeric, foreignKey, json, jsonb, index, uuid, check, date, bigserial, inet, primaryKey, pgView } from "drizzle-orm/pg-core"
+import { pgTable, unique, uniqueIndex, type AnyPgColumn, serial, varchar, text, smallint, boolean, time, char, integer, bigint, timestamp, numeric, foreignKey, json, jsonb, index, uuid, check, date, bigserial, inet, primaryKey, pgView } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 
@@ -858,8 +858,13 @@ export const ordenes = pgTable("ordenes", {
 	// Datos sintéticos del modelo de cancelaciones (no-show); no los escribe el API.
 	probCancelacionSintetica: numeric("prob_cancelacion_sintetica"),
 	cancelacionSintetica: boolean("cancelacion_sintetica"),
+	// Motivo de cancelación (2026-11-05-motivo-cancelacion.sql); nulo en las cancelaciones antiguas.
+	motivoCancelacion: varchar("motivo_cancelacion", { length: 300 }),
+	canceladoPor: integer("cancelado_por").references((): AnyPgColumn => users.id, { onDelete: "set null" }),
+	canceladoEn: timestamp("cancelado_en", { withTimezone: true, mode: 'string' }),
 
 }, (table) => [
+	index("idx_ordenes_cancelado_por").using("btree", table.canceladoPor.asc().nullsLast()),
 	index("idx_ordenes_cliente_id").using("btree", table.clienteId.asc().nullsLast()),
 	index("idx_ordenes_direccion_envio_id").using("btree", table.direccionEnvioId.asc().nullsLast()),
 	index("idx_ordenes_reservacion_id").using("btree", table.reservacionId.asc().nullsLast()),
@@ -1033,7 +1038,12 @@ export const reservaciones = pgTable("reservaciones", {
 	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	// Marca de las reservas sintéticas del modelo de no-show; no la escribe el API.
 	esSintetica: boolean("es_sintetica"),
+	// Motivo de cancelación (2026-11-05-motivo-cancelacion.sql); nulo en las cancelaciones antiguas.
+	motivoCancelacion: varchar("motivo_cancelacion", { length: 300 }),
+	canceladoPor: integer("cancelado_por").references((): AnyPgColumn => users.id, { onDelete: "set null" }),
+	canceladoEn: timestamp("cancelado_en", { withTimezone: true, mode: 'string' }),
 }, (table) => [
+	index("idx_reservaciones_cancelado_por").using("btree", table.canceladoPor.asc().nullsLast()),
 	index("idx_reservaciones_mesa_id").using("btree", table.mesaId.asc().nullsLast()),
 	index("idx_reservaciones_user_id").using("btree", table.userId.asc().nullsLast()),
 	index("idx_reservaciones_fecha").using("btree", table.fechaHora.asc().nullsLast().op("timestamptz_ops")),

@@ -739,7 +739,11 @@ export class OrdersService {
     }
   }
 
-  async cancelarOrden(ordenId: string, requester: OrderRequester) {
+  async cancelarOrden(
+    ordenId: string,
+    requester: OrderRequester,
+    motivo: string,
+  ) {
     const [orden] = await this.db
       .select()
       .from(ordenes)
@@ -776,7 +780,12 @@ export class OrdersService {
 
     await this.db
       .update(ordenes)
-      .set({ estatus: 'cancelada' })
+      .set({
+        estatus: 'cancelada',
+        motivoCancelacion: motivo,
+        canceladoPor: requester.id,
+        canceladoEn: new Date().toISOString(),
+      })
       .where(eq(ordenes.id, ordenId));
 
     return {

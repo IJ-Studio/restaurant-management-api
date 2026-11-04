@@ -18,6 +18,7 @@ import { OrderWorkflowService } from './order-workflow.service';
 import { CreateOrderMesaDto } from './dto/create-order-mesa.dto';
 import { ChargeOrderDto } from './dto/charge-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { CancelOrderDto } from './dto/cancel-order.dto';
 import { createStrictValidationPipe } from '../common/config/validation.config';
 import type { Response, Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guards';
@@ -100,8 +101,13 @@ export class OrdersController {
   async cancelarOrden(
     @Param('id') id: string,
     @ActiveUser() user: ActiveUserData,
+    @Body(createStrictValidationPipe()) dto: CancelOrderDto,
   ) {
-    return await this.ordersService.cancelarOrden(id, this.requester(user));
+    return await this.ordersService.cancelarOrden(
+      id,
+      this.requester(user),
+      dto.motivo,
+    );
   }
 
   // Pedidos activos del día: panel de administración y app móvil del personal

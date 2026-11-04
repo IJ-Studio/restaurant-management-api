@@ -68,13 +68,17 @@ function candidateThresholds(sortedUniqueValues: number[]): number[] {
   if (n < 2) return [];
   if (n - 1 <= MAX_THRESHOLDS) {
     const out: number[] = [];
-    for (let i = 0; i < n - 1; i++) out.push((sortedUniqueValues[i] + sortedUniqueValues[i + 1]) / 2);
+    for (let i = 0; i < n - 1; i++)
+      out.push((sortedUniqueValues[i] + sortedUniqueValues[i + 1]) / 2);
     return out;
   }
 
   const out: number[] = [];
   for (let q = 1; q <= MAX_THRESHOLDS; q++) {
-    const i = Math.min(Math.max(Math.floor((q * n) / (MAX_THRESHOLDS + 1)), 0), n - 2);
+    const i = Math.min(
+      Math.max(Math.floor((q * n) / (MAX_THRESHOLDS + 1)), 0),
+      n - 2,
+    );
     out.push((sortedUniqueValues[i] + sortedUniqueValues[i + 1]) / 2);
   }
   return Array.from(new Set(out)).sort((a, b) => a - b);
@@ -97,12 +101,16 @@ function buildTree(
 ): TreeNode {
   let w0 = 0;
   let w1 = 0;
-  for (const s of samples) (s.y === 1 ? (w1 += s.w) : (w0 += s.w));
+  for (const s of samples) s.y === 1 ? (w1 += s.w) : (w0 += s.w);
   const totalW = w0 + w1;
   const prob1 = totalW > 0 ? w1 / totalW : 0;
 
   const isPure = w0 === 0 || w1 === 0;
-  if (depth >= params.maxDepth || samples.length < params.minSamplesSplit || isPure) {
+  if (
+    depth >= params.maxDepth ||
+    samples.length < params.minSamplesSplit ||
+    isPure
+  ) {
     return { isLeaf: true, prob1 };
   }
 
@@ -123,7 +131,9 @@ function buildTree(
   } | null = null;
 
   for (const f of candidateFeatures) {
-    const values = Array.from(new Set(samples.map((s) => s.x[f]))).sort((a, b) => a - b);
+    const values = Array.from(new Set(samples.map((s) => s.x[f]))).sort(
+      (a, b) => a - b,
+    );
     const thresholds = candidateThresholds(values);
 
     for (const threshold of thresholds) {
@@ -144,14 +154,18 @@ function buildTree(
         }
       });
 
-      if (leftIdx.length < params.minSamplesLeaf || rightIdx.length < params.minSamplesLeaf) {
+      if (
+        leftIdx.length < params.minSamplesLeaf ||
+        rightIdx.length < params.minSamplesLeaf
+      ) {
         continue;
       }
 
       const leftW = lw0 + lw1;
       const rightW = rw0 + rw1;
       const childGini =
-        (leftW / totalW) * weightedGini(lw0, lw1) + (rightW / totalW) * weightedGini(rw0, rw1);
+        (leftW / totalW) * weightedGini(lw0, lw1) +
+        (rightW / totalW) * weightedGini(rw0, rw1);
       const gain = parentGini - childGini;
 
       if (!best || gain > best.gain) {
@@ -211,14 +225,21 @@ export function fitRandomForest(
     w: y[i] === 1 ? weight1 : weight0,
   }));
 
-  const fitParams = { nTrees, maxDepth, minSamplesSplit, minSamplesLeaf, maxFeatures };
+  const fitParams = {
+    nTrees,
+    maxDepth,
+    minSamplesSplit,
+    minSamplesLeaf,
+    maxFeatures,
+  };
   const importances = new Array(nFeatures).fill(0);
   const trees: TreeNode[] = [];
 
   for (let t = 0; t < nTrees; t++) {
     // Bootstrap: muestreo con reemplazo del tamaño del set de entrenamiento
     const bootstrap: Sample[] = new Array(n);
-    for (let i = 0; i < n; i++) bootstrap[i] = allSamples[Math.floor(rng() * n)];
+    for (let i = 0; i < n; i++)
+      bootstrap[i] = allSamples[Math.floor(rng() * n)];
     trees.push(buildTree(bootstrap, 0, fitParams, rng, importances));
   }
 

@@ -17,6 +17,9 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guards';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ROLES } from '../common/constants/roles';
+import { ActiveUser } from '../auth/decorators/active-user.decorator';
+import { createWhitelistPipe } from '../common/config/validation.config';
+import type { ActiveUserData } from '../common/interfaces/active-user-data.interface';
 
 @Controller('reservations')
 export class ReservationsController {
@@ -88,8 +91,14 @@ export class ReservationsController {
   @Patch(':id')
   async update(
     @Param('id') id: string,
-    @Body() updateReservationDto: UpdateReservationDto,
+    // Lista blanca: antes todo el cuerpo llegaba a .set() y se podía escribir cualquier columna.
+    @Body(createWhitelistPipe()) updateReservationDto: UpdateReservationDto,
+    @ActiveUser() user: ActiveUserData,
   ) {
-    return await this.reservationsService.update(id, updateReservationDto);
+    return await this.reservationsService.update(
+      id,
+      updateReservationDto,
+      Number(user.id),
+    );
   }
 }
