@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { DRIZZLE } from '../database/drizzle/constants';
 import type { DrizzleDB } from '../database/drizzle/drizzle.provider';
+import { archivarYBorrar } from '../registros-eliminados/archivar';
 import {
   clientes,
   direccionesCliente,
@@ -196,9 +197,10 @@ export class PagosService {
       throw new NotFoundException('Esa dirección no existe o no te pertenece.');
     }
 
-    await this.db
-      .delete(direccionesCliente)
-      .where(eq(direccionesCliente.id, id));
+    await archivarYBorrar(this.db, 'direcciones_cliente', id, {
+      motivo: 'BAJA POR EL CLIENTE',
+      autorId: usuarioId,
+    });
     return { success: true, message: 'Dirección eliminada.' };
   }
 
@@ -416,9 +418,10 @@ export class PagosService {
     await this.stripe.paymentMethods
       .detach(metodo.stripePaymentMethodId)
       .catch(() => null);
-    await this.db
-      .delete(metodosPagoGuardados)
-      .where(eq(metodosPagoGuardados.id, id));
+    await archivarYBorrar(this.db, 'metodos_pago_guardados', id, {
+      motivo: 'BAJA POR EL CLIENTE',
+      autorId: usuarioId,
+    });
 
     return { success: true, message: 'Método de pago eliminado.' };
   }
@@ -722,9 +725,10 @@ export class PagosService {
       );
     }
 
-    await this.db
-      .delete(perfilesFacturacion)
-      .where(eq(perfilesFacturacion.id, id));
+    await archivarYBorrar(this.db, 'perfiles_facturacion', id, {
+      motivo: 'BAJA POR EL CLIENTE',
+      autorId: usuarioId,
+    });
     return { success: true, message: 'Perfil de facturación eliminado.' };
   }
 

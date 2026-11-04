@@ -57,6 +57,7 @@ import {
 import { stripeEvents } from './stripe-events.schema';
 import { deviceTokens } from './device-tokens.schema';
 import { reportesProblemas } from './reportes-problemas.schema';
+import { registrosEliminados } from './registros-eliminados.schema';
 
 /**
  * Registro central de todas las tablas
@@ -119,6 +120,7 @@ export const schema = {
   deviceTokens,
   reportesProblemas,
   promociones,
+  registrosEliminados,
 };
 
 export type Schema = typeof schema;

@@ -18,19 +18,14 @@ function setup(
   const set = jest
     .fn()
     .mockReturnValue({ where: jest.fn().mockReturnValue({ returning }) });
-  const borrar = opciones.errorBorrado
-    ? jest.fn().mockReturnValue({
-        where: jest.fn().mockReturnValue({
-          returning: jest.fn().mockRejectedValue(opciones.errorBorrado),
-        }),
-      })
-    : jest
-        .fn()
-        .mockReturnValue({ where: jest.fn().mockReturnValue({ returning }) });
+  // El borrado archiva la fila y la quita en una sola sentencia (archivarYBorrar).
+  const execute = opciones.errorBorrado
+    ? jest.fn().mockRejectedValue(opciones.errorBorrado)
+    : jest.fn().mockResolvedValue(filas);
   const db = {
     insert: jest.fn().mockReturnValue({ values }),
     update: jest.fn().mockReturnValue({ set }),
-    delete: borrar,
+    execute,
   };
   return { service: new PlatillosService(db as never), values, set };
 }

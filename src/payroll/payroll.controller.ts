@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
@@ -16,6 +17,8 @@ import { CreatePayrollEntryDto } from './dto/create-payroll-entry.dto';
 import { UpdatePayrollEntryDto } from './dto/update-payroll-entry.dto';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { ActiveUser } from '../auth/decorators/active-user.decorator';
+import type { ActiveUserData } from '../common/interfaces/active-user-data.interface';
 
 @ApiTags('payroll')
 @Controller('payroll')
@@ -42,7 +45,14 @@ export class PayrollController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id') id: string) {
-    await this.payrollService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @ActiveUser() usuario: ActiveUserData,
+    @Query('motivo') motivo?: string,
+  ) {
+    await this.payrollService.remove(id, {
+      motivo,
+      autorId: Number(usuario.id),
+    });
   }
 }

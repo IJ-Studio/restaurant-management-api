@@ -24,6 +24,7 @@ import { PayrollModule } from './payroll/payroll.module';
 import { DashboardModule } from './roles/dashboard.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReportesProblemasModule } from './reportes-problemas/reportes-problemas.module';
+import { RegistrosEliminadosModule } from './registros-eliminados/registros-eliminados.module';
 import { ImagenesModule } from './imagenes/imagenes.module';
 
 @Module({
@@ -62,6 +63,7 @@ import { ImagenesModule } from './imagenes/imagenes.module';
     PayrollModule,
     NotificationsModule,
     ReportesProblemasModule,
+    RegistrosEliminadosModule,
     ImagenesModule,
   ],
   controllers: [],

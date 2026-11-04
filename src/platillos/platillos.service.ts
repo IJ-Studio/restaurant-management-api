@@ -14,6 +14,10 @@ import {
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { DRIZZLE } from '../database/drizzle/constants';
 import * as schema from '../database/schema/public.schema';
+import {
+  archivarYBorrar,
+  type DatosBaja,
+} from '../registros-eliminados/archivar';
 
 type ColumnMeta = {
   column_name: string;
@@ -660,14 +664,10 @@ export class PlatillosService {
   }
 
   /** Borrado definitivo; si algún pedido lo usa, 409: se agota en lugar de borrarse. */
-  async eliminar(id: number): Promise<{ success: true }> {
+  async eliminar(id: number, baja: DatosBaja = {}): Promise<{ success: true }> {
     try {
-      const filas = await this.db
-        .delete(schema.platillos)
-        .where(eq(schema.platillos.id, id))
-        .returning({ id: schema.platillos.id });
-      if (filas.length === 0)
-        throw new NotFoundException('El platillo no existe.');
+      const filas = await archivarYBorrar(this.db, 'platillos', id, baja);
+      if (filas === 0) throw new NotFoundException('El platillo no existe.');
     } catch (error: unknown) {
       if ((error as { code?: string })?.code === '23503') {
         throw new ConflictException(
