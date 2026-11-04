@@ -21,6 +21,7 @@ import { RecommendationsModule } from './recommendations/recommendations.module'
 import { PredictiveDemandModule } from './predictive-demand/predictive-demand.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { DashboardModule } from './roles/dashboard.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { DashboardModule } from './roles/dashboard.module';
     RecommendationsModule,
     PredictiveDemandModule,
     PayrollModule,
+    NotificationsModule,
   ],
   controllers: [],
   providers: [
