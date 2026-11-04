@@ -11,7 +11,7 @@ import {
 import { Match } from '../../common/decorators/match.decorator';
 import {
   Correo,
-  Texto,
+  Telefono,
   TextoNegocio,
 } from '../../common/normalizacion/normalizar';
 
@@ -50,7 +50,7 @@ export class SignUpDto {
   @MaxLength(50)
   readonly lastname!: string;
 
-  @Texto({ obligatorio: true })
+  @Telefono({ obligatorio: true })
   @ApiProperty({
     example: '+525512345678',
     description:

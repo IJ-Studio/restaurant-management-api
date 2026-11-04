@@ -6,7 +6,7 @@ import {
   Matches,
   MaxLength,
 } from 'class-validator';
-import { Texto, TextoNegocio } from '../../common/normalizacion/normalizar';
+import { Telefono, TextoNegocio } from '../../common/normalizacion/normalizar';
 
 /**
  * Campos editables de un perfil con `PATCH /users/:id`.
@@ -29,7 +29,7 @@ export class UpdateUserDto {
   @MaxLength(50)
   readonly lastname?: string;
 
-  @Texto({ obligatorio: true })
+  @Telefono({ obligatorio: true })
   @ApiPropertyOptional({
     example: '+525512345678',
     description:

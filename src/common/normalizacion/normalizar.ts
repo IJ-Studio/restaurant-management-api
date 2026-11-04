@@ -37,6 +37,21 @@ export function correo(valor: unknown): unknown {
 }
 
 /**
+ * Teléfonos: E.164. Diez dígitos de México → `+52` delante; `52` + 10 dígitos → con `+`; un número
+ * que ya trae `+` conserva su lada. Lo que no encaja se deja limpio y lo rechaza la validación.
+ */
+export function telefono(valor: unknown): unknown {
+  const limpio = limpiarTexto(valor);
+  if (typeof limpio !== 'string') return limpio;
+  const digitos = limpio.replace(/\D/g, '');
+  if (limpio.startsWith('+') && digitos.length >= 10 && digitos.length <= 15)
+    return `+${digitos}`;
+  if (digitos.length === 10) return `+52${digitos}`;
+  if (digitos.length === 12 && digitos.startsWith('52')) return `+${digitos}`;
+  return limpio;
+}
+
+/**
  * Decoradores para los DTO. Se aplican al convertir el cuerpo en el DTO (pipe global
  * `NormalizarPipe` y los pipes de validación), antes de validar. Con `obligatorio`, un vacío se
  * queda como `''` para que la validación lo rechace y no llegue un NULL a una columna NOT NULL.
@@ -56,3 +71,4 @@ const decorador =
 export const Texto = decorador(limpiarTexto);
 export const TextoNegocio = decorador(textoNegocio);
 export const Correo = decorador(correo);
+export const Telefono = decorador(telefono);

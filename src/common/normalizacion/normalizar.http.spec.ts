@@ -53,7 +53,7 @@ describe('NormalizarPipe global (HTTP)', () => {
       expect.objectContaining({
         clienteNombre: 'MARÍA PEÑA',
         clienteEmail: 'maria@correo.mx',
-        clienteTelefono: '771 123 4567',
+        clienteTelefono: '+527711234567',
         peticionesEspeciales: null,
         canal: 'telefono',
         campoDeMas: 'se queda',

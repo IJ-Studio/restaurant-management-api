@@ -39,10 +39,19 @@ describe('UpdateUserDto con pipe de lista blanca', () => {
     expect(result).toEqual({ name: 'ANA' });
   });
 
+  // NP-06: 10 dígitos de México, con o sin +52 y con separadores, se normalizan a E.164.
   it.each([
     ['sin "+"', '5512345678'],
-    ['demasiado corto', '+52'],
     ['con espacios', '+52 55 1234 5678'],
+  ])('normaliza el teléfono %s', async (_caso, phone) => {
+    await expect(validate({ phone })).resolves.toEqual({
+      phone: '+525512345678',
+    });
+  });
+
+  it.each([
+    ['demasiado corto', '+52'],
+    ['de 8 dígitos', '55123456'],
   ])('rechaza teléfono %s', async (_caso, phone) => {
     await expect(validate({ phone })).rejects.toBeInstanceOf(
       BadRequestException,
