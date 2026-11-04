@@ -188,9 +188,12 @@ export class ArticuloOrdenDto {
   readonly unitCost!: number;
 }
 
+// Los mismos que usa la pantalla de proveedores de la web.
 export const ESTADOS_ORDEN = [
   'borrador',
   'enviada',
+  'confirmada',
+  'en_camino',
   'recibida',
   'cancelada',
 ] as const;
