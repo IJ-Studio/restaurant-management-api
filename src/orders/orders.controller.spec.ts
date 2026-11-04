@@ -54,7 +54,7 @@ describe('OrdersController (DT-04)', () => {
     const agent = request(server);
     if (method === 'get') return agent.get(path);
     if (method === 'post') return agent.post(path);
-    if (method === 'patch') return agent.patch(path);
+    if (method === 'patch') return agent.patch(path).send({ motivo: 'prueba' });
     return agent.delete(path);
   }
 
@@ -174,11 +174,26 @@ describe('OrdersController (DT-04)', () => {
     await request(server)
       .patch('/pedidos/cancelar/orden-1')
       .set('Authorization', auth)
+      .send({ motivo: '  me equivoqué de platillo ' })
       .expect(200);
     expect(ordersService.cancelarOrden).toHaveBeenCalledWith(
       'orden-1',
       requester,
+      'ME EQUIVOQUÉ DE PLATILLO',
     );
+  });
+
+  it('cancelar sin motivo responde 400 y no llega al servicio (Prioridad 3.3)', async () => {
+    ordersService.cancelarOrden.mockClear();
+    const server = app.getHttpServer() as Server;
+    for (const cuerpo of [{}, { motivo: '  ' }, { motivo: 'x', extra: 1 }]) {
+      await request(server)
+        .patch('/pedidos/cancelar/orden-1')
+        .set('Authorization', `Bearer ${token}`)
+        .send(cuerpo)
+        .expect(400);
+    }
+    expect(ordersService.cancelarOrden).not.toHaveBeenCalled();
   });
 
   describe('flujo del pedido en la app móvil', () => {

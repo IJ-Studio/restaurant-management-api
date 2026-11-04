@@ -72,7 +72,7 @@ describe('OrdersService (DT-04)', () => {
     const { service, set } = setup([[abierta], [cliente]]);
 
     const error: unknown = await service
-      .cancelarOrden('orden-1', { id: 7, roleId: ROLES.CLIENTE })
+      .cancelarOrden('orden-1', { id: 7, roleId: ROLES.CLIENTE }, 'MOTIVO')
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(NotFoundException);
