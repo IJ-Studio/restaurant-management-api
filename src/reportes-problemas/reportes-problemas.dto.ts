@@ -1,4 +1,5 @@
 import { IsIn, IsString, Length, Matches } from 'class-validator';
+import { TextoNegocio } from '../common/normalizacion/normalizar';
 
 export const TIPOS_REPORTE = [
   'no-funciona',
@@ -12,6 +13,7 @@ export class CrearReporteDto {
   @IsIn(TIPOS_REPORTE)
   readonly tipo!: (typeof TIPOS_REPORTE)[number];
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @Length(10, 1000)
   readonly descripcion!: string;

@@ -6,12 +6,14 @@ import {
   Matches,
   MaxLength,
 } from 'class-validator';
+import { Texto, TextoNegocio } from '../../common/normalizacion/normalizar';
 
 /**
  * Campos editables de un perfil con `PATCH /users/:id`.
  * Rol, contraseña y estado se cambian en endpoints aparte: aquí no se aceptan.
  */
 export class UpdateUserDto {
+  @TextoNegocio({ obligatorio: true })
   @ApiPropertyOptional({ example: 'Ana', maxLength: 50 })
   @IsOptional()
   @IsString()
@@ -19,6 +21,7 @@ export class UpdateUserDto {
   @MaxLength(50)
   readonly name?: string;
 
+  @TextoNegocio({ obligatorio: true })
   @ApiPropertyOptional({ example: 'López', maxLength: 50 })
   @IsOptional()
   @IsString()
@@ -26,6 +29,7 @@ export class UpdateUserDto {
   @MaxLength(50)
   readonly lastname?: string;
 
+  @Texto({ obligatorio: true })
   @ApiPropertyOptional({
     example: '+525512345678',
     description:

@@ -18,9 +18,10 @@ describe('UpdateUserDto con pipe de lista blanca', () => {
       phone: '+525512345678',
     })) as UpdateUserDto;
 
+    // Los textos de negocio se guardan en MAYÚSCULAS (normalización del API).
     expect(result).toMatchObject({
-      name: 'Ana',
-      lastname: 'López',
+      name: 'ANA',
+      lastname: 'LÓPEZ',
       phone: '+525512345678',
     });
   });
@@ -35,7 +36,7 @@ describe('UpdateUserDto con pipe de lista blanca', () => {
       email: 'otra@quijote.mx',
     })) as UpdateUserDto;
 
-    expect(result).toEqual({ name: 'Ana' });
+    expect(result).toEqual({ name: 'ANA' });
   });
 
   it.each([

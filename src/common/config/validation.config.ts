@@ -16,6 +16,8 @@ import { ValidationPipe, type ValidationPipeOptions } from '@nestjs/common';
 export const STRICT_VALIDATION_OPTIONS: ValidationPipeOptions = {
   whitelist: true,
   forbidNonWhitelisted: true,
+  // Los decoradores de normalización no deben crear claves `undefined` para campos ausentes.
+  transformOptions: { exposeUnsetFields: false },
 };
 
 export const createStrictValidationPipe = (): ValidationPipe =>
@@ -27,4 +29,7 @@ export const createStrictValidationPipe = (): ValidationPipe =>
  * responder 400, para no romper a la web mientras migra a los endpoints específicos.
  */
 export const createWhitelistPipe = (): ValidationPipe =>
-  new ValidationPipe({ whitelist: true });
+  new ValidationPipe({
+    whitelist: true,
+    transformOptions: { exposeUnsetFields: false },
+  });

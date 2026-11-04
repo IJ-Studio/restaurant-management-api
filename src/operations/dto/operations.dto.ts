@@ -10,6 +10,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+import { Texto, TextoNegocio } from '../../common/normalizacion/normalizar';
 
 /** Tipos de incidencia que cocina (o el piso) reporta desde la app. */
 export const TIPOS_INCIDENCIA = [
@@ -31,6 +32,7 @@ export class CreateIncidentDto {
   @IsUUID()
   readonly ordenId?: string;
 
+  @TextoNegocio()
   @IsOptional()
   @IsString()
   @MaxLength(300)
@@ -62,6 +64,7 @@ export class CreateWasteDto {
   readonly productId?: number;
 
   /** Nombre libre cuando no está en el inventario. */
+  @TextoNegocio()
   @IsOptional()
   @IsString()
   @MinLength(2)
@@ -73,6 +76,7 @@ export class CreateWasteDto {
   @Max(100000)
   readonly quantity!: number;
 
+  @Texto()
   @IsOptional()
   @IsString()
   @MaxLength(20)
@@ -81,6 +85,7 @@ export class CreateWasteDto {
   @IsIn(MOTIVOS_MERMA)
   readonly reason!: (typeof MOTIVOS_MERMA)[number];
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @MinLength(3)
   @MaxLength(300)
@@ -103,6 +108,7 @@ export class CloseCashDto {
   @Max(10000000)
   readonly efectivoContado!: number;
 
+  @TextoNegocio()
   @IsOptional()
   @IsString()
   @MaxLength(500)

@@ -17,6 +17,8 @@ export class NormalizarPipe implements PipeTransform {
   transform(value: unknown, { type, metatype }: ArgumentMetadata) {
     if (type !== 'body' || !metatype || NATIVOS.has(metatype)) return value;
     if (value === null || typeof value !== 'object') return value;
-    return plainToInstance(metatype, value) as unknown;
+    return plainToInstance(metatype, value, {
+      exposeUnsetFields: false,
+    }) as unknown;
   }
 }
