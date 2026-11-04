@@ -46,9 +46,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "roles_name_key": {
-          "columns": [
-            "name"
-          ],
+          "columns": ["name"],
           "nullsNotDistinct": false,
           "name": "roles_name_key"
         }
@@ -165,9 +163,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "users_email_unique": {
-          "columns": [
-            "email"
-          ],
+          "columns": ["email"],
           "nullsNotDistinct": false,
           "name": "users_email_unique"
         }

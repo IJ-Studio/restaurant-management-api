@@ -4,12 +4,14 @@ import {
   MiddlewareConsumer,
   RequestMethod,
 } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule'; // Asegúrate de tener esto
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { DatabaseModule } from './database/database.module';
 import { LoggerMiddleware } from '../common/middleware/logger.middleware';
+import { BackupsModule } from './backups/backups.module';
 
 @Module({
   imports: [
@@ -17,8 +19,12 @@ import { LoggerMiddleware } from '../common/middleware/logger.middleware';
       isGlobal: true,
       envFilePath: `.env.${process.env.NODE_ENV || 'development.local'}`,
     }),
+    // ─── ACTIVA EL MOTOR DE CRON ──────────────────────────────────────────
+    ScheduleModule.forRoot(), // Esto es vital para que el decorador @Cron funcione
+    // ──────────────────────────────────────────────────────────────────────
     DatabaseModule,
     AuthModule,
+    BackupsModule, // Tu módulo de backups para el restaurante
   ],
   controllers: [AppController],
   providers: [AppService],

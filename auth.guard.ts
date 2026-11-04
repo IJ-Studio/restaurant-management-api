@@ -3,7 +3,7 @@ import { Observable } from 'rxjs';
 import { Request } from 'express';
 
 function validateRequest(r: Request): boolean {
-   return true;
+  return true;
 }
 
 @Injectable()
