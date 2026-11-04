@@ -11,6 +11,9 @@ export const TABLAS_ARCHIVABLES = [
   'metodos_pago_guardados',
   'perfiles_facturacion',
   'promociones',
+  'inventario_productos',
+  'inventario_proveedores',
+  'inventario_ordenes',
 ] as const;
 export type TablaArchivable = (typeof TABLAS_ARCHIVABLES)[number];
 

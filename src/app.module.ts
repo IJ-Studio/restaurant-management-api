@@ -25,6 +25,7 @@ import { DashboardModule } from './roles/dashboard.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReportesProblemasModule } from './reportes-problemas/reportes-problemas.module';
 import { NormalizarPipe } from './common/normalizacion/normalizar.pipe';
+import { InventarioModule } from './inventario/inventario.module';
 import { PromocionesModule } from './promociones/promociones.module';
 import { RegistrosEliminadosModule } from './registros-eliminados/registros-eliminados.module';
 import { ImagenesModule } from './imagenes/imagenes.module';
@@ -67,6 +68,7 @@ import { ImagenesModule } from './imagenes/imagenes.module';
     ReportesProblemasModule,
     RegistrosEliminadosModule,
     PromocionesModule,
+    InventarioModule,
     ImagenesModule,
   ],
   controllers: [],
