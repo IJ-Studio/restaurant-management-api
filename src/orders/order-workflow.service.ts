@@ -6,7 +6,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 
 import { ROLES } from '../common/constants/roles';
 import { DRIZZLE } from '../database/drizzle/constants';
@@ -18,6 +19,7 @@ import {
   ordenItems,
   pagos,
   platillos,
+  users,
 } from '../database/schema/public.schema';
 import type { ChargeOrderDto } from './dto/charge-order.dto';
 import type { EstatusOperativo } from './dto/update-order-status.dto';
@@ -108,6 +110,38 @@ export class OrderWorkflowService {
       .where(eq(ordenItems.ordenId, ordenId))
       .orderBy(asc(ordenItems.id));
 
+    const [mesero] = orden.atendidoPor
+      ? await this.db
+          .select({ name: users.name, lastname: users.lastname })
+          .from(users)
+          .where(eq(users.id, orden.atendidoPor))
+          .limit(1)
+      : [];
+
+    const cajero = alias(users, 'cajero');
+    const pagosOrden = await this.db
+      .select({
+        id: pagos.id,
+        monto: pagos.monto,
+        propina: pagos.propina,
+        referencia: pagos.referencia,
+        creadoEn: pagos.creadoEn,
+        metodo: metodosPago.nombre,
+        cajeroNombre: cajero.name,
+        cajeroApellido: cajero.lastname,
+      })
+      .from(pagos)
+      .leftJoin(metodosPago, eq(pagos.metodoPagoId, metodosPago.id))
+      .leftJoin(cajero, eq(pagos.cobradoPor, cajero.id))
+      .where(and(eq(pagos.ordenId, ordenId), eq(pagos.estatus, 'completado')))
+      .orderBy(asc(pagos.id));
+
+    const pagadoCents = pagosOrden.reduce(
+      (sum, pago) => sum + centavos(Number(pago.monto ?? 0)),
+      0,
+    );
+    const totalCents = centavos(Number(orden.total ?? 0));
+
     return {
       id: orden.id,
       folio: orden.folio,
@@ -117,9 +151,24 @@ export class OrderWorkflowService {
       subtotal: orden.subtotal,
       propina: orden.propina,
       total: orden.total,
+      pagado: pesos(pagadoCents),
+      restante: pesos(Math.max(0, totalCents - pagadoCents)),
+      numComensales: orden.numComensales ?? 1,
+      mesero: mesero ? `${mesero.name} ${mesero.lastname}`.trim() : null,
       notasCocina: orden.notasCocina,
       tiempoApertura: orden.tiempoApertura,
       tiempoCierre: orden.tiempoCierre,
+      pagos: pagosOrden.map((pago) => ({
+        id: pago.id,
+        metodo: pago.metodo,
+        monto: pago.monto,
+        propina: pago.propina,
+        referencia: pago.referencia,
+        cajero:
+          [pago.cajeroNombre, pago.cajeroApellido].filter(Boolean).join(' ') ||
+          null,
+        creadoEn: pago.creadoEn,
+      })),
       items: items.map((item) => ({
         id: item.id,
         cantidad: item.cantidad,
@@ -203,9 +252,11 @@ export class OrderWorkflowService {
   }
 
   /**
-   * POST /pedidos/:id/cobrar — registra el pago en caja y cierra el pedido.
-   * El monto sale del total guardado en la orden, nunca de la app. En efectivo se exige que
-   * alcance lo recibido y se calcula el cambio. Todo va en una transacción.
+   * POST /pedidos/:id/cobrar — registra un pago en caja. Sin `monto` se cobra todo lo que falta;
+   * con `monto` se cobra solo esa parte (cuenta separada) y el pedido se cierra cuando lo
+   * pagado cubre el total. Lo que falta se calcula del total guardado y de los pagos ya
+   * registrados, nunca de la app. La fila del pedido se bloquea (FOR UPDATE) durante la
+   * transacción: dos cajas cobrando a la vez no pueden pasarse del total.
    */
   async cobrar(ordenId: string, dto: ChargeOrderDto, cajeroId: number) {
     const orden = await this.buscarOrden(ordenId);
@@ -217,9 +268,7 @@ export class OrderWorkflowService {
         `Este pedido no se puede cobrar (estatus actual: ${orden.estatus}).`,
       );
     }
-
-    const totalCents = centavos(Number(orden.total ?? 0));
-    if (totalCents <= 0) {
+    if (centavos(Number(orden.total ?? 0)) <= 0) {
       throw new BadRequestException(
         'El total del pedido debe ser mayor a cero.',
       );
@@ -237,68 +286,108 @@ export class OrderWorkflowService {
         'Elige un método de pago válido para cobrar en caja.',
       );
     }
-
     const propinaCents =
       metodo.aplicaPropina === false ? 0 : centavos(dto.propina ?? 0);
-    const aPagarCents = totalCents + propinaCents;
 
-    let cambioCents = 0;
-    if (esEfectivo(metodo)) {
-      if (dto.montoRecibido === undefined) {
-        throw new BadRequestException('Indica con cuánto pagó el cliente.');
+    return await this.db.transaction(async (tx) => {
+      const [bloqueada] = await tx
+        .select()
+        .from(ordenes)
+        .where(eq(ordenes.id, ordenId))
+        .for('update');
+      if (!bloqueada || !ESTATUS_COBRABLES.includes(bloqueada.estatus ?? '')) {
+        throw new ConflictException('Este pedido ya fue cobrado.');
       }
-      const recibidoCents = centavos(dto.montoRecibido);
-      if (recibidoCents < aPagarCents) {
+
+      const [suma] = await tx
+        .select({
+          pagado: sql<string>`COALESCE(SUM(${pagos.monto}), 0)`,
+          propinas: sql<string>`COALESCE(SUM(${pagos.propina}), 0)`,
+        })
+        .from(pagos)
+        .where(
+          and(eq(pagos.ordenId, ordenId), eq(pagos.estatus, 'completado')),
+        );
+      const totalCents = centavos(Number(bloqueada.total ?? 0));
+      const pagadoCents = centavos(Number(suma?.pagado ?? 0));
+      const restanteCents = totalCents - pagadoCents;
+      if (restanteCents <= 0) {
+        throw new ConflictException('Este pedido ya quedó cubierto.');
+      }
+
+      const montoCents =
+        dto.monto === undefined ? restanteCents : centavos(dto.monto);
+      if (montoCents <= 0) {
         throw new BadRequestException(
-          `El efectivo recibido no alcanza: faltan $${pesos(aPagarCents - recibidoCents)}.`,
+          'El monto a cobrar debe ser mayor a cero.',
         );
       }
-      cambioCents = recibidoCents - aPagarCents;
-    }
+      if (montoCents > restanteCents) {
+        throw new BadRequestException(
+          `El monto excede lo que falta por cobrar ($${pesos(restanteCents)}).`,
+        );
+      }
 
-    const ahora = new Date().toISOString();
-    await this.db.transaction(async (tx) => {
-      // Solo se cierra si sigue cobrable: dos cajas cobrando a la vez no generan dos pagos.
-      const cerradas = await tx
-        .update(ordenes)
-        .set({
-          estatus: 'pagada',
-          propina: pesos(propinaCents),
-          tiempoCierre: ahora,
-          actualizadoEn: ahora,
-        })
-        .where(
-          and(
-            eq(ordenes.id, ordenId),
-            inArray(ordenes.estatus, ESTATUS_COBRABLES),
-          ),
-        )
-        .returning({ id: ordenes.id });
-      if (cerradas.length === 0) {
-        throw new ConflictException('Este pedido ya fue cobrado.');
+      const aPagarCents = montoCents + propinaCents;
+      let cambioCents = 0;
+      if (esEfectivo(metodo)) {
+        if (dto.montoRecibido === undefined) {
+          throw new BadRequestException('Indica con cuánto pagó el cliente.');
+        }
+        const recibidoCents = centavos(dto.montoRecibido);
+        if (recibidoCents < aPagarCents) {
+          throw new BadRequestException(
+            `El efectivo recibido no alcanza: faltan $${pesos(aPagarCents - recibidoCents)}.`,
+          );
+        }
+        cambioCents = recibidoCents - aPagarCents;
       }
 
       await tx.insert(pagos).values({
         ordenId,
         metodoPagoId: metodo.id,
-        monto: pesos(totalCents),
+        monto: pesos(montoCents),
         propina: pesos(propinaCents),
         cambio: pesos(cambioCents),
-        referencia: dto.referencia?.trim() || null,
+        referencia: dto.referencia?.trim() || dto.etiqueta?.trim() || null,
         cobradoPor: cajeroId,
         estatus: 'completado',
       });
-    });
 
-    return {
-      success: true,
-      message: 'Pago registrado. El pedido quedó cerrado.',
-      ordenId,
-      metodo: metodo.nombre,
-      total: pesos(totalCents),
-      propina: pesos(propinaCents),
-      totalCobrado: pesos(aPagarCents),
-      cambio: pesos(cambioCents),
-    };
+      const nuevoRestante = restanteCents - montoCents;
+      const propinasCents =
+        centavos(Number(suma?.propinas ?? 0)) + propinaCents;
+      const ahora = new Date().toISOString();
+      await tx
+        .update(ordenes)
+        .set(
+          nuevoRestante === 0
+            ? {
+                estatus: 'pagada',
+                propina: pesos(propinasCents),
+                tiempoCierre: ahora,
+                actualizadoEn: ahora,
+              }
+            : { propina: pesos(propinasCents), actualizadoEn: ahora },
+        )
+        .where(eq(ordenes.id, ordenId));
+
+      return {
+        success: true,
+        message:
+          nuevoRestante === 0
+            ? 'Pago registrado. El pedido quedó cerrado.'
+            : `Pago registrado. Faltan $${pesos(nuevoRestante)} por cobrar.`,
+        ordenId,
+        metodo: metodo.nombre,
+        total: pesos(montoCents),
+        propina: pesos(propinaCents),
+        totalCobrado: pesos(aPagarCents),
+        cambio: pesos(cambioCents),
+        pagado: pesos(pagadoCents + montoCents),
+        restante: pesos(nuevoRestante),
+        cerrada: nuevoRestante === 0,
+      };
+    });
   }
 }

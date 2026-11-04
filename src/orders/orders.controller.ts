@@ -46,6 +46,7 @@ export class OrdersController {
     return await this.ordersService.createOrderMesa(
       createOrderMesaDto,
       Number(user.id),
+      user.roleId,
     );
   }
 

@@ -28,6 +28,19 @@ export class ChargeOrderDto {
   @Max(1000000)
   readonly montoRecibido?: number;
 
+  /** Cuenta separada: cuánto del consumo se cobra en este pago. Sin él se cobra todo lo que falta. */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(1000000)
+  readonly monto?: number;
+
+  /** Para quién es este pago en una cuenta separada ("Persona 2"). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  readonly etiqueta?: string;
+
   /** Folio o autorización de la terminal. */
   @IsOptional()
   @IsString()
