@@ -1,4 +1,14 @@
-import { IsOptional, IsString, IsIn, IsInt, Min, Max, IsDateString, IsBoolean } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsIn,
+  IsInt,
+  Min,
+  Max,
+  IsDateString,
+  IsBoolean,
+} from 'class-validator';
+import { TextoNegocio } from '../../common/normalizacion/normalizar';
 
 export class UpdateReservationDto {
   @IsOptional()
@@ -8,6 +18,7 @@ export class UpdateReservationDto {
   })
   estatus?: string;
 
+  @TextoNegocio()
   @IsOptional()
   @IsString()
   notas?: string;

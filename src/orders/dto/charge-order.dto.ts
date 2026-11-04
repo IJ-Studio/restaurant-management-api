@@ -7,6 +7,7 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import { Texto, TextoNegocio } from '../../common/normalizacion/normalizar';
 
 /** Body de `POST /pedidos/:id/cobrar`: cobro en caja (efectivo o terminal física). */
 export class ChargeOrderDto {
@@ -36,12 +37,14 @@ export class ChargeOrderDto {
   readonly monto?: number;
 
   /** Para quién es este pago en una cuenta separada ("Persona 2"). */
+  @TextoNegocio()
   @IsOptional()
   @IsString()
   @MaxLength(60)
   readonly etiqueta?: string;
 
   /** Folio o autorización de la terminal. */
+  @Texto()
   @IsOptional()
   @IsString()
   @MaxLength(100)

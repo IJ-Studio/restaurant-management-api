@@ -109,7 +109,7 @@ describe('UsersController', () => {
 
     expect(service.updateUser).toHaveBeenCalledWith(
       1,
-      { name: 'Ana María' },
+      { name: 'ANA MARÍA' },
       1,
     );
   });

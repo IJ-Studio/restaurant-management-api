@@ -11,6 +11,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { Texto, TextoNegocio } from '../../common/normalizacion/normalizar';
 
 class OrderItemDto {
   @IsNumber()
@@ -22,6 +23,7 @@ class OrderItemDto {
   cantidad: number;
 
   /** Indicación para cocina sobre este platillo ("sin cebolla"). */
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   @MaxLength(200)
@@ -37,6 +39,7 @@ export class CreateOrderMesaDto {
   @IsOptional()
   cantidad?: number;
 
+  @Texto()
   @IsString()
   @IsOptional()
   mesa?: string;
@@ -55,6 +58,7 @@ export class CreateOrderMesaDto {
   numComensales?: number;
 
   /** Nota general para cocina ("alergia a la nuez", "llevar todo junto"). */
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   @MaxLength(500)

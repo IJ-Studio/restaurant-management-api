@@ -81,7 +81,7 @@ describe('POST /reportes-problemas y POST /imagenes/firma (HTTP)', () => {
       .expect(201, { success: true });
     expect(values).toHaveBeenCalledWith({
       tipo: 'no-funciona',
-      descripcion: 'El enlace del pie no abre.',
+      descripcion: 'EL ENLACE DEL PIE NO ABRE.',
       ruta: '/privacidad',
     });
   });

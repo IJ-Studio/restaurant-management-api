@@ -13,6 +13,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { TextoNegocio } from '../../common/normalizacion/normalizar';
 
 /** Etiquetas de la web; cada una corresponde a una columna booleana de `platillos`. */
 export const ETIQUETAS_PLATILLO = {
@@ -25,11 +26,13 @@ export const ETIQUETAS_PLATILLO = {
 
 /** Body de `PATCH /platillos/:id` (admin). Mismos nombres que `export.json` y la web. */
 export class ActualizarPlatilloDto {
+  @TextoNegocio({ obligatorio: true })
   @IsOptional()
   @IsString()
   @Length(1, 150)
   readonly nombre?: string;
 
+  @TextoNegocio()
   @IsOptional()
   @IsString()
   @MaxLength(255)
@@ -83,6 +86,7 @@ export class CrearPlatilloDto {
   @Min(1)
   readonly categoria_id!: number;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @Length(1, 150)
   readonly nombre!: string;
@@ -92,6 +96,7 @@ export class CrearPlatilloDto {
   @Max(100000)
   readonly precio!: number;
 
+  @TextoNegocio()
   @IsOptional()
   @IsString()
   @MaxLength(255)
