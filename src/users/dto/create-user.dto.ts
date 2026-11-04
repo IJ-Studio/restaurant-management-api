@@ -11,7 +11,7 @@ import {
 import { CREATABLE_ROLES } from '../../common/constants/roles';
 import {
   Correo,
-  Texto,
+  Telefono,
   TextoNegocio,
 } from '../../common/normalizacion/normalizar';
 
@@ -26,7 +26,7 @@ export class CreateUserDto {
   @IsNotEmpty()
   readonly lastname!: string;
 
-  @Texto({ obligatorio: true })
+  @Telefono({ obligatorio: true })
   @ApiProperty({ example: '+34612345678' })
   @IsNotEmpty()
   readonly phone!: string;

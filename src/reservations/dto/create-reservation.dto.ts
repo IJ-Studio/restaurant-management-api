@@ -13,7 +13,7 @@ import {
 import { Type } from 'class-transformer';
 import {
   Correo,
-  Texto,
+  Telefono,
   TextoNegocio,
 } from '../../common/normalizacion/normalizar';
 
@@ -23,7 +23,7 @@ export class CreateReservationDto {
   @Length(2, 150, { message: 'El nombre debe tener entre 2 y 150 caracteres' })
   clienteNombre: string;
 
-  @Texto({ obligatorio: true })
+  @Telefono({ obligatorio: true })
   @IsString({ message: 'El teléfono es obligatorio' })
   @Matches(/^[0-9+\-\s()]{8,20}$/, { message: 'Teléfono inválido' })
   clienteTelefono: string;

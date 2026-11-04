@@ -7,6 +7,7 @@ import {
   TextoNegocio,
   correo,
   limpiarTexto,
+  telefono,
   textoNegocio,
 } from './normalizar';
 import { NormalizarPipe } from './normalizar.pipe';
@@ -45,6 +46,20 @@ describe('normalización de textos', () => {
       notas: null,
       password: '  Secreta1 ',
     });
+  });
+});
+
+describe('teléfono a E.164', () => {
+  it.each([
+    ['771 123 4567', '+527711234567'],
+    ['(771) 123-4567', '+527711234567'],
+    ['527711234567', '+527711234567'],
+    ['+52 771 123 4567', '+527711234567'],
+    ['+1 415 555 0100', '+14155550100'],
+    ['123', '123'],
+    ['   ', null],
+  ])('%p → %p', (entrada, esperado) => {
+    expect(telefono(entrada)).toBe(esperado);
   });
 });
 
