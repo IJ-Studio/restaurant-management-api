@@ -52,6 +52,7 @@ import {
   vVentasPlatillo,
   vVentasPorDia,
   vUsuariosPerfil,
+  promociones,
 } from './public.schema';
 import { stripeEvents } from './stripe-events.schema';
 import { deviceTokens } from './device-tokens.schema';
@@ -117,6 +118,7 @@ export const schema = {
   stripeEvents,
   deviceTokens,
   reportesProblemas,
+  promociones,
 };
 
 export type Schema = typeof schema;
