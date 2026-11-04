@@ -126,6 +126,7 @@ describe('AuthService.SignUp', () => {
       createdAt: '2026-10-19',
     };
     const db = {
+      select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }),
       insert: () => ({
         values: () => ({ returning: () => Promise.resolve([fila]) }),
       }),
