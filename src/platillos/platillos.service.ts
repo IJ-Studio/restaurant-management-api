@@ -52,8 +52,8 @@ export class PlatillosService {
 
   async buildImportTemplate() {
     const { columns } = await this.getSchema();
-    const importableColumns = this.getImportableColumns(columns);
-    const csv = toCsv([importableColumns], []);
+    const templateColumns = this.getTemplateColumns(columns);
+    const csv = toCsv([templateColumns], []);
     return {
       filename: `template_${this.tableName}_${new Date().toISOString().slice(0, 10)}.csv`,
       csv,
@@ -62,9 +62,9 @@ export class PlatillosService {
 
   async buildImportTemplateJson() {
     const { columns } = await this.getSchema();
-    const importableColumns = this.getImportableColumns(columns);
+    const templateColumns = this.getTemplateColumns(columns);
     const templateRow = Object.fromEntries(
-      importableColumns.map((c) => [c, '']),
+      templateColumns.map((c) => [c, '']),
     ) as Record<string, unknown>;
 
     const payload = {
@@ -72,7 +72,7 @@ export class PlatillosService {
       exportedAt: new Date().toISOString(),
       schema: this.tableSchema,
       table: this.tableName,
-      columns: importableColumns,
+      columns: templateColumns,
       rows: [templateRow],
     };
 
@@ -153,11 +153,19 @@ export class PlatillosService {
       }
     }
 
-    const normalizedRows = parsed.rows.map((row) => {
+    const normalizedRows = parsed.rows.map((row, rowIdx) => {
       const record: Record<string, unknown> = {};
-      headers.forEach((h, i) => {
-        record[h] = castValue(row[i] ?? '', colByName.get(h)!);
-      });
+      for (let i = 0; i < headers.length; i++) {
+        const h = headers[i];
+        try {
+          record[h] = castValue(row[i] ?? '', colByName.get(h)!);
+        } catch (e: any) {
+          const msg = e?.message ? String(e.message) : 'valor inválido';
+          throw new BadRequestException(
+            `Fila ${rowIdx + 2}, columna "${h}": ${msg}`,
+          );
+        }
+      }
       return record;
     });
 
@@ -187,10 +195,17 @@ export class PlatillosService {
       }
     }
 
-    const normalizedRows = records.map((row) => {
+    const normalizedRows = records.map((row, rowIdx) => {
       const record: Record<string, unknown> = {};
       for (const h of headers) {
-        record[h] = castJsonValue(row[h], colByName.get(h)!);
+        try {
+          record[h] = castJsonValue(row[h], colByName.get(h)!);
+        } catch (e: any) {
+          const msg = e?.message ? String(e.message) : 'valor inválido';
+          throw new BadRequestException(
+            `Fila ${rowIdx + 1}, columna "${h}": ${msg}`,
+          );
+        }
       }
       return record;
     });
@@ -252,14 +267,53 @@ export class PlatillosService {
     return { inserted, updated };
   }
 
-  private getImportableColumns(columns: ColumnMeta[]): string[] {
-    return columns
-      .filter((c) => {
-        if (c.is_identity === 'YES') return false;
-        if (c.is_generated === 'ALWAYS') return false;
-        return true;
-      })
+  private getTemplateColumns(columns: ColumnMeta[]): string[] {
+    const excluded = new Set([
+      'id',
+      'creado_en',
+      'actualizado_en',
+      'created_at',
+      'updated_at',
+      'fecha_alta',
+    ]);
+
+    const allowed = columns.filter((c) => {
+      if (c.is_identity === 'YES') return false;
+      if (c.is_generated === 'ALWAYS') return false;
+      if (excluded.has(c.column_name)) return false;
+      return true;
+    });
+
+    const byName = new Map(allowed.map((c) => [c.column_name, c] as const));
+
+    const required = allowed
+      .filter((c) => c.is_nullable === 'NO' && !c.column_default)
+      .sort((a, b) => a.ordinal_position - b.ordinal_position)
       .map((c) => c.column_name);
+
+    const preferred = [
+      'categoria_id',
+      'nombre',
+      'descripcion_corta',
+      'descripcion',
+      'precio',
+      'tiempo_preparacion',
+      'disponible',
+      'imagen_url',
+      'codigo',
+      'es_vegetariano',
+      'es_vegano',
+      'es_sin_gluten',
+      'es_picante',
+      'nivel_picante',
+      'es_popular',
+    ].filter((c) => byName.has(c));
+
+    const out: string[] = [];
+    for (const c of [...required, ...preferred]) {
+      if (!out.includes(c)) out.push(c);
+    }
+    return out;
   }
 }
 
@@ -287,7 +341,12 @@ function castValue(raw: string, column: ColumnMeta): unknown {
     udt === 'int8'
   ) {
     const n = Number(trimmed);
-    return Number.isFinite(n) ? n : trimmed;
+    if (!Number.isFinite(n)) {
+      throw new BadRequestException(
+        `Valor inválido para entero en "${column.column_name}": "${trimmed}"`,
+      );
+    }
+    return n;
   }
 
   if (
