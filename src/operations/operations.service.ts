@@ -23,6 +23,7 @@ import {
   platillos,
   users,
 } from '../database/schema/public.schema';
+import { aPesos, type Calculo } from '../common/calculo';
 import type {
   CloseCashDto,
   CreateIncidentDto,
@@ -318,7 +319,57 @@ export class OperationsService {
     const fondo = centavos(caja.fondoInicial);
     // En la caja queda el fondo, lo cobrado en efectivo y las propinas en efectivo (el cambio ya salió).
     const esperado = fondo + cents.efectivo + cents.propinasEfectivo;
+    const periodo = {
+      inicio: caja.fechaApertura,
+      fin: caja.fechaCierre ?? new Date().toISOString(),
+    };
+    const filtros = {
+      cajero: 'quien abrió esta caja',
+      'estatus del pago': 'completado',
+    };
+    const calculos: Record<string, Calculo> = {
+      efectivoEsperado: {
+        formula:
+          'efectivo esperado = fondo inicial + ventas en efectivo + propinas en efectivo',
+        operacion: 'suma',
+        periodo,
+        filtros,
+        datos: [
+          { clave: 'fondo inicial', valor: aPesos(fondo) },
+          { clave: 'ventas en efectivo', valor: aPesos(cents.efectivo) },
+          {
+            clave: 'propinas en efectivo',
+            valor: aPesos(cents.propinasEfectivo),
+          },
+        ],
+      },
+      totalVentas: {
+        formula: 'cobrado = efectivo + tarjeta + digital',
+        operacion: 'suma',
+        periodo,
+        filtros,
+        datos: [
+          { clave: 'efectivo', valor: aPesos(cents.efectivo) },
+          { clave: 'tarjeta', valor: aPesos(cents.tarjeta) },
+          { clave: 'digital', valor: aPesos(cents.digital) },
+        ],
+      },
+      propinas: {
+        formula: 'propinas = propinas en efectivo + propinas con otros métodos',
+        operacion: 'suma',
+        periodo,
+        filtros,
+        datos: [
+          { clave: 'en efectivo', valor: aPesos(cents.propinasEfectivo) },
+          {
+            clave: 'con otros métodos',
+            valor: aPesos(cents.propinas - cents.propinasEfectivo),
+          },
+        ],
+      },
+    };
     return {
+      calculos,
       abierta: caja.estatus === 'abierto',
       id: caja.id,
       fechaApertura: caja.fechaApertura,
@@ -520,6 +571,7 @@ export class OperationsService {
       incidencias,
       mermas,
       cajas,
+      periodo: { inicio, fin },
     });
   }
 }
@@ -555,6 +607,7 @@ type Entrada = {
     name: string | null;
     lastname: string | null;
   }[];
+  periodo?: { inicio: string; fin: string };
 };
 
 /** Arma el resumen del día con lo que devuelven las consultas (separado para probarlo sin base). */
@@ -565,6 +618,7 @@ export function construirResumen({
   incidencias,
   mermas,
   cajas,
+  periodo,
 }: Entrada) {
   const porMetodo = new Map<
     string,
@@ -626,7 +680,59 @@ export function construirResumen({
   const ordenar = <T extends { total: number }>(items: Iterable<T>) =>
     [...items].sort((a, b) => b.total - a.total);
 
+  // «Ver cálculo» (Prioridad 1.4): cada cifra con los pagos u órdenes que la producen.
+  const filtrosPagos = { 'estatus del pago': 'completado' };
+  const clavePago = (p: Entrada['pagosHoy'][number], i: number) =>
+    `Pago ${i + 1}${p.mesa ? ` · mesa ${p.mesa}` : ' · en línea'}${p.creadoEn ? ` · ${p.creadoEn.slice(11, 16)}` : ''}`;
+  const noCanceladas = ordenesHoy.filter((o) => o.estatus !== 'cancelada');
+  const calculos: Record<string, Calculo> = {
+    cobrado: {
+      formula: 'cobrado = suma del monto de cada pago completado de hoy',
+      operacion: 'suma',
+      periodo,
+      filtros: filtrosPagos,
+      datos: pagosHoy.map((p, i) => ({
+        clave: clavePago(p, i),
+        valor: aPesos(centavos(p.monto)),
+        origen: p.metodo ?? undefined,
+      })),
+    },
+    propinas: {
+      formula: 'propinas = suma de la propina de cada pago completado de hoy',
+      operacion: 'suma',
+      periodo,
+      filtros: filtrosPagos,
+      datos: pagosHoy.map((p, i) => ({
+        clave: clavePago(p, i),
+        valor: aPesos(centavos(p.propina)),
+      })),
+    },
+    ticketPromedio: {
+      formula:
+        'ticket medio = cobrado / cuentas pagadas (redondeado al centavo)',
+      operacion: 'cociente',
+      periodo,
+      filtros: filtrosPagos,
+      datos: [
+        { clave: 'cobrado', valor: aPesos(cobrado) },
+        { clave: 'cuentas pagadas', valor: ordenesPagadas.size },
+      ],
+    },
+    comensales: {
+      formula:
+        'comensales = suma de los comensales de cada orden de hoy no cancelada (1 si no se anotó)',
+      operacion: 'suma',
+      periodo,
+      filtros: { 'estatus de la orden': 'distinto de cancelada' },
+      datos: noCanceladas.map((o, i) => ({
+        clave: `Orden ${i + 1} · ${o.id.slice(0, 6)}`,
+        valor: o.comensales ?? 1,
+      })),
+    },
+  };
+
   return {
+    calculos,
     ventas: {
       cobrado: pesos(cobrado),
       propinas: pesos(propinas),
