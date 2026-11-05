@@ -33,6 +33,8 @@ export const categoriasMenu = pgTable("categorias_menu", {
 	disponibleHasta: time("disponible_hasta"),
 	icono: varchar({ length: 50 }),
 	color: char({ length: 7 }),
+	// comida o bebida (2026-11-05-categorias-tipo.sql); NULL en las categorías aún sin clasificar.
+	tipo: varchar({ length: 10 }),
 }, (table) => [
 	unique("categorias_menu_nombre_key").on(table.nombre),
 ]);
