@@ -600,7 +600,7 @@ type Entrada = {
   }[];
   top: { nombre: string; cantidad: number; total: string }[];
   incidencias: unknown[];
-  mermas: { cost: string }[];
+  mermas: { cost: string; productName?: string }[];
   cajas: {
     id: number;
     fechaApertura: string;
@@ -717,6 +717,15 @@ export function construirResumen({
         { clave: 'cobrado', valor: aPesos(cobrado) },
         { clave: 'cuentas pagadas', valor: ordenesPagadas.size },
       ],
+    },
+    mermas: {
+      formula: 'costo de mermas = suma del costo de cada merma registrada hoy',
+      operacion: 'suma',
+      periodo,
+      datos: mermas.map((m, i) => ({
+        clave: `Merma ${i + 1}${m.productName ? ` · ${m.productName}` : ''}`,
+        valor: aPesos(centavos(m.cost)),
+      })),
     },
     comensales: {
       formula:

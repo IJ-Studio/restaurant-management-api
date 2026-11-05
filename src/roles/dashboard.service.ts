@@ -129,6 +129,13 @@ export class DashboardService {
 
       // «Ver cálculo» (Prioridad 1.4): de las mismas filas que dan cada cifra.
       const periodo = { inicio: inicioDia, fin: finDia };
+      const cuenta = (nombre: string, estatus: string, n = 0): Calculo => ({
+        formula: `${nombre} = órdenes de hoy con estatus ${estatus}`,
+        operacion: 'suma',
+        periodo,
+        filtros: { 'estatus de la orden': estatus },
+        datos: [{ clave: estatus, valor: n }],
+      });
       const calculos: Record<string, Calculo> = {
         totalVentas: {
           formula: 'ventas de hoy = suma del total de las órdenes de cada hora',
@@ -142,14 +149,18 @@ export class DashboardService {
             }))
             .filter((d: { valor: number }) => d.valor !== 0),
         },
-        pedidosPendientes: {
-          formula:
-            'pedidos pendientes = órdenes de hoy con estatus «pendiente»',
-          operacion: 'suma',
-          periodo,
-          filtros: { 'estatus de la orden': 'pendiente' },
-          datos: [{ clave: 'pendiente', valor: pendientes?.count ?? 0 }],
-        },
+        pedidosPendientes: cuenta(
+          'pedidos pendientes',
+          'pendiente',
+          pendientes?.count,
+        ),
+        pedidosEnPreparacion: cuenta(
+          'en cocina',
+          'abierta o en_preparacion',
+          abiertos?.count,
+        ),
+        pedidosListos: cuenta('listos para servir', 'lista', listos?.count),
+        pedidosPorCobrar: cuenta('por cobrar', 'entregada', porCobrar?.count),
         mesasOcupadas: {
           formula:
             'mesas ocupadas = mesas activas con una reservación en las próximas dos horas',
