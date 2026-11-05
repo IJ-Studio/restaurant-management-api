@@ -3,14 +3,14 @@ import { NestFactory } from '@nestjs/core';
 // import { ZenGuard } from './guards/zen.guard';
 import * as express from 'express';
 import { AppModule } from './app.module';
+import { origenesCors } from './common/config/cors';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
 
   // app.useGlobalGuards(new ZenGuard());
-  app.enableCors({
-    origin: ['https://el-quijote.vercel.app', 'http://localhost:3000'],
-  });
+  // CORS_ORIGINS (separados por comas); sin ella, los orígenes de siempre.
+  app.enableCors({ origin: origenesCors() });
     app.use('/pagos/webhook', express.raw({ type: 'application/json' }));
   app.use(express.json());
 

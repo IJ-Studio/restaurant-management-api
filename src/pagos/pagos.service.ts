@@ -52,7 +52,7 @@ export class PagosService {
     const facturapiKey = process.env.FACTURAPI_TEST_KEY;
     if (!facturapiKey) {
       throw new Error(
-        'FACTURAPI_API_KEY no está definida en las variables de entorno.',
+        'FACTURAPI_TEST_KEY no está definida en las variables de entorno.',
       );
     }
     this.facturapi = new Facturapi(facturapiKey);
