@@ -76,7 +76,12 @@ describe('mesas del administrador (Prioridad 1.3)', () => {
     const db = {
       insert: () => ({
         values: () => ({
-          returning: () => Promise.reject({ cause: { code: '23505' } }),
+          returning: () =>
+            Promise.reject(
+              Object.assign(new Error('duplicado'), {
+                cause: { code: '23505' },
+              }),
+            ),
         }),
       }),
     };
@@ -117,9 +122,14 @@ describe('mesas del administrador (Prioridad 1.3)', () => {
   });
 
   it('solo el admin administra; la lista pública sigue abierta', () => {
-    const p = MesasController.prototype;
-    for (const m of [p.listar, p.areas, p.crear, p.actualizar, p.eliminar])
-      expect(Reflect.getMetadata('roles', m)).toEqual([ROLES.ADMIN]);
-    expect(Reflect.getMetadata('isPublic', p.getMesas)).toBe(true);
+    const metodo = (m: string): unknown =>
+      Object.getOwnPropertyDescriptor(MesasController.prototype, m)?.value;
+    for (const m of ['listar', 'areas', 'crear', 'actualizar', 'eliminar'])
+      expect(Reflect.getMetadata('roles', metodo(m) as object)).toEqual([
+        ROLES.ADMIN,
+      ]);
+    expect(Reflect.getMetadata('isPublic', metodo('getMesas') as object)).toBe(
+      true,
+    );
   });
 });
