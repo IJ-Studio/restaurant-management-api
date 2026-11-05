@@ -44,6 +44,9 @@ describe('inventario del administrador', () => {
 
   it('borrar algo con historial responde 409 en lugar de 500', async () => {
     const db = {
+      select: () => ({
+        from: () => ({ where: () => ({ limit: () => Promise.resolve([]) }) }),
+      }),
       execute: jest.fn().mockRejectedValue({ cause: { code: '23503' } }),
     };
     const s = new InventarioService(db as never);
@@ -56,5 +59,22 @@ describe('inventario del administrador', () => {
     expect(Reflect.getMetadata('roles', InventarioController)).toEqual([
       ROLES.ADMIN,
     ]);
+  });
+
+  it('un proveedor con productos ligados no se borra (los vínculos no se archivan): 409', async () => {
+    const execute = jest.fn();
+    const db = {
+      select: () => ({
+        from: () => ({
+          where: () => ({ limit: () => Promise.resolve([{ id: 1 }]) }),
+        }),
+      }),
+      execute,
+    };
+    const s = new InventarioService(db as never);
+    await expect(
+      s.eliminar('inventario_proveedores', 1, {}),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(execute).not.toHaveBeenCalled();
   });
 });

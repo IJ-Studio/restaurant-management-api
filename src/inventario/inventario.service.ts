@@ -13,6 +13,7 @@ import {
   inventarioMermas,
   inventarioOrdenes,
   inventarioProductos,
+  inventarioProveedorProducto,
   inventarioProveedores,
 } from '../database/schema/public.schema';
 import {
@@ -233,6 +234,26 @@ export class InventarioService {
 
   /** Archiva y borra; si otra tabla lo usa (mermas, órdenes), 409 con lo que conviene hacer. */
   async eliminar(tabla: TablaArchivable, id: number, baja: DatosBaja) {
+    // Los vínculos proveedor-producto se borran en cascada y no se archivan: con vínculos, 409
+    // (desactivarlo los conserva). Así una restauración no devuelve un registro a medias.
+    if (
+      tabla === 'inventario_productos' ||
+      tabla === 'inventario_proveedores'
+    ) {
+      const columna =
+        tabla === 'inventario_productos'
+          ? inventarioProveedorProducto.productoId
+          : inventarioProveedorProducto.proveedorId;
+      const [vinculo] = await this.db
+        .select({ id: inventarioProveedorProducto.id })
+        .from(inventarioProveedorProducto)
+        .where(eq(columna, id))
+        .limit(1);
+      if (vinculo)
+        throw new ConflictException(
+          'Está ligado a proveedores o productos: desactívalo en lugar de eliminarlo.',
+        );
+    }
     try {
       if ((await archivarYBorrar(this.db, tabla, id, baja)) === 0)
         throw new NotFoundException('El registro no existe.');
