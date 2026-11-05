@@ -236,6 +236,7 @@ export class OperationsService {
           reason: dto.reason,
           justification: dto.justification.trim(),
           reportedBy,
+          reportadoPorId: userId,
           cost: pesos(costCents),
         })
         .returning();

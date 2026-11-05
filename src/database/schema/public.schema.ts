@@ -89,10 +89,13 @@ export const inventarioMermas = pgTable("inventario_mermas", {
 	reason: varchar({ length: 50 }).notNull(),
 	justification: text().notNull(),
 	reportedBy: text("reported_by").default('').notNull(),
+	// Id de quien la registró (2026-11-05-mermas-autor.sql); nulo en las antiguas.
+	reportadoPorId: integer("reportado_por_id").references(() => users.id, { onDelete: "set null" }),
 	cost: numeric({ precision: 10, scale:  2 }).default('0').notNull(),
 	date: timestamp({ mode: 'string' }).defaultNow(),
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
 }, (table) => [
+	index("idx_inventario_mermas_reportado_por_id").using("btree", table.reportadoPorId.asc().nullsLast()),
 	index("idx_inventario_mermas_product_id").using("btree", table.productId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.productId],

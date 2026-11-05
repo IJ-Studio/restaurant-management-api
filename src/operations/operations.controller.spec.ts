@@ -114,9 +114,15 @@ describe('OperationsController', () => {
         reason: 'otro',
         justification: 'Se quemó',
       },
-      ['admin', 'cocina'],
+      // Prioridad 1.2: solo el personal operativo registra mermas; el admin no.
+      ['cajero', 'mesero', 'cocina'],
     ],
-    ['get', '/inventario/mermas', undefined, ['admin', 'cocina']],
+    [
+      'get',
+      '/inventario/mermas',
+      undefined,
+      ['admin', 'cajero', 'mesero', 'cocina'],
+    ],
     ['get', '/caja/actual', undefined, ['admin', 'cajero']],
     ['post', '/caja/abrir', { fondoInicial: 500 }, ['admin', 'cajero']],
     ['post', '/caja/cerrar', { efectivoContado: 500 }, ['admin', 'cajero']],

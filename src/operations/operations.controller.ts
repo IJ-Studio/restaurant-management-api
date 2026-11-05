@@ -44,7 +44,8 @@ export class OperationsController {
     return await this.operations.listarProductos();
   }
 
-  @Roles(ROLES.ADMIN, ROLES.COCINA)
+  // Solo el personal operativo registra mermas; el admin solo las consulta (Prioridad 1.2).
+  @Roles(ROLES.CAJERO, ROLES.MESERO, ROLES.COCINA)
   @Post('inventario/mermas')
   async registrarMerma(
     @Body(createStrictValidationPipe()) dto: CreateWasteDto,
@@ -53,7 +54,7 @@ export class OperationsController {
     return await this.operations.registrarMerma(dto, Number(user.id));
   }
 
-  @Roles(ROLES.ADMIN, ROLES.COCINA)
+  @Roles(ROLES.ADMIN, ROLES.CAJERO, ROLES.MESERO, ROLES.COCINA)
   @Get('inventario/mermas')
   async listarMermas() {
     return await this.operations.listarMermasDeHoy();
