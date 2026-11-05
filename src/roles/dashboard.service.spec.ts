@@ -43,6 +43,11 @@ describe('indicadores del inicio del admin', () => {
       { clave: '14:00 a 14:59', valor: 100 },
     ]);
     expect(recalcular(r.calculos.pedidosPendientes)).toBe(r.pedidosPendientes);
+    expect(recalcular(r.calculos.pedidosEnPreparacion)).toBe(
+      r.pedidosEnPreparacion,
+    );
+    expect(recalcular(r.calculos.pedidosListos)).toBe(r.pedidosListos);
+    expect(recalcular(r.calculos.pedidosPorCobrar)).toBe(r.pedidosPorCobrar);
     expect(recalcular(r.calculos.mesasOcupadas)).toBe(r.mesasOcupadas);
     expect(r.calculos.mesasOcupadas.datos.map((d) => d.clave)).toEqual([
       'Mesa S01',

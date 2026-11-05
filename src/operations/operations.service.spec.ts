@@ -544,6 +544,7 @@ describe('resumen del día', () => {
     expect(recalcular(calculos.cobrado)).toBe(Number(resumen.ventas.cobrado));
     expect(recalcular(calculos.propinas)).toBe(Number(resumen.ventas.propinas));
     expect(recalcular(calculos.comensales)).toBe(resumen.ventas.comensales);
+    expect(recalcular(calculos.mermas)).toBe(Number(resumen.mermas.costo));
     expect(recalcular(calculos.ticketPromedio)).toBeCloseTo(
       Number(resumen.ventas.ticketPromedio),
       2,
