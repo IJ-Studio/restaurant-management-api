@@ -1,3 +1,4 @@
+import { recalcular } from '../common/calculo';
 import {
   BadRequestException,
   ConflictException,
@@ -315,9 +316,17 @@ describe('corte de caja', () => {
   });
 
   it('muestra lo cobrado desde que se abrió y el efectivo que debe haber', async () => {
-    await expect(
-      setup([[abierta], pagosCaja]).service.cajaActual(2),
-    ).resolves.toMatchObject({
+    const caja = await setup([[abierta], pagosCaja]).service.cajaActual(2);
+    // «Ver cálculo» (P1.4): cada cifra se rehace desde su desglose.
+    if (!('calculos' in caja)) throw new Error('sin desglose');
+    expect(recalcular(caja.calculos.efectivoEsperado)).toBe(
+      Number(caja.efectivoEsperado),
+    );
+    expect(recalcular(caja.calculos.totalVentas)).toBe(
+      Number(caja.totalVentas),
+    );
+    expect(recalcular(caja.calculos.propinas)).toBe(Number(caja.propinas));
+    expect(caja).toMatchObject({
       abierta: true,
       fondoInicial: '500.00',
       efectivoVentas: '300.00',
@@ -529,6 +538,22 @@ describe('resumen del día', () => {
     expect(resumen.cajasAbiertas).toEqual([
       { id: 7, cajero: 'Carlos Soto', desde: 'x' },
     ]);
+
+    // «Ver cálculo» (P1.4): cada cifra se rehace desde su desglose.
+    const { calculos } = resumen;
+    expect(recalcular(calculos.cobrado)).toBe(Number(resumen.ventas.cobrado));
+    expect(recalcular(calculos.propinas)).toBe(Number(resumen.ventas.propinas));
+    expect(recalcular(calculos.comensales)).toBe(resumen.ventas.comensales);
+    expect(recalcular(calculos.ticketPromedio)).toBeCloseTo(
+      Number(resumen.ventas.ticketPromedio),
+      2,
+    );
+    expect(calculos.cobrado.datos).toHaveLength(3);
+    expect(calculos.cobrado.datos[0]).toMatchObject({
+      clave: expect.stringContaining('mesa S01') as string,
+      valor: 200,
+      origen: 'Efectivo',
+    });
   });
 
   it('sin ventas no divide entre cero', () => {

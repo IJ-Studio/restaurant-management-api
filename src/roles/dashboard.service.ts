@@ -4,6 +4,7 @@ import type { DrizzleDB } from '../database/drizzle/drizzle.provider';
 import { ordenes } from '../database/schema/public.schema';
 import { eq, and, inArray, sql } from 'drizzle-orm';
 import { ReservationsService } from '../reservations/reservations.service';
+import type { Calculo } from '../common/calculo';
 
 @Injectable()
 export class DashboardService {
@@ -40,7 +41,7 @@ export class DashboardService {
         .groupBy(sql`EXTRACT(HOUR FROM ${ordenes.tiempoApertura})`)
         .orderBy(sql`EXTRACT(HOUR FROM ${ordenes.tiempoApertura})`);
 
-      const ventas = Array(24).fill(0);
+      const ventas: number[] = Array<number>(24).fill(0);
       for (const row of rows) {
         ventas[row.hora] = Number(row.total);
       }
@@ -71,7 +72,7 @@ export class DashboardService {
       ).toISOString();
 
       // Ventas totales del día
-      const { totalDia } = await this.getVentasPorHora();
+      const { ventas, totalDia } = await this.getVentasPorHora();
 
       // Pedidos pendientes del día
       const [pendientes] = await this.db
@@ -126,7 +127,48 @@ export class DashboardService {
       const ocupadas = mapaMesas.filter((m) => m.estado === 'ocupada').length;
       const libres = totalMesas - ocupadas;
 
+      // «Ver cálculo» (Prioridad 1.4): de las mismas filas que dan cada cifra.
+      const periodo = { inicio: inicioDia, fin: finDia };
+      const calculos: Record<string, Calculo> = {
+        totalVentas: {
+          formula: 'ventas de hoy = suma del total de las órdenes de cada hora',
+          operacion: 'suma',
+          periodo,
+          filtros: { 'estatus de la orden': 'distinto de cancelada' },
+          datos: ventas
+            .map((total: number, hora: number) => ({
+              clave: `${String(hora).padStart(2, '0')}:00 a ${String(hora).padStart(2, '0')}:59`,
+              valor: total,
+            }))
+            .filter((d: { valor: number }) => d.valor !== 0),
+        },
+        pedidosPendientes: {
+          formula:
+            'pedidos pendientes = órdenes de hoy con estatus «pendiente»',
+          operacion: 'suma',
+          periodo,
+          filtros: { 'estatus de la orden': 'pendiente' },
+          datos: [{ clave: 'pendiente', valor: pendientes?.count ?? 0 }],
+        },
+        mesasOcupadas: {
+          formula:
+            'mesas ocupadas = mesas activas con una reservación en las próximas dos horas',
+          operacion: 'conteo',
+          periodo: {
+            inicio: nowISO,
+            fin: new Date(Date.parse(nowISO) + 120 * 60000).toISOString(),
+          },
+          filtros: {
+            'estatus de la reservación': 'distinto de cancelada y completada',
+          },
+          datos: mapaMesas
+            .filter((m) => m.estado === 'ocupada')
+            .map((m) => ({ clave: `Mesa ${m.numero}`, valor: 'ocupada' })),
+        },
+      };
+
       return {
+        calculos,
         totalVentas: totalDia,
         pedidosPendientes: pendientes?.count ?? 0,
         pedidosEnPreparacion: abiertos?.count ?? 0,
