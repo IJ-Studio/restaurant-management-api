@@ -64,6 +64,44 @@ function setup(rowsQueue: unknown[][], eventsInserted: unknown[][] = []) {
 }
 
 describe('PagosService.crearIntentoPago (DT-16)', () => {
+  it('rechaza una dirección de envío que no es del cliente de la orden', async () => {
+    const propia = {
+      id: 'orden-1',
+      clienteId: 'cli-7',
+      estatus: 'pendiente',
+      total: '50.00',
+    };
+    // orden, cliente del usuario y búsqueda de la dirección (no la encuentra para cli-7).
+    const { service, create, set } = setup([[propia], [{ id: 'cli-7' }], []]);
+
+    await expect(
+      service.crearIntentoPago(
+        { ordenId: 'orden-1', direccionId: 99 },
+        7,
+        ROLES.CLIENTE,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(set).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('acepta la dirección propia y la guarda en la orden', async () => {
+    const propia = {
+      id: 'orden-1',
+      clienteId: 'cli-7',
+      estatus: 'pendiente',
+      total: '50.00',
+    };
+    const { service, set } = setup([[propia], [{ id: 'cli-7' }], [{ id: 5 }]]);
+
+    await service.crearIntentoPago(
+      { ordenId: 'orden-1', direccionId: 5 },
+      7,
+      ROLES.CLIENTE,
+    );
+    expect(set).toHaveBeenCalledWith({ direccionEnvioId: 5 });
+  });
+
   it('el cajero puede cobrar una orden abierta que no le pertenece', async () => {
     const orden = {
       id: 'orden-1',

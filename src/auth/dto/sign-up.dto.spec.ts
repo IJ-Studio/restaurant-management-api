@@ -34,6 +34,14 @@ describe('SignUpDto con validación estricta', () => {
       });
     });
 
+    it('teléfono de 10 dígitos o con espacios: se normaliza a E.164 (NP-06)', async () => {
+      for (const phone of ['5512345678', '+52 55 1234 5678', '55-1234-5678']) {
+        await expect(validate(webPayload({ phone }))).resolves.toMatchObject({
+          phone: '+525512345678',
+        });
+      }
+    });
+
     it.each([
       ['contraseña de 8 caracteres', 'Aa1!aaaa'],
       ['contraseña de 64 caracteres', `Aa1!${'x'.repeat(60)}`],
@@ -68,8 +76,7 @@ describe('SignUpDto con validación estricta', () => {
       ['contraseña sin símbolo', withPassword('Quijote2026x')],
       ['contraseñas distintas', webPayload({ passwordConfirm: 'Otra#2026x' })],
       ['contraseña que no es string', webPayload({ password: 12345678 })],
-      ['teléfono sin "+"', webPayload({ phone: '5512345678' })],
-      ['teléfono con espacios', webPayload({ phone: '+52 55 1234 5678' })],
+      ['teléfono de 8 dígitos', webPayload({ phone: '55123456' })],
       ['teléfono demasiado corto', webPayload({ phone: '+52551234' })],
       ['teléfono demasiado largo', webPayload({ phone: '+5255123456789012' })],
       ['teléfono que no es string', webPayload({ phone: 5512345678 })],
@@ -126,6 +133,7 @@ describe('AuthService.SignUp', () => {
       createdAt: '2026-10-19',
     };
     const db = {
+      select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }),
       insert: () => ({
         values: () => ({ returning: () => Promise.resolve([fila]) }),
       }),

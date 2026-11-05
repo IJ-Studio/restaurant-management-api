@@ -7,38 +7,51 @@ import {
   IsUUID,
   Length,
 } from 'class-validator';
+import {
+  Correo,
+  Texto,
+  TextoNegocio,
+} from '../../common/normalizacion/normalizar';
 
 export class CrearDireccionDto {
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   alias?: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsNotEmpty()
   linea1: string;
 
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   linea2?: string;
 
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   colonia?: string;
 
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   referencias?: string;
 
+  @Texto({ obligatorio: true })
   @IsString()
   @Length(5, 5, {
     message: 'El código postal debe tener exactamente 5 dígitos.',
   })
   codigoPostal: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsNotEmpty()
   ciudad: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsNotEmpty()
   estado: string;
@@ -49,26 +62,32 @@ export class CrearDireccionDto {
 }
 
 export class ActualizarDireccionDto {
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   alias?: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsOptional()
   linea1?: string;
 
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   linea2?: string;
 
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   colonia?: string;
 
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   referencias?: string;
 
+  @Texto({ obligatorio: true })
   @IsString()
   @IsOptional()
   @Length(5, 5, {
@@ -76,10 +95,12 @@ export class ActualizarDireccionDto {
   })
   codigoPostal?: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsOptional()
   ciudad?: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsOptional()
   estado?: string;
@@ -136,6 +157,7 @@ export class CrearFacturaDto {
   @IsOptional()
   perfilFacturacionId?: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsOptional()
   @Length(12, 13, {
@@ -144,18 +166,22 @@ export class CrearFacturaDto {
   })
   rfc?: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsOptional()
   razonSocial?: string;
 
+  @Texto({ obligatorio: true })
   @IsString()
   @IsOptional()
   usoCfdi?: string;
 
+  @Texto({ obligatorio: true })
   @IsString()
   @IsOptional()
   regimenFiscal?: string;
 
+  @Texto({ obligatorio: true })
   @IsString()
   @IsOptional()
   @Length(5, 5, {
@@ -163,6 +189,7 @@ export class CrearFacturaDto {
   })
   codigoPostalFiscal?: string;
 
+  @Correo()
   @IsString()
   @IsOptional()
   email?: string;
@@ -175,6 +202,7 @@ export class CrearFacturaDto {
 }
 
 export class GuardarPerfilFacturacionDto {
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @Length(12, 13, {
     message:
@@ -182,24 +210,29 @@ export class GuardarPerfilFacturacionDto {
   })
   rfc: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsNotEmpty()
   razonSocial: string;
 
+  @Texto({ obligatorio: true })
   @IsString()
   @IsNotEmpty()
   usoCfdi: string;
 
+  @Texto({ obligatorio: true })
   @IsString()
   @IsNotEmpty()
   regimenFiscal: string;
 
+  @Texto({ obligatorio: true })
   @IsString()
   @Length(5, 5, {
     message: 'El código postal fiscal debe tener exactamente 5 dígitos.',
   })
   codigoPostalFiscal: string;
 
+  @Correo()
   @IsString()
   @IsOptional()
   email?: string;

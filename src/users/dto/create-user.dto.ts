@@ -9,20 +9,29 @@ import {
 } from 'class-validator';
 
 import { CREATABLE_ROLES } from '../../common/constants/roles';
+import {
+  Correo,
+  Telefono,
+  TextoNegocio,
+} from '../../common/normalizacion/normalizar';
 
 export class CreateUserDto {
+  @TextoNegocio({ obligatorio: true })
   @ApiProperty({ example: 'Juan' })
   @IsNotEmpty()
   readonly name!: string;
 
+  @TextoNegocio({ obligatorio: true })
   @ApiProperty({ example: 'Pérez' })
   @IsNotEmpty()
   readonly lastname!: string;
 
+  @Telefono({ obligatorio: true })
   @ApiProperty({ example: '+34612345678' })
   @IsNotEmpty()
   readonly phone!: string;
 
+  @Correo({ obligatorio: true })
   @ApiProperty({ example: 'juan@example.com' })
   @IsEmail()
   @IsNotEmpty()

@@ -297,12 +297,28 @@ export class ReservationsService {
     return res[0];
   }
 
-  async update(id: string, dto: UpdateReservationDto) {
+  async update(id: string, dto: UpdateReservationDto, autorId?: number) {
     await this.findOne(id);
+    const cancela = dto.estatus === 'cancelada';
+    if (cancela && !dto.motivoCancelacion) {
+      throw new BadRequestException('Escribe el motivo de la cancelación.');
+    }
     const [updated] = await this.db
       .update(reservaciones)
       .set({
-        ...dto,
+        estatus: dto.estatus,
+        notas: dto.notas,
+        numComensales: dto.numComensales,
+        fechaHora: dto.fechaHora,
+        mesaId: dto.mesaId,
+        recordatorioEnviado: dto.recordatorioEnviado,
+        ...(cancela
+          ? {
+              motivoCancelacion: dto.motivoCancelacion,
+              canceladoPor: autorId ?? null,
+              canceladoEn: new Date().toISOString(),
+            }
+          : {}),
         actualizadoEn: new Date().toISOString(),
       })
       .where(eq(reservaciones.id, id))

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { DRIZZLE } from '../database/drizzle/constants';
 import type { DrizzleDB } from '../database/drizzle/drizzle.provider';
+import { archivarYBorrar } from '../registros-eliminados/archivar';
 import {
   clientes,
   direccionesCliente,
@@ -51,7 +52,7 @@ export class PagosService {
     const facturapiKey = process.env.FACTURAPI_TEST_KEY;
     if (!facturapiKey) {
       throw new Error(
-        'FACTURAPI_API_KEY no está definida en las variables de entorno.',
+        'FACTURAPI_TEST_KEY no está definida en las variables de entorno.',
       );
     }
     this.facturapi = new Facturapi(facturapiKey);
@@ -196,9 +197,10 @@ export class PagosService {
       throw new NotFoundException('Esa dirección no existe o no te pertenece.');
     }
 
-    await this.db
-      .delete(direccionesCliente)
-      .where(eq(direccionesCliente.id, id));
+    await archivarYBorrar(this.db, 'direcciones_cliente', id, {
+      motivo: 'BAJA POR EL CLIENTE',
+      autorId: usuarioId,
+    });
     return { success: true, message: 'Dirección eliminada.' };
   }
 
@@ -416,9 +418,10 @@ export class PagosService {
     await this.stripe.paymentMethods
       .detach(metodo.stripePaymentMethodId)
       .catch(() => null);
-    await this.db
-      .delete(metodosPagoGuardados)
-      .where(eq(metodosPagoGuardados.id, id));
+    await archivarYBorrar(this.db, 'metodos_pago_guardados', id, {
+      motivo: 'BAJA POR EL CLIENTE',
+      autorId: usuarioId,
+    });
 
     return { success: true, message: 'Método de pago eliminado.' };
   }
@@ -474,6 +477,24 @@ export class PagosService {
     }
 
     if (dto.direccionId) {
+      // La dirección de envío tiene que ser del cliente de la orden (antes se aceptaba cualquiera).
+      const [direccion] = clienteId
+        ? await this.db
+            .select({ id: direccionesCliente.id })
+            .from(direccionesCliente)
+            .where(
+              and(
+                eq(direccionesCliente.id, dto.direccionId),
+                eq(direccionesCliente.clienteId, clienteId),
+              ),
+            )
+            .limit(1)
+        : [];
+      if (!direccion) {
+        throw new BadRequestException(
+          'Esa dirección no existe o no pertenece al cliente de la orden.',
+        );
+      }
       await this.db
         .update(ordenes)
         .set({ direccionEnvioId: dto.direccionId })
@@ -722,9 +743,10 @@ export class PagosService {
       );
     }
 
-    await this.db
-      .delete(perfilesFacturacion)
-      .where(eq(perfilesFacturacion.id, id));
+    await archivarYBorrar(this.db, 'perfiles_facturacion', id, {
+      motivo: 'BAJA POR EL CLIENTE',
+      autorId: usuarioId,
+    });
     return { success: true, message: 'Perfil de facturación eliminado.' };
   }
 

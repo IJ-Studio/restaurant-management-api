@@ -11,6 +11,7 @@ import jwtConfig from '../common/config/jwt.config';
 import { ROLES } from '../common/constants/roles';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
+import { OrderWorkflowService } from './order-workflow.service';
 
 const SECRET = 'secreto-de-prueba';
 const jwt = new JwtService({});
@@ -23,6 +24,13 @@ const ordersService = {
   confirmarOrdenMesa: jest.fn(),
   eliminarItemOrden: jest.fn(),
   cancelarOrden: jest.fn(),
+};
+
+const workflowService = {
+  listarMetodosPago: jest.fn().mockResolvedValue([]),
+  cambiarEstatus: jest.fn().mockResolvedValue({ success: true }),
+  cobrar: jest.fn().mockResolvedValue({ success: true }),
+  obtenerDetalle: jest.fn().mockResolvedValue({ id: 'x' }),
 };
 
 const protectedRoutes = [
@@ -39,13 +47,14 @@ const requester = { id: 7, roleId: ROLES.CLIENTE };
 describe('OrdersController (DT-04)', () => {
   let app: INestApplication;
   let token: string;
+  let cajeroToken: string;
 
   function call(method: string, path: string) {
     const server = app.getHttpServer() as Server;
     const agent = request(server);
     if (method === 'get') return agent.get(path);
     if (method === 'post') return agent.post(path);
-    if (method === 'patch') return agent.patch(path);
+    if (method === 'patch') return agent.patch(path).send({ motivo: 'prueba' });
     return agent.delete(path);
   }
 
@@ -60,6 +69,16 @@ describe('OrdersController (DT-04)', () => {
       { secret: SECRET, expiresIn: 60 },
     );
     await cache.set('user-7', 'tok-7');
+    cajeroToken = await jwt.signAsync(
+      {
+        id: '8',
+        email: 'caja@quijote.mx',
+        roleId: ROLES.CAJERO,
+        tokenId: 'tok-8',
+      },
+      { secret: SECRET, expiresIn: 60 },
+    );
+    await cache.set('user-8', 'tok-8');
 
     const moduleRef = await Test.createTestingModule({
       controllers: [OrdersController],
@@ -72,6 +91,7 @@ describe('OrdersController (DT-04)', () => {
           useValue: { secret: SECRET, accessTokenTtl: '3600' },
         },
         { provide: OrdersService, useValue: ordersService },
+        { provide: OrderWorkflowService, useValue: workflowService },
         { provide: APP_GUARD, useClass: JwtAuthGuard },
       ],
     }).compile();
@@ -110,6 +130,7 @@ describe('OrdersController (DT-04)', () => {
     expect(ordersService.createOrderMesa).toHaveBeenCalledWith(
       expect.objectContaining({ mesa: '1' }),
       7,
+      ROLES.CLIENTE,
     );
   });
 
@@ -153,10 +174,114 @@ describe('OrdersController (DT-04)', () => {
     await request(server)
       .patch('/pedidos/cancelar/orden-1')
       .set('Authorization', auth)
+      .send({ motivo: '  me equivoqué de platillo ' })
       .expect(200);
     expect(ordersService.cancelarOrden).toHaveBeenCalledWith(
       'orden-1',
       requester,
+      'ME EQUIVOQUÉ DE PLATILLO',
     );
+  });
+
+  it('cancelar sin motivo responde 400 y no llega al servicio (Prioridad 3.3)', async () => {
+    ordersService.cancelarOrden.mockClear();
+    const server = app.getHttpServer() as Server;
+    for (const cuerpo of [{}, { motivo: '  ' }, { motivo: 'x', extra: 1 }]) {
+      await request(server)
+        .patch('/pedidos/cancelar/orden-1')
+        .set('Authorization', `Bearer ${token}`)
+        .send(cuerpo)
+        .expect(400);
+    }
+    expect(ordersService.cancelarOrden).not.toHaveBeenCalled();
+  });
+
+  describe('flujo del pedido en la app móvil', () => {
+    const ORDEN = '5f0c8a5e-4a43-4b7e-9d1c-2f3e4a5b6c7d';
+    const server = () => request(app.getHttpServer() as Server);
+
+    it.each([
+      ['get', '/pedidos/metodos-pago'],
+      ['get', `/pedidos/${ORDEN}`],
+      ['patch', `/pedidos/${ORDEN}/estatus`],
+      ['post', `/pedidos/${ORDEN}/cobrar`],
+    ])('un cliente no puede usar %s %s → 403', async (method, path) => {
+      const agent = server();
+      const req =
+        method === 'get'
+          ? agent.get(path)
+          : method === 'patch'
+            ? agent.patch(path)
+            : agent.post(path);
+      await req.set('Authorization', `Bearer ${token}`).send({}).expect(403);
+    });
+
+    it('caja cobra con el usuario del token y la validación estricta del body', async () => {
+      await server()
+        .post(`/pedidos/${ORDEN}/cobrar`)
+        .set('Authorization', `Bearer ${cajeroToken}`)
+        .send({ metodoPagoId: 1, propina: 10, montoRecibido: 500 })
+        .expect(201);
+      expect(workflowService.cobrar).toHaveBeenCalledWith(
+        ORDEN,
+        expect.objectContaining({
+          metodoPagoId: 1,
+          propina: 10,
+          montoRecibido: 500,
+        }),
+        8,
+      );
+
+      await server()
+        .post(`/pedidos/${ORDEN}/cobrar`)
+        .set('Authorization', `Bearer ${cajeroToken}`)
+        .send({ metodoPagoId: 1, total: 1 })
+        .expect(400);
+      await server()
+        .post(`/pedidos/${ORDEN}/cobrar`)
+        .set('Authorization', `Bearer ${cajeroToken}`)
+        .send({ metodoPagoId: 1, propina: -5 })
+        .expect(400);
+    });
+
+    it('cambia el estatus solo a los valores permitidos', async () => {
+      await server()
+        .patch(`/pedidos/${ORDEN}/estatus`)
+        .set('Authorization', `Bearer ${cajeroToken}`)
+        .send({ estatus: 'entregada' })
+        .expect(200);
+      expect(workflowService.cambiarEstatus).toHaveBeenCalledWith(
+        ORDEN,
+        'entregada',
+        {
+          id: 8,
+          roleId: ROLES.CAJERO,
+        },
+      );
+
+      await server()
+        .patch(`/pedidos/${ORDEN}/estatus`)
+        .set('Authorization', `Bearer ${cajeroToken}`)
+        .send({ estatus: 'pagada' })
+        .expect(400);
+    });
+
+    it('GET /pedidos/:id exige un UUID y no tapa las rutas fijas', async () => {
+      await server()
+        .get(`/pedidos/${ORDEN}`)
+        .set('Authorization', `Bearer ${cajeroToken}`)
+        .expect(200);
+      expect(workflowService.obtenerDetalle).toHaveBeenCalledWith(ORDEN);
+
+      await server()
+        .get('/pedidos/no-es-uuid')
+        .set('Authorization', `Bearer ${cajeroToken}`)
+        .expect(400);
+      await server()
+        .get('/pedidos/metodos-pago')
+        .set('Authorization', `Bearer ${cajeroToken}`)
+        .expect(200);
+      expect(workflowService.listarMetodosPago).toHaveBeenCalled();
+    });
   });
 });

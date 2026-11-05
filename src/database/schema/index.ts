@@ -52,9 +52,13 @@ import {
   vVentasPlatillo,
   vVentasPorDia,
   vUsuariosPerfil,
+  promociones,
 } from './public.schema';
 import { stripeEvents } from './stripe-events.schema';
 import { deviceTokens } from './device-tokens.schema';
+import { reportesProblemas } from './reportes-problemas.schema';
+import { registrosEliminados } from './registros-eliminados.schema';
+import { nominaMovimientos } from './nomina-movimientos.schema';
 
 /**
  * Registro central de todas las tablas
@@ -115,6 +119,10 @@ export const schema = {
   vUsuariosPerfil,
   stripeEvents,
   deviceTokens,
+  reportesProblemas,
+  promociones,
+  registrosEliminados,
+  nominaMovimientos,
 };
 
 export type Schema = typeof schema;

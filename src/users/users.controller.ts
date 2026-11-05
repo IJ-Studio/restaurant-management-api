@@ -139,6 +139,18 @@ export class UsersController {
     );
   }
 
+  @Patch(':id/reactivar')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(ROLES.ADMIN)
+  async reactivateUser(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() request: RequestWithUser,
+  ) {
+    const admin = request[REQUEST_USER_KEY];
+    return await this.usersService.reactivateUser(id, parseInt(admin.id));
+  }
+
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard, RolesGuard)

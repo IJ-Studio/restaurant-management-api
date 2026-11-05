@@ -72,7 +72,7 @@ describe('OrdersService (DT-04)', () => {
     const { service, set } = setup([[abierta], [cliente]]);
 
     const error: unknown = await service
-      .cancelarOrden('orden-1', { id: 7, roleId: ROLES.CLIENTE })
+      .cancelarOrden('orden-1', { id: 7, roleId: ROLES.CLIENTE }, 'MOTIVO')
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(NotFoundException);
@@ -112,5 +112,128 @@ describe('OrdersService (DT-04)', () => {
     expect(del).toHaveBeenCalled();
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ total: '100' }));
     expect(result).toMatchObject({ success: true, ordenId: 'orden-1' });
+  });
+});
+
+describe('OrdersService: pedido de mesa desde la app del mesero', () => {
+  function setupCreate(results: unknown[]) {
+    const queue = [...results];
+    const writes: { insert: unknown[]; set: unknown[]; where: unknown[] } = {
+      insert: [],
+      set: [],
+      where: [],
+    };
+    const chain = (): Record<string, jest.Mock> & PromiseLike<unknown> => {
+      const c = {} as Record<string, jest.Mock> & PromiseLike<unknown>;
+      for (const m of ['from', 'where', 'limit', 'returning', 'leftJoin'])
+        c[m] = jest.fn(() => c);
+      c.values = jest.fn((data: unknown) => {
+        writes.insert.push(data);
+        return c;
+      });
+      c.set = jest.fn((data: unknown) => {
+        writes.set.push(data);
+        return c;
+      });
+      (c as { then: PromiseLike<unknown>['then'] }).then = (resolve, reject) =>
+        Promise.resolve(queue.shift() ?? []).then(resolve, reject);
+      return c;
+    };
+    const db = {
+      select: jest.fn(chain),
+      insert: jest.fn(chain),
+      update: jest.fn(chain),
+      delete: jest.fn(chain),
+    };
+    return { service: new OrdersService(db as never), writes };
+  }
+
+  const platillo = { id: 1, precio: '145.50', nombre: 'Enchiladas' };
+
+  it('guarda comensales, notas, el mesero que atendió y separa líneas con notas distintas', async () => {
+    const { service, writes } = setupCreate([
+      [platillo], // platillos
+      [{ id: 'cli-3' }], // cliente del usuario
+      [{ id: 5, numero: '5', activa: true }], // mesa
+      [], // sin carrito previo
+      [{ id: 'orden-9' }], // insert orden
+      [], // item con esa nota no existe
+      [], // insert item
+      [{ subtotal: '291.00' }], // items para el total
+      [], // update total
+    ]);
+
+    await service.createOrderMesa(
+      {
+        mesa: '5',
+        numComensales: 4,
+        notasCocina: '  Alergia a la nuez  ',
+        items: [{ platilloId: 1, cantidad: 2, notas: ' sin cebolla ' }],
+      },
+      3,
+      ROLES.MESERO,
+    );
+
+    expect(writes.insert[0]).toMatchObject({
+      mesaId: 5,
+      numComensales: 4,
+      atendidoPor: 3,
+      notasCocina: 'Alergia a la nuez',
+    });
+    expect(writes.insert[1]).toMatchObject({
+      platilloId: 1,
+      cantidad: 2,
+      notas: 'sin cebolla',
+    });
+  });
+
+  it('un cliente no queda como mesero y los valores fuera de rango se ignoran', async () => {
+    const { service, writes } = setupCreate([
+      [platillo],
+      [{ id: 'cli-7' }],
+      [{ id: 5, numero: '5', activa: true }],
+      [],
+      [{ id: 'orden-9' }],
+      [],
+      [],
+      [{ subtotal: '145.50' }],
+      [],
+    ]);
+
+    await service.createOrderMesa(
+      { mesa: '5', numComensales: 99, items: [{ platilloId: 1, cantidad: 1 }] },
+      7,
+      ROLES.CLIENTE,
+    );
+
+    expect(writes.insert[0]).toMatchObject({
+      numComensales: 1,
+      atendidoPor: null,
+      notasCocina: null,
+    });
+    expect(writes.insert[1]).toMatchObject({ notas: null });
+  });
+
+  it('en un carrito existente actualiza comensales y mesero', async () => {
+    const { service, writes } = setupCreate([
+      [platillo],
+      [{ id: 'cli-3' }],
+      [{ id: 5, numero: '5', activa: true }],
+      [{ id: 'orden-9' }], // carrito previo
+      [], // update datos de la mesa
+      [{ id: 20, cantidad: 1 }], // item con la misma nota
+      [], // update item
+      [{ subtotal: '291.00' }],
+      [],
+    ]);
+
+    await service.createOrderMesa(
+      { mesa: '5', numComensales: 3, items: [{ platilloId: 1, cantidad: 1 }] },
+      3,
+      ROLES.MESERO,
+    );
+
+    expect(writes.set[0]).toEqual({ atendidoPor: 3, numComensales: 3 });
+    expect(writes.set[1]).toMatchObject({ cantidad: 2 });
   });
 });

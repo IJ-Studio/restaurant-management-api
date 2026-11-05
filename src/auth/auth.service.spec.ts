@@ -113,7 +113,10 @@ describe('AuthService.SignUp', () => {
       .mockImplementation((row: Record<string, unknown>) => ({
         returning: () => Promise.resolve([{ ...dbUser, ...row, id: 42 }]),
       }));
-    const db = { insert: () => ({ values }) };
+    const db = {
+      insert: () => ({ values }),
+      select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }),
+    };
     const bcrypt = {
       hash: jest.fn().mockResolvedValue('$2b$10$hash'),
     } as unknown as BcryptService;

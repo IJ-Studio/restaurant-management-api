@@ -1,4 +1,4 @@
-import { pgTable, unique, serial, varchar, text, smallint, boolean, time, char, integer, bigint, timestamp, numeric, foreignKey, json, jsonb, index, uuid, check, date, bigserial, inet, primaryKey, pgView } from "drizzle-orm/pg-core"
+import { pgTable, unique, uniqueIndex, type AnyPgColumn, serial, varchar, text, smallint, boolean, time, char, integer, bigint, timestamp, numeric, foreignKey, json, jsonb, index, uuid, check, date, bigserial, inet, primaryKey, pgView } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 
@@ -15,6 +15,7 @@ export const direccionesCliente = pgTable("direcciones_cliente", {
 	ciudad: varchar({ length: 100 }),                         // 👈 NUEVO
 	estado: varchar({ length: 100 }),                         // 👈 NUEVO
 }, (table) => [
+	index("idx_direcciones_cliente_cliente_id").using("btree", table.clienteId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.clienteId],
 			foreignColumns: [clientes.id],
@@ -32,6 +33,8 @@ export const categoriasMenu = pgTable("categorias_menu", {
 	disponibleHasta: time("disponible_hasta"),
 	icono: varchar({ length: 50 }),
 	color: char({ length: 7 }),
+	// comida o bebida (2026-11-05-categorias-tipo.sql); NULL en las categorías aún sin clasificar.
+	tipo: varchar({ length: 10 }),
 }, (table) => [
 	unique("categorias_menu_nombre_key").on(table.nombre),
 ]);
@@ -57,6 +60,8 @@ export const users = pgTable("users", {
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
 	unique("users_email_unique").on(table.email),
+	// Único sin distinguir mayúsculas (migración 2026-11-05-email-unico-minusculas.sql).
+	uniqueIndex("users_email_lower_key").using("btree", sql`lower(${table.email})`),
 ]);
 
 export const inventarioProductos = pgTable("inventario_productos", {
@@ -84,10 +89,14 @@ export const inventarioMermas = pgTable("inventario_mermas", {
 	reason: varchar({ length: 50 }).notNull(),
 	justification: text().notNull(),
 	reportedBy: text("reported_by").default('').notNull(),
+	// Id de quien la registró (2026-11-05-mermas-autor.sql); nulo en las antiguas.
+	reportadoPorId: integer("reportado_por_id").references(() => users.id, { onDelete: "set null" }),
 	cost: numeric({ precision: 10, scale:  2 }).default('0').notNull(),
 	date: timestamp({ mode: 'string' }).defaultNow(),
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
 }, (table) => [
+	index("idx_inventario_mermas_reportado_por_id").using("btree", table.reportadoPorId.asc().nullsLast()),
+	index("idx_inventario_mermas_product_id").using("btree", table.productId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.productId],
 			foreignColumns: [inventarioProductos.id],
@@ -108,6 +117,7 @@ export const inventarioOrdenes = pgTable("inventario_ordenes", {
 	notes: text(),
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
 }, (table) => [
+	index("idx_inventario_ordenes_supplier_id").using("btree", table.supplierId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.supplierId],
 			foreignColumns: [inventarioProveedores.id],
@@ -140,6 +150,7 @@ export const inventarioProveedorProducto = pgTable("inventario_proveedor_product
 	notas: text(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
+	index("idx_inventario_proveedor_producto_producto_id").using("btree", table.productoId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.productoId],
 			foreignColumns: [inventarioProductos.id],
@@ -169,6 +180,8 @@ export const menusDelDiaItems = pgTable("menus_del_dia_items", {
 	tipo: varchar({ length: 30 }),
 	orden: smallint().default(0),
 }, (table) => [
+	index("idx_menus_del_dia_items_menu_dia_id").using("btree", table.menuDiaId.asc().nullsLast()),
+	index("idx_menus_del_dia_items_platillo_id").using("btree", table.platilloId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.menuDiaId],
 			foreignColumns: [menusDelDia.id],
@@ -196,6 +209,8 @@ export const recetas = pgTable("recetas", {
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
+	index("idx_recetas_platillo_id").using("btree", table.platilloId.asc().nullsLast()),
+	index("idx_recetas_variante_id").using("btree", table.varianteId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.platilloId],
 			foreignColumns: [platillos.id],
@@ -227,6 +242,9 @@ export const ordenItems = pgTable("orden_items", {
 	tiempoEntrega: timestamp("tiempo_entrega", { withTimezone: true, mode: 'string' }),
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
+	index("idx_orden_items_combo_id").using("btree", table.comboId.asc().nullsLast()),
+	index("idx_orden_items_estacion_id").using("btree", table.estacionId.asc().nullsLast()),
+	index("idx_orden_items_variante_id").using("btree", table.varianteId.asc().nullsLast()),
 	index("idx_orden_items_orden").using("btree", table.ordenId.asc().nullsLast().op("uuid_ops")),
 	index("idx_orden_items_platillo").using("btree", table.platilloId.asc().nullsLast().op("int4_ops")),
 	foreignKey({
@@ -265,6 +283,8 @@ export const recetasIngredientes = pgTable("recetas_ingredientes", {
 	esOpcional: boolean("es_opcional").default(false),
 	notas: varchar({ length: 255 }),
 }, (table) => [
+	index("idx_recetas_ingredientes_ingrediente_id").using("btree", table.ingredienteId.asc().nullsLast()),
+	index("idx_recetas_ingredientes_unidad_id").using("btree", table.unidadId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.ingredienteId],
 			foreignColumns: [ingredientes.id],
@@ -291,6 +311,7 @@ export const ventas = pgTable("ventas", {
 	total: numeric({ precision: 12, scale:  2 }).notNull(),
 	fecha: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
+	index("idx_ventas_platillo_id").using("btree", table.platilloId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.platilloId],
 			foreignColumns: [platillos.id],
@@ -397,6 +418,7 @@ export const platillos = pgTable("platillos", {
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
+	index("idx_platillos_subcategoria_id").using("btree", table.subcategoriaId.asc().nullsLast()),
 	index("idx_platillos_categoria").using("btree", table.categoriaId.asc().nullsLast().op("int4_ops")),
 	index("idx_platillos_disponible").using("btree", table.disponible.asc().nullsLast().op("bool_ops")),
 	foreignKey({
@@ -441,6 +463,7 @@ export const puestos = pgTable("puestos", {
 	salarioBase: numeric("salario_base", { precision: 10, scale:  2 }),
 	activo: boolean().default(true),
 }, (table) => [
+	index("idx_puestos_departamento_id").using("btree", table.departamentoId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.departamentoId],
 			foreignColumns: [departamentos.id],
@@ -476,6 +499,7 @@ export const empleados = pgTable("empleados", {
 	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	nombre: varchar({ length: 120 }),
 }, (table) => [
+	index("idx_empleados_puesto_id").using("btree", table.puestoId.asc().nullsLast()),
 	index("idx_empleados_user").using("btree", table.userId.asc().nullsLast().op("int4_ops")),
 	foreignKey({
 			columns: [table.puestoId],
@@ -503,6 +527,7 @@ export const variantesPlatillo = pgTable("variantes_platillo", {
 	disponible: boolean().default(true),
 	orden: smallint().default(0),
 }, (table) => [
+	index("idx_variantes_platillo_platillo_id").using("btree", table.platilloId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.platilloId],
 			foreignColumns: [platillos.id],
@@ -547,6 +572,7 @@ export const nomina = pgTable("nomina", {
 	comprobanteUrl: text("comprobante_url"),
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
+	index("idx_nomina_empleado_id").using("btree", table.empleadoId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.empleadoId],
 			foreignColumns: [empleados.id],
@@ -562,6 +588,7 @@ export const modificadores = pgTable("modificadores", {
 	disponible: boolean().default(true),
 	orden: smallint().default(0),
 }, (table) => [
+	index("idx_modificadores_grupo_id").using("btree", table.grupoId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.grupoId],
 			foreignColumns: [gruposModificadores.id],
@@ -601,6 +628,10 @@ export const ingredientes = pgTable("ingredientes", {
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
+	index("idx_ingredientes_alergeno_id").using("btree", table.alergenoId.asc().nullsLast()),
+	index("idx_ingredientes_categoria_id").using("btree", table.categoriaId.asc().nullsLast()),
+	index("idx_ingredientes_unidad_compra_id").using("btree", table.unidadCompraId.asc().nullsLast()),
+	index("idx_ingredientes_unidad_uso_id").using("btree", table.unidadUsoId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.alergenoId],
 			foreignColumns: [alergenos.id],
@@ -686,6 +717,7 @@ export const mesas = pgTable("mesas", {
 	qrCodeUrl: text("qr_code_url"),
 	activa: boolean().default(true),
 }, (table) => [
+	index("idx_mesas_area_id").using("btree", table.areaId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.areaId],
 			foreignColumns: [areasSalon.id],
@@ -720,6 +752,7 @@ export const subcategoriasMenu = pgTable("subcategorias_menu", {
 	orden: smallint().default(0),
 	activa: boolean().default(true),
 }, (table) => [
+	index("idx_subcategorias_menu_categoria_id").using("btree", table.categoriaId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.categoriaId],
 			foreignColumns: [categoriasMenu.id],
@@ -827,8 +860,19 @@ export const ordenes = pgTable("ordenes", {
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	direccionEnvioId: integer("direccion_envio_id"), // 👈 NUEVO
+	// Datos sintéticos del modelo de cancelaciones (no-show); no los escribe el API.
+	probCancelacionSintetica: numeric("prob_cancelacion_sintetica"),
+	cancelacionSintetica: boolean("cancelacion_sintetica"),
+	// Motivo de cancelación (2026-11-05-motivo-cancelacion.sql); nulo en las cancelaciones antiguas.
+	motivoCancelacion: varchar("motivo_cancelacion", { length: 300 }),
+	canceladoPor: integer("cancelado_por").references((): AnyPgColumn => users.id, { onDelete: "set null" }),
+	canceladoEn: timestamp("cancelado_en", { withTimezone: true, mode: 'string' }),
 
 }, (table) => [
+	index("idx_ordenes_cancelado_por").using("btree", table.canceladoPor.asc().nullsLast()),
+	index("idx_ordenes_cliente_id").using("btree", table.clienteId.asc().nullsLast()),
+	index("idx_ordenes_direccion_envio_id").using("btree", table.direccionEnvioId.asc().nullsLast()),
+	index("idx_ordenes_reservacion_id").using("btree", table.reservacionId.asc().nullsLast()),
 	index("idx_ordenes_atendido_por").using("btree", table.atendidoPor.asc().nullsLast().op("int4_ops")),
 	index("idx_ordenes_estatus").using("btree", table.estatus.asc().nullsLast().op("text_ops")),
 	index("idx_ordenes_fecha").using("btree", table.creadoEn.asc().nullsLast().op("timestamptz_ops")),
@@ -875,6 +919,8 @@ export const pagos = pgTable("pagos", {
 	pasarela: varchar({ length: 30 }),                               // 👈 NUEVO
 	idTransaccionPasarela: varchar("id_transaccion_pasarela", { length: 255 }), // 👈 NUEVO
 }, (table) => [
+	index("idx_pagos_cobrado_por").using("btree", table.cobradoPor.asc().nullsLast()),
+	index("idx_pagos_metodo_pago_id").using("btree", table.metodoPagoId.asc().nullsLast()),
 	index("idx_pagos_orden").using("btree", table.ordenId.asc().nullsLast().op("uuid_ops")),
 	foreignKey({
 			columns: [table.cobradoPor],
@@ -899,6 +945,7 @@ export const estatusMesa = pgTable("estatus_mesa", {
 	ordenId: uuid("orden_id"),
 	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
+	index("idx_estatus_mesa_orden_id").using("btree", table.ordenId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.mesaId],
 			foreignColumns: [mesas.id],
@@ -928,6 +975,7 @@ export const cierresCaja = pgTable("cierres_caja", {
 	notas: text(),
 	estatus: varchar({ length: 20 }).default('abierto'),
 }, (table) => [
+	index("idx_cierres_caja_user_id").using("btree", table.userId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.userId],
 			foreignColumns: [users.id],
@@ -957,6 +1005,8 @@ export const facturas = pgTable("facturas", {
 	fechaCancelacion: timestamp("fecha_cancelacion", { withTimezone: true, mode: 'string' }),
 	facturapiInvoiceId: varchar("facturapi_invoice_id", { length: 100 }), // 👈 NUEVO
 }, (table) => [
+	index("idx_facturas_orden_id").using("btree", table.ordenId.asc().nullsLast()),
+	index("idx_facturas_user_id").using("btree", table.userId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.ordenId],
 			foreignColumns: [ordenes.id],
@@ -991,7 +1041,16 @@ export const reservaciones = pgTable("reservaciones", {
 	notas: text(),
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+	// Marca de las reservas sintéticas del modelo de no-show; no la escribe el API.
+	esSintetica: boolean("es_sintetica"),
+	// Motivo de cancelación (2026-11-05-motivo-cancelacion.sql); nulo en las cancelaciones antiguas.
+	motivoCancelacion: varchar("motivo_cancelacion", { length: 300 }),
+	canceladoPor: integer("cancelado_por").references((): AnyPgColumn => users.id, { onDelete: "set null" }),
+	canceladoEn: timestamp("cancelado_en", { withTimezone: true, mode: 'string' }),
 }, (table) => [
+	index("idx_reservaciones_cancelado_por").using("btree", table.canceladoPor.asc().nullsLast()),
+	index("idx_reservaciones_mesa_id").using("btree", table.mesaId.asc().nullsLast()),
+	index("idx_reservaciones_user_id").using("btree", table.userId.asc().nullsLast()),
 	index("idx_reservaciones_fecha").using("btree", table.fechaHora.asc().nullsLast().op("timestamptz_ops")),
 	foreignKey({
 			columns: [table.mesaId],
@@ -1015,6 +1074,8 @@ export const reembolsos = pgTable("reembolsos", {
 	referencia: varchar({ length: 100 }),
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
+	index("idx_reembolsos_aprobado_por").using("btree", table.aprobadoPor.asc().nullsLast()),
+	index("idx_reembolsos_pago_id").using("btree", table.pagoId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.aprobadoPor],
 			foreignColumns: [users.id],
@@ -1034,6 +1095,12 @@ export const clientes = pgTable("clientes", {
 	razonSocial: varchar("razon_social", { length: 200 }),
 	requiereFactura: boolean("requiere_factura").default(false),
 	stripeCustomerId: text("stripe_customer_id"),   // 👈 NUEVO
+	fechaNacimiento: date("fecha_nacimiento"),
+	sexo: varchar({ length: 10 }),
+	ciudad: varchar({ length: 60 }),
+	colonia: varchar({ length: 80 }),
+	codigoPostal: varchar("codigo_postal", { length: 5 }),
+	alergias: varchar({ length: 120 }),
 	notas: text(),
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
@@ -1060,6 +1127,7 @@ export const metodosPagoGuardados = pgTable("metodos_pago_guardados", {
 	esPrincipal: boolean("es_principal").default(false),
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
+	index("idx_metodos_pago_guardados_cliente_id").using("btree", table.clienteId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.clienteId],
 			foreignColumns: [clientes.id],
@@ -1078,6 +1146,7 @@ export const perfilesFacturacion = pgTable("perfiles_facturacion", {
 	esPrincipal: boolean("es_principal").default(false),
 	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
+	index("idx_perfiles_facturacion_cliente_id").using("btree", table.clienteId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.clienteId],
 			foreignColumns: [clientes.id],
@@ -1088,6 +1157,7 @@ export const categoriasEstacion = pgTable("categorias_estacion", {
 	estacionId: integer("estacion_id").notNull(),
 	categoriaId: integer("categoria_id").notNull(),
 }, (table) => [
+	index("idx_categorias_estacion_categoria_id").using("btree", table.categoriaId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.categoriaId],
 			foreignColumns: [categoriasMenu.id],
@@ -1105,6 +1175,7 @@ export const platillosModificadores = pgTable("platillos_modificadores", {
 	platilloId: integer("platillo_id").notNull(),
 	grupoId: integer("grupo_id").notNull(),
 }, (table) => [
+	index("idx_platillos_modificadores_grupo_id").using("btree", table.grupoId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.grupoId],
 			foreignColumns: [gruposModificadores.id],
@@ -1122,6 +1193,7 @@ export const platillosAlergenos = pgTable("platillos_alergenos", {
 	platilloId: integer("platillo_id").notNull(),
 	alergenoId: integer("alergeno_id").notNull(),
 }, (table) => [
+	index("idx_platillos_alergenos_alergeno_id").using("btree", table.alergenoId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.alergenoId],
 			foreignColumns: [alergenos.id],
@@ -1144,6 +1216,8 @@ export const proveedoresIngredientes = pgTable("proveedores_ingredientes", {
 	esPrincipal: boolean("es_principal").default(false),
 	codigoProveedor: varchar("codigo_proveedor", { length: 50 }),
 }, (table) => [
+	index("idx_proveedores_ingredientes_ingrediente_id").using("btree", table.ingredienteId.asc().nullsLast()),
+	index("idx_proveedores_ingredientes_unidad_id").using("btree", table.unidadId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.ingredienteId],
 			foreignColumns: [ingredientes.id],
@@ -1216,3 +1290,23 @@ export const vUsuariosPerfil = pgView("v_usuarios_perfil", {	id: integer(),
 	puesto: varchar({ length: 100 }),
 	departamento: varchar({ length: 100 }),
 }).as(sql`SELECT u.id, u.name, u.lastname, u.email, u.phone, u.is_active, r.name AS rol, r.permissions, e.id AS empleado_id, e.numero_empleado, p.nombre AS puesto, d.nombre AS departamento FROM users u JOIN roles r ON r.id = u.role_id LEFT JOIN empleados e ON e.user_id = u.id LEFT JOIN puestos p ON p.id = e.puesto_id LEFT JOIN departamentos d ON d.id = p.departamento_id`);
+
+// Existía en la BD sin definición en Drizzle (deriva corregida el 2026-11-04).
+export const promociones = pgTable("promociones", {
+	id: serial().primaryKey().notNull(),
+	titulo: text().notNull(),
+	descripcion: text(),
+	badge: text(),
+	emoji: text(),
+	color: text(),
+	precioOriginal: numeric("precio_original", { precision: 10, scale:  2 }),
+	precioDescuento: numeric("precio_descuento", { precision: 10, scale:  2 }),
+	imagenUrl: text("imagen_url"),
+	imagenPublicId: text("imagen_public_id"),
+	activa: boolean().default(true).notNull(),
+	orden: integer().default(0).notNull(),
+	fechaInicio: date("fecha_inicio"),
+	fechaFin: date("fecha_fin"),
+	creadoEn: timestamp("creado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+	actualizadoEn: timestamp("actualizado_en", { withTimezone: true, mode: 'string' }).defaultNow(),
+});

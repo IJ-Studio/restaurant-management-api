@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'; // 👈 AGREGADO
-import { APP_GUARD } from '@nestjs/core'; // 👈 AGREGADO
+import { APP_GUARD, APP_PIPE } from '@nestjs/core'; // 👈 AGREGADO
 import { PagosModule } from './pagos/pagos.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { AuthModule } from './auth/auth.module';
@@ -16,12 +16,20 @@ import { UsersModule } from './users/users.module';
 import { MetricsModule } from './database/features/metrics/metrics.module';
 import { MenuModule } from './menu/menu.module';
 import { OrdersModule } from './orders/orders.module';
+import { OperationsModule } from './operations/operations.module';
 import { MesasModule } from './mesas/mesas.module';
 import { RecommendationsModule } from './recommendations/recommendations.module';
 import { PredictiveDemandModule } from './predictive-demand/predictive-demand.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { DashboardModule } from './roles/dashboard.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { ReportesProblemasModule } from './reportes-problemas/reportes-problemas.module';
+import { NormalizarPipe } from './common/normalizacion/normalizar.pipe';
+import { FacturasAdminModule } from './facturas/facturas-admin.module';
+import { InventarioModule } from './inventario/inventario.module';
+import { PromocionesModule } from './promociones/promociones.module';
+import { RegistrosEliminadosModule } from './registros-eliminados/registros-eliminados.module';
+import { ImagenesModule } from './imagenes/imagenes.module';
 
 @Module({
   imports: [
@@ -52,11 +60,18 @@ import { NotificationsModule } from './notifications/notifications.module';
     MenuModule,
     DashboardModule,
     OrdersModule,
+    OperationsModule,
     MesasModule,
     RecommendationsModule,
     PredictiveDemandModule,
     PayrollModule,
     NotificationsModule,
+    ReportesProblemasModule,
+    RegistrosEliminadosModule,
+    PromocionesModule,
+    InventarioModule,
+    FacturasAdminModule,
+    ImagenesModule,
   ],
   controllers: [],
   providers: [
@@ -65,6 +80,8 @@ import { NotificationsModule } from './notifications/notifications.module';
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
+    // Normaliza los textos de cada cuerpo (trim, mayúsculas, correos) sin validar ni quitar campos.
+    { provide: APP_PIPE, useClass: NormalizarPipe },
   ],
 })
 export class AppModule {}

@@ -6,9 +6,11 @@ import {
   IsNotEmpty,
   Matches,
 } from 'class-validator';
+import { Correo } from '../../common/normalizacion/normalizar';
 
 export class SignInDto {
   // email
+  @Correo({ obligatorio: true })
   @ApiProperty({
     description: 'email user',
     example: 'latest@email.com',

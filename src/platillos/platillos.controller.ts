@@ -2,7 +2,11 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  Param,
+  ParseIntPipe,
+  Patch,
   Post,
   Query,
   Res,
@@ -18,6 +22,10 @@ import { ExportFormat, ExportType } from '../reports/export/dto/queryDTO';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { ROLES } from 'src/common/constants/roles';
+import { ActiveUser } from 'src/auth/decorators/active-user.decorator';
+import type { ActiveUserData } from 'src/common/interfaces/active-user-data.interface';
+import { createStrictValidationPipe } from 'src/common/config/validation.config';
+import { ActualizarPlatilloDto, CrearPlatilloDto } from './dto/platillo.dto';
 
 type UploadedCsvFile = {
   originalname: string;
@@ -121,5 +129,31 @@ export class PlatillosController {
     @Query('mode') mode?: 'insert' | 'upsert',
   ) {
     return this.platillosService.importJson(body, mode ?? 'insert');
+  }
+
+  // ── Alta, edición y borrado desde la carta del admin (D-31) ──
+  @Post()
+  crear(@Body(createStrictValidationPipe()) dto: CrearPlatilloDto) {
+    return this.platillosService.crear(dto);
+  }
+
+  @Patch(':id')
+  actualizar(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(createStrictValidationPipe()) dto: ActualizarPlatilloDto,
+  ) {
+    return this.platillosService.actualizar(id, dto);
+  }
+
+  @Delete(':id')
+  eliminar(
+    @Param('id', ParseIntPipe) id: number,
+    @ActiveUser() usuario: ActiveUserData,
+    @Query('motivo') motivo?: string,
+  ) {
+    return this.platillosService.eliminar(id, {
+      motivo,
+      autorId: Number(usuario.id),
+    });
   }
 }

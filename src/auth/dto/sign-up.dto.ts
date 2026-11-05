@@ -9,6 +9,11 @@ import {
 } from 'class-validator';
 
 import { Match } from '../../common/decorators/match.decorator';
+import {
+  Correo,
+  Telefono,
+  TextoNegocio,
+} from '../../common/normalizacion/normalizar';
 
 /**
  * Contrato de POST /auth/sign-up. La fuente de verdad de las reglas es este DTO: el formulario
@@ -23,6 +28,7 @@ import { Match } from '../../common/decorators/match.decorator';
  * `forbidNonWhitelisted` ahora se rechazan con 400.
  */
 export class SignUpDto {
+  @TextoNegocio({ obligatorio: true })
   @ApiProperty({
     example: 'Pedro',
     description: 'First name of user',
@@ -33,6 +39,7 @@ export class SignUpDto {
   @MaxLength(50)
   readonly name!: string;
 
+  @TextoNegocio({ obligatorio: true })
   @ApiProperty({
     example: 'Rubio',
     description: 'Last name of user',
@@ -43,6 +50,7 @@ export class SignUpDto {
   @MaxLength(50)
   readonly lastname!: string;
 
+  @Telefono({ obligatorio: true })
   @ApiProperty({
     example: '+525512345678',
     description:
@@ -55,6 +63,7 @@ export class SignUpDto {
   })
   readonly phone!: string;
 
+  @Correo({ obligatorio: true })
   @ApiProperty({
     example: 'ejemplo@email.com',
     description: 'Email of user',

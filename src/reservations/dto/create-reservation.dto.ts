@@ -1,15 +1,34 @@
-import { IsString, IsEmail, IsInt, Min, Max, IsOptional, IsDateString, IsBoolean, Length, Matches } from 'class-validator';
+import {
+  IsString,
+  IsEmail,
+  IsInt,
+  Min,
+  Max,
+  IsOptional,
+  IsDateString,
+  IsBoolean,
+  Length,
+  Matches,
+} from 'class-validator';
 import { Type } from 'class-transformer';
+import {
+  Correo,
+  Telefono,
+  TextoNegocio,
+} from '../../common/normalizacion/normalizar';
 
 export class CreateReservationDto {
+  @TextoNegocio({ obligatorio: true })
   @IsString({ message: 'El nombre es obligatorio' })
   @Length(2, 150, { message: 'El nombre debe tener entre 2 y 150 caracteres' })
   clienteNombre: string;
 
+  @Telefono({ obligatorio: true })
   @IsString({ message: 'El teléfono es obligatorio' })
   @Matches(/^[0-9+\-\s()]{8,20}$/, { message: 'Teléfono inválido' })
   clienteTelefono: string;
 
+  @Correo()
   @IsEmail({}, { message: 'Email inválido' })
   clienteEmail: string;
 
@@ -25,11 +44,13 @@ export class CreateReservationDto {
   @IsInt({ message: 'Mesa ID debe ser entero' })
   mesaId?: number;
 
+  @TextoNegocio()
   @IsOptional()
   @IsString()
   @Length(0, 500, { message: 'Peticiones especiales muy largas' })
   peticionesEspeciales?: string;
 
+  @TextoNegocio()
   @IsOptional()
   @IsString()
   ocasion?: string;

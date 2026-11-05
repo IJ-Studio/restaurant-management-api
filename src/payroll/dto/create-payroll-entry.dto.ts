@@ -7,13 +7,16 @@ import {
   IsString,
   Min,
 } from 'class-validator';
+import { TextoNegocio } from '../../common/normalizacion/normalizar';
 
 export class CreatePayrollEntryDto {
+  @TextoNegocio({ obligatorio: true })
   @ApiProperty({ example: 'Mesero 4' })
   @IsString()
   @IsNotEmpty()
   readonly role!: string;
 
+  @TextoNegocio({ obligatorio: true })
   @ApiProperty({ example: 'Carlos' })
   @IsString()
   @IsNotEmpty()
@@ -29,6 +32,7 @@ export class CreatePayrollEntryDto {
   @IsBoolean()
   readonly active?: boolean;
 
+  @TextoNegocio()
   @ApiProperty({ example: 'Servicio', required: false })
   @IsOptional()
   @IsString()
