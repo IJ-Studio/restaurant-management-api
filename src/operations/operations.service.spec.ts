@@ -225,6 +225,8 @@ describe('mermas', () => {
       reason: 'caducado',
       justification: 'Se oxidó',
       reportedBy: 'Diego Luna',
+      // Se conserva quién la registró, por su id además del nombre.
+      reportadoPorId: 4,
       cost: '180.00',
     });
     expect(result.message).toBe(
