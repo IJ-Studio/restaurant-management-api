@@ -71,8 +71,8 @@ importers:
         specifier: ^5.2.1
         version: 5.2.1(supports-color@8.1.1)
       facturapi:
-        specifier: ^4.18.0
-        version: 4.18.0
+        specifier: ^6.0.0
+        version: 6.0.0
       helmet:
         specifier: ^8.3.0
         version: 8.3.0
@@ -2774,9 +2774,9 @@ packages:
     resolution: {integrity: sha512-hIS4idWWai69NezIdRt2xFVofaF4j+6INOpJlVOLDO8zXGpUVEVzIYk12UUi2JzjEzWL3IOAxcTubgz9Po0yXw==}
     engines: {node: '>= 18'}
 
-  facturapi@4.18.0:
-    resolution: {integrity: sha512-HR13NU6NNEe2PB8Y76uTQLCYn/3EGxjN8Y+cGiM4ZZkzwKe3QPavBnQINWp7Mo1HTX37nlVWmuG82HPjfBjYlQ==}
-    engines: {node: '>=18.0.0', npm: '>=10.0.0'}
+  facturapi@6.0.0:
+    resolution: {integrity: sha512-A/aQnB0MgesKKrOOcHlJqmX4JMxWuHagihu9YSPao8OvXbdDKxFmAgb7IbuBz1iz14LT0SZJakrJo96XUe9w1Q==}
+    engines: {node: '>=18.0.0', pnpm: '>=12.6.0'}
 
   fast-csv@4.3.6:
     resolution: {integrity: sha512-2RNSpuwwsJGP0frGsOmTb9oUF+VkFSM4SyLTDgwf2ciHWTarN0lQTC+F2f/t5J9QjW+c65VFIAAu85GsvMIusw==}
@@ -7205,7 +7205,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  facturapi@4.18.0: {}
+  facturapi@6.0.0: {}
 
   fast-csv@4.3.6:
     dependencies:
