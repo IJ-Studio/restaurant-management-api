@@ -21,12 +21,13 @@ export function parseTrustProxy(
 
 /** Configuración de borde HTTP compartida por `main.ts` y las pruebas. */
 export function configureHttp(app: NestExpressApplication): void {
-  // La CSP por defecto bloquea los scripts inline de Swagger UI; en producción
-  // no hay Swagger y se mantiene la CSP de helmet.
+  // Fuera de producción Swagger puede servirse por http: sin quitar el upgrade, sus assets no cargarían.
   const isProduction = process.env.NODE_ENV === 'production';
   app.use(
     helmet({
-      contentSecurityPolicy: isProduction ? undefined : false,
+      contentSecurityPolicy: isProduction
+        ? undefined
+        : { directives: { upgradeInsecureRequests: null } },
     }),
   );
   app.set('trust proxy', parseTrustProxy());

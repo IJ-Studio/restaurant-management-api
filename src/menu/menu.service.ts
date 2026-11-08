@@ -153,7 +153,7 @@ export class MenuService {
         const orderIdGenerado = parseInt(`2026${primerVentaId}`);
 
         console.log(
-          `[Pedido Interno] Tipo: ${orderData.tipoPedido} registrado exitosamente bajo control #${orderIdGenerado}`,
+          `[Pedido Interno] Tipo: ${String(orderData.tipoPedido).replace(/[\r\n]/g, '')} registrado exitosamente bajo control #${orderIdGenerado}`,
         );
 
         return {
