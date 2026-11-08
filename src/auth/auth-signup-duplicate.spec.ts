@@ -25,7 +25,7 @@ function serviceWhoseInsertFails(error: Error, existentes: unknown[] = []) {
   };
   const service = new AuthService(
     db as never,
-    { secret: 's', accessTokenTtl: '3600' },
+    { secret: 's', accessTokenTtl: 3600 },
     { hash } as never,
     {} as never,
     {} as never,

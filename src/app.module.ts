@@ -30,6 +30,7 @@ import { InventarioModule } from './inventario/inventario.module';
 import { PromocionesModule } from './promociones/promociones.module';
 import { RegistrosEliminadosModule } from './registros-eliminados/registros-eliminados.module';
 import { ImagenesModule } from './imagenes/imagenes.module';
+import { validateEnv } from './common/config/env.validation';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { ImagenesModule } from './imagenes/imagenes.module';
       isGlobal: true,
       // envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
       envFilePath: `.env`,
+      validate: validateEnv,
     }),
     // ─── BLINDAJE CONTRA PETICIONES MASIVAS (RATE LIMITING) ───
     ThrottlerModule.forRoot([
