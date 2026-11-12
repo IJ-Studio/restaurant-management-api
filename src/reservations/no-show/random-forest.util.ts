@@ -68,13 +68,17 @@ function candidateThresholds(sortedUniqueValues: number[]): number[] {
   if (n < 2) return [];
   if (n - 1 <= MAX_THRESHOLDS) {
     const out: number[] = [];
-    for (let i = 0; i < n - 1; i++) out.push((sortedUniqueValues[i] + sortedUniqueValues[i + 1]) / 2);
+    for (let i = 0; i < n - 1; i++)
+      out.push((sortedUniqueValues[i] + sortedUniqueValues[i + 1]) / 2);
     return out;
   }
 
   const out: number[] = [];
   for (let q = 1; q <= MAX_THRESHOLDS; q++) {
-    const i = Math.min(Math.max(Math.floor((q * n) / (MAX_THRESHOLDS + 1)), 0), n - 2);
+    const i = Math.min(
+      Math.max(Math.floor((q * n) / (MAX_THRESHOLDS + 1)), 0),
+      n - 2,
+    );
     out.push((sortedUniqueValues[i] + sortedUniqueValues[i + 1]) / 2);
   }
   return Array.from(new Set(out)).sort((a, b) => a - b);
@@ -97,12 +101,19 @@ function buildTree(
 ): TreeNode {
   let w0 = 0;
   let w1 = 0;
-  for (const s of samples) (s.y === 1 ? (w1 += s.w) : (w0 += s.w));
+  for (const s of samples) {
+    if (s.y === 1) w1 += s.w;
+    else w0 += s.w;
+  }
   const totalW = w0 + w1;
   const prob1 = totalW > 0 ? w1 / totalW : 0;
 
   const isPure = w0 === 0 || w1 === 0;
-  if (depth >= params.maxDepth || samples.length < params.minSamplesSplit || isPure) {
+  if (
+    depth >= params.maxDepth ||
+    samples.length < params.minSamplesSplit ||
+    isPure
+  ) {
     return { isLeaf: true, prob1 };
   }
 
@@ -123,7 +134,9 @@ function buildTree(
   } | null = null;
 
   for (const f of candidateFeatures) {
-    const values = Array.from(new Set(samples.map((s) => s.x[f]))).sort((a, b) => a - b);
+    const values = Array.from(new Set(samples.map((s) => s.x[f]))).sort(
+      (a, b) => a - b,
+    );
     const thresholds = candidateThresholds(values);
 
     for (const threshold of thresholds) {
@@ -137,21 +150,27 @@ function buildTree(
       samples.forEach((s, idx) => {
         if (s.x[f] <= threshold) {
           leftIdx.push(idx);
-          s.y === 0 ? (lw0 += s.w) : (lw1 += s.w);
+          if (s.y === 0) lw0 += s.w;
+          else lw1 += s.w;
         } else {
           rightIdx.push(idx);
-          s.y === 0 ? (rw0 += s.w) : (rw1 += s.w);
+          if (s.y === 0) rw0 += s.w;
+          else rw1 += s.w;
         }
       });
 
-      if (leftIdx.length < params.minSamplesLeaf || rightIdx.length < params.minSamplesLeaf) {
+      if (
+        leftIdx.length < params.minSamplesLeaf ||
+        rightIdx.length < params.minSamplesLeaf
+      ) {
         continue;
       }
 
       const leftW = lw0 + lw1;
       const rightW = rw0 + rw1;
       const childGini =
-        (leftW / totalW) * weightedGini(lw0, lw1) + (rightW / totalW) * weightedGini(rw0, rw1);
+        (leftW / totalW) * weightedGini(lw0, lw1) +
+        (rightW / totalW) * weightedGini(rw0, rw1);
       const gain = parentGini - childGini;
 
       if (!best || gain > best.gain) {
@@ -211,14 +230,21 @@ export function fitRandomForest(
     w: y[i] === 1 ? weight1 : weight0,
   }));
 
-  const fitParams = { nTrees, maxDepth, minSamplesSplit, minSamplesLeaf, maxFeatures };
-  const importances = new Array(nFeatures).fill(0);
+  const fitParams = {
+    nTrees,
+    maxDepth,
+    minSamplesSplit,
+    minSamplesLeaf,
+    maxFeatures,
+  };
+  const importances = new Array<number>(nFeatures).fill(0);
   const trees: TreeNode[] = [];
 
   for (let t = 0; t < nTrees; t++) {
     // Bootstrap: muestreo con reemplazo del tamaño del set de entrenamiento
-    const bootstrap: Sample[] = new Array(n);
-    for (let i = 0; i < n; i++) bootstrap[i] = allSamples[Math.floor(rng() * n)];
+    const bootstrap: Sample[] = new Array<Sample>(n);
+    for (let i = 0; i < n; i++)
+      bootstrap[i] = allSamples[Math.floor(rng() * n)];
     trees.push(buildTree(bootstrap, 0, fitParams, rng, importances));
   }
 
@@ -239,40 +265,4 @@ function predictTree(node: TreeNode, x: number[]): number {
 export function predictProba(model: RandomForestModel, x: number[]): number {
   const sum = model.trees.reduce((s, tree) => s + predictTree(tree, x), 0);
   return model.trees.length > 0 ? sum / model.trees.length : 0;
-}
-
-// AUC-ROC vía el método de rangos (equivalente a la U de Mann-Whitney):
-// probabilidad de que un positivo elegido al azar reciba mayor score que un
-// negativo elegido al azar. Independiente del umbral de decisión, a
-// diferencia de precision/recall/F1 — por eso complementa esas métricas
-// cuando la clase positiva es rara y el umbral importa tanto.
-export function computeRocAuc(scores: number[], labels: (0 | 1)[]): number | null {
-  const n = scores.length;
-  if (n === 0) return null;
-
-  const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => scores[a] - scores[b]);
-  const ranks = new Array<number>(n);
-  let i = 0;
-  while (i < n) {
-    let j = i;
-    while (j + 1 < n && scores[order[j + 1]] === scores[order[i]]) j++;
-    const avgRank = (i + j) / 2 + 1; // rango promedio (1-based) para empates
-    for (let k = i; k <= j; k++) ranks[order[k]] = avgRank;
-    i = j + 1;
-  }
-
-  let sumRanksPos = 0;
-  let nPos = 0;
-  let nNeg = 0;
-  for (let k = 0; k < n; k++) {
-    if (labels[k] === 1) {
-      sumRanksPos += ranks[k];
-      nPos++;
-    } else {
-      nNeg++;
-    }
-  }
-
-  if (nPos === 0 || nNeg === 0) return null; // no definido con una sola clase presente
-  return (sumRanksPos - (nPos * (nPos + 1)) / 2) / (nPos * nNeg);
 }

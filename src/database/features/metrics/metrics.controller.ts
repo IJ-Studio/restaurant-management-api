@@ -5,9 +5,12 @@ import {
   HttpStatus,
   InternalServerErrorException,
   Logger,
+  UseGuards,
 } from '@nestjs/common';
 import { MetricsService } from './metrics.service';
-import { Public } from 'src/auth/decorators/public.decorator';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { ROLES } from 'src/common/constants/roles';
 import {
   DBCpuMetricsDto,
   DBRWRatioDto,
@@ -31,7 +34,8 @@ import {
  * Prefijo base: /db-metrics  (el módulo lo registra sin prefijo global,
  * y el frontend lo llama como /api/db-metrics/... via NEXT_PUBLIC_API_URL)
  */
-@Public()
+@UseGuards(RolesGuard)
+@Roles(ROLES.ADMIN)
 @Controller('db-metrics')
 export class MetricsController {
   private readonly logger = new Logger(MetricsController.name);

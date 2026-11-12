@@ -7,40 +7,51 @@ import {
   IsUUID,
   Length,
 } from 'class-validator';
+import {
+  Correo,
+  Texto,
+  TextoNegocio,
+} from '../../common/normalizacion/normalizar';
 
 export class CrearDireccionDto {
-  @IsNumber()
-  @IsNotEmpty()
-  usuarioId: number;
-
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   alias?: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsNotEmpty()
   linea1: string;
 
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   linea2?: string;
 
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   colonia?: string;
 
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   referencias?: string;
 
+  @Texto({ obligatorio: true })
   @IsString()
-  @Length(5, 5, { message: 'El código postal debe tener exactamente 5 dígitos.' })
+  @Length(5, 5, {
+    message: 'El código postal debe tener exactamente 5 dígitos.',
+  })
   codigoPostal: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsNotEmpty()
   ciudad: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsNotEmpty()
   estado: string;
@@ -51,35 +62,45 @@ export class CrearDireccionDto {
 }
 
 export class ActualizarDireccionDto {
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   alias?: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsOptional()
   linea1?: string;
 
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   linea2?: string;
 
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   colonia?: string;
 
+  @TextoNegocio()
   @IsString()
   @IsOptional()
   referencias?: string;
 
+  @Texto({ obligatorio: true })
   @IsString()
   @IsOptional()
-  @Length(5, 5, { message: 'El código postal debe tener exactamente 5 dígitos.' })
+  @Length(5, 5, {
+    message: 'El código postal debe tener exactamente 5 dígitos.',
+  })
   codigoPostal?: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsOptional()
   ciudad?: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsOptional()
   estado?: string;
@@ -90,10 +111,6 @@ export class ActualizarDireccionDto {
 }
 
 export class GuardarMetodoPagoDto {
-  @IsNumber()
-  @IsNotEmpty()
-  usuarioId: number;
-
   // Este es el token que Stripe regresa DESPUÉS de haber capturado la
   // tarjeta directo en el navegador del cliente (stripe.confirmCardSetup).
   // Nunca es el número de tarjeta ni el CVC.
@@ -107,10 +124,6 @@ export class GuardarMetodoPagoDto {
 }
 
 export class CrearIntentoPagoDto {
-  @IsNumber()
-  @IsNotEmpty()
-  usuarioId: number;
-
   @IsUUID()
   @IsNotEmpty()
   ordenId: string;
@@ -134,10 +147,6 @@ export class CrearIntentoPagoDto {
 }
 
 export class CrearFacturaDto {
-  @IsNumber()
-  @IsNotEmpty()
-  usuarioId: number;
-
   @IsUUID()
   @IsNotEmpty()
   ordenId: string;
@@ -148,28 +157,39 @@ export class CrearFacturaDto {
   @IsOptional()
   perfilFacturacionId?: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsOptional()
-  @Length(12, 13, { message: 'El RFC debe tener 12 (persona moral) o 13 (persona física) caracteres.' })
+  @Length(12, 13, {
+    message:
+      'El RFC debe tener 12 (persona moral) o 13 (persona física) caracteres.',
+  })
   rfc?: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsOptional()
   razonSocial?: string;
 
+  @Texto({ obligatorio: true })
   @IsString()
   @IsOptional()
   usoCfdi?: string;
 
+  @Texto({ obligatorio: true })
   @IsString()
   @IsOptional()
   regimenFiscal?: string;
 
+  @Texto({ obligatorio: true })
   @IsString()
   @IsOptional()
-  @Length(5, 5, { message: 'El código postal fiscal debe tener exactamente 5 dígitos.' })
+  @Length(5, 5, {
+    message: 'El código postal fiscal debe tener exactamente 5 dígitos.',
+  })
   codigoPostalFiscal?: string;
 
+  @Correo()
   @IsString()
   @IsOptional()
   email?: string;
@@ -182,30 +202,37 @@ export class CrearFacturaDto {
 }
 
 export class GuardarPerfilFacturacionDto {
-  @IsNumber()
-  @IsNotEmpty()
-  usuarioId: number;
-
+  @TextoNegocio({ obligatorio: true })
   @IsString()
-  @Length(12, 13, { message: 'El RFC debe tener 12 (persona moral) o 13 (persona física) caracteres.' })
+  @Length(12, 13, {
+    message:
+      'El RFC debe tener 12 (persona moral) o 13 (persona física) caracteres.',
+  })
   rfc: string;
 
+  @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsNotEmpty()
   razonSocial: string;
 
+  @Texto({ obligatorio: true })
   @IsString()
   @IsNotEmpty()
   usoCfdi: string;
 
+  @Texto({ obligatorio: true })
   @IsString()
   @IsNotEmpty()
   regimenFiscal: string;
 
+  @Texto({ obligatorio: true })
   @IsString()
-  @Length(5, 5, { message: 'El código postal fiscal debe tener exactamente 5 dígitos.' })
+  @Length(5, 5, {
+    message: 'El código postal fiscal debe tener exactamente 5 dígitos.',
+  })
   codigoPostalFiscal: string;
 
+  @Correo()
   @IsString()
   @IsOptional()
   email?: string;

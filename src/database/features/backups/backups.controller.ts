@@ -1,7 +1,20 @@
-import { Controller, Get, Post, Delete, Param, Body, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Param,
+  Body,
+  UseGuards,
+} from '@nestjs/common';
 import { BackupsService } from './backups.service';
 import type { Response } from 'express';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { ROLES } from 'src/common/constants/roles';
 
+@UseGuards(RolesGuard)
+@Roles(ROLES.ADMIN)
 @Controller('backups')
 export class BackupsController {
   constructor(private readonly backupsService: BackupsService) {}

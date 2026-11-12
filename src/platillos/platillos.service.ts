@@ -1,8 +1,24 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { sql } from 'drizzle-orm';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { eq, sql } from 'drizzle-orm';
+import { Workbook, type Cell, type Row } from 'exceljs';
+import {
+  ETIQUETAS_PLATILLO,
+  type ActualizarPlatilloDto,
+  type CrearPlatilloDto,
+} from './dto/platillo.dto';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { DRIZZLE } from '../database/drizzle/constants';
 import * as schema from '../database/schema/public.schema';
+import {
+  archivarYBorrar,
+  type DatosBaja,
+} from '../registros-eliminados/archivar';
 
 type ColumnMeta = {
   column_name: string;
@@ -116,8 +132,16 @@ export class PlatillosService {
           : null;
       if (!keyColumn || !nameColumn) return null;
 
-      const iconColumn = cols.has('icono') ? 'icono' : cols.has('icon') ? 'icon' : undefined;
-      const orderColumn = cols.has('orden') ? 'orden' : cols.has('order') ? 'order' : undefined;
+      const iconColumn = cols.has('icono')
+        ? 'icono'
+        : cols.has('icon')
+          ? 'icon'
+          : undefined;
+      const orderColumn = cols.has('orden')
+        ? 'orden'
+        : cols.has('order')
+          ? 'order'
+          : undefined;
       const activeColumn = cols.has('activa')
         ? 'activa'
         : cols.has('is_active')
@@ -157,7 +181,9 @@ export class PlatillosService {
         order by table_name
       `,
     );
-    const candidates = candidatesResult as unknown as Array<{ table_name: string }>;
+    const candidates = candidatesResult as unknown as Array<{
+      table_name: string;
+    }>;
 
     for (const row of candidates) {
       const tableName = row.table_name;
@@ -360,8 +386,9 @@ export class PlatillosService {
         const h = headers[i];
         try {
           record[h] = castValue(row[i] ?? '', colByName.get(h)!);
-        } catch (e: any) {
-          const msg = e?.message ? String(e.message) : 'valor inválido';
+        } catch (e: unknown) {
+          const msg =
+            e instanceof Error && e.message ? e.message : 'valor inválido';
           throw new BadRequestException(
             `Fila ${rowIdx + 2}, columna "${h}": ${msg}`,
           );
@@ -402,8 +429,9 @@ export class PlatillosService {
       for (const h of headers) {
         try {
           record[h] = castJsonValue(row[h], colByName.get(h)!);
-        } catch (e: any) {
-          const msg = e?.message ? String(e.message) : 'valor inválido';
+        } catch (e: unknown) {
+          const msg =
+            e instanceof Error && e.message ? e.message : 'valor inválido';
           throw new BadRequestException(
             `Fila ${rowIdx + 1}, columna "${h}": ${msg}`,
           );
@@ -416,9 +444,11 @@ export class PlatillosService {
   }
 
   async importExcel(buffer: Buffer, mode: 'insert' | 'upsert') {
-    const ExcelJS = require('exceljs');
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
+    const workbook = new Workbook();
+    // Los tipos de exceljs usan el Buffer de @types/node anterior; en ejecución es el mismo objeto.
+    await workbook.xlsx.load(
+      buffer as unknown as Parameters<typeof workbook.xlsx.load>[0],
+    );
 
     const sheet = workbook.worksheets[0];
     if (!sheet) throw new BadRequestException('El archivo Excel está vacío');
@@ -426,8 +456,9 @@ export class PlatillosService {
     const headerRow = sheet.getRow(1);
     const headers: string[] = [];
 
-    headerRow.eachCell((cell: any) => {
-      if (cell.value) headers.push(String(cell.value).trim());
+    headerRow.eachCell((cell: Cell) => {
+      // `cell.text` es el texto que muestra Excel (igual que String() para números y textos).
+      if (cell.value) headers.push(cell.text.trim());
     });
 
     if (headers.length === 0) {
@@ -446,7 +477,7 @@ export class PlatillosService {
 
     const normalizedRows: Array<Record<string, unknown>> = [];
 
-    sheet.eachRow((row: any, rowNumber: number) => {
+    sheet.eachRow((row: Row, rowNumber: number) => {
       if (rowNumber === 1) return; // Skip header
 
       const record: Record<string, unknown> = {};
@@ -459,8 +490,9 @@ export class PlatillosService {
           hasContent = true;
           try {
             record[header] = castJsonValue(cellValue, colByName.get(header)!);
-          } catch (e: any) {
-            const msg = e?.message ? String(e.message) : 'valor inválido';
+          } catch (e: unknown) {
+            const msg =
+              e instanceof Error && e.message ? e.message : 'valor inválido';
             throw new BadRequestException(
               `Fila ${rowNumber}, columna "${header}": ${msg}`,
             );
@@ -605,6 +637,72 @@ export class PlatillosService {
 
     return rowsResult as unknown as Array<Record<string, unknown>>;
   }
+
+  /** Alta de un platillo desde la carta del admin (D-31). */
+  async crear(dto: CrearPlatilloDto): Promise<{ id: number }> {
+    const [fila] = await this.db
+      .insert(schema.platillos)
+      .values({
+        categoriaId: dto.categoria_id,
+        ...columnasDe(dto),
+        nombre: dto.nombre.trim(),
+        precio: String(dto.precio),
+      })
+      .returning({ id: schema.platillos.id });
+    return { id: fila.id };
+  }
+
+  /** Edición parcial: solo cambian los campos que llegan (agotar u ofrecer manda solo `disponible`). */
+  async actualizar(
+    id: number,
+    dto: ActualizarPlatilloDto,
+  ): Promise<{ success: true }> {
+    const cambios = columnasDe(dto);
+    if (Object.keys(cambios).length === 0)
+      throw new BadRequestException('No hay cambios que guardar.');
+    const filas = await this.db
+      .update(schema.platillos)
+      .set({ ...cambios, actualizadoEn: sql`now()` })
+      .where(eq(schema.platillos.id, id))
+      .returning({ id: schema.platillos.id });
+    if (filas.length === 0)
+      throw new NotFoundException('El platillo no existe.');
+    return { success: true };
+  }
+
+  /** Borrado definitivo; si algún pedido lo usa, 409: se agota en lugar de borrarse. */
+  async eliminar(id: number, baja: DatosBaja = {}): Promise<{ success: true }> {
+    try {
+      const filas = await archivarYBorrar(this.db, 'platillos', id, baja);
+      if (filas === 0) throw new NotFoundException('El platillo no existe.');
+    } catch (error: unknown) {
+      if ((error as { code?: string })?.code === '23503') {
+        throw new ConflictException(
+          'Este platillo ya está en pedidos: agótalo en lugar de eliminarlo.',
+        );
+      }
+      throw error;
+    }
+    return { success: true };
+  }
+}
+
+/** Del DTO (nombres de la web) a las columnas de Drizzle; solo lo que llegó. */
+function columnasDe(dto: ActualizarPlatilloDto) {
+  const c: Partial<typeof schema.platillos.$inferInsert> = {};
+  if (dto.nombre !== undefined) c.nombre = dto.nombre.trim();
+  if (dto.descripcion_corta !== undefined)
+    c.descripcionCorta = dto.descripcion_corta.trim();
+  if (dto.precio !== undefined) c.precio = String(dto.precio);
+  if (dto.disponible !== undefined) c.disponible = dto.disponible;
+  if (dto.tiempo_preparacion !== undefined)
+    c.tiempoPreparacion = dto.tiempo_preparacion;
+  if (dto.imagen_url !== undefined) c.imagenUrl = dto.imagen_url;
+  if (dto.tags !== undefined) {
+    for (const [etiqueta, columna] of Object.entries(ETIQUETAS_PLATILLO))
+      c[columna] = dto.tags.includes(etiqueta);
+  }
+  return c;
 }
 
 const DB_DEFAULT = Symbol('db_default');
@@ -697,7 +795,7 @@ function parseJsonPayload(body: unknown): Array<Record<string, unknown>> {
     >;
   }
   if (body && typeof body === 'object') {
-    const maybeRows = (body as any).rows;
+    const maybeRows = (body as { rows?: unknown }).rows;
     if (Array.isArray(maybeRows)) {
       return maybeRows.filter((x) => x && typeof x === 'object') as Array<
         Record<string, unknown>
@@ -749,7 +847,10 @@ function csvCell(value: unknown): string {
   if (value instanceof Date) s = value.toISOString();
   else if (typeof value === 'bigint') s = value.toString();
   else if (typeof value === 'object') s = JSON.stringify(value);
-  else s = String(value);
+  else if (typeof value === 'string') s = value;
+  else if (typeof value === 'number' || typeof value === 'boolean')
+    s = String(value);
+  else s = '';
 
   const mustQuote = /[",\r\n]/.test(s);
   if (!mustQuote) return s;

@@ -1,0 +1,5 @@
+# Falsos positivos revisados el 2026-10-12 (no son secretos reales):
+# - .env.example: valor de ejemplo de STRIPE_SECRET_KEY (18 caracteres; una llave real mide >100).
+# - README.md: URL de un badge de shields.io de la plantilla de NestJS.
+923efac17db365a7ad64ce0d4d12920d1960d4ac:.env.example:stripe-access-token:36
+2a68e058f3595d721146e8e97ba5a02f029d4905:README.md:generic-api-key:5

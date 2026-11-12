@@ -3,8 +3,6 @@
 // ML: el volumen de datos de este proyecto (cientos de clientes) no lo
 // amerita y así queda claro cómo se calcula cada número que se muestra.
 
-import { mulberry32 } from '../../reservations/no-show/random-forest.util';
-
 export interface ClientFeatures {
   clienteId: string;
   frecuencia: number;
@@ -46,20 +44,16 @@ function euclidean(a: number[], b: number[]): number {
   return Math.sqrt(a.reduce((s, v, i) => s + (v - b[i]) ** 2, 0));
 }
 
-function kmeansPlusPlusInit(
-  points: Point[],
-  k: number,
-  rng: () => number,
-): number[][] {
+function kmeansPlusPlusInit(points: Point[], k: number): number[][] {
   const centroids: number[][] = [];
-  centroids.push([...points[Math.floor(rng() * points.length)].z]);
+  centroids.push([...points[Math.floor(Math.random() * points.length)].z]);
 
   while (centroids.length < k) {
     const distances = points.map((p) =>
       Math.min(...centroids.map((c) => euclidean(p.z, c) ** 2)),
     );
     const sum = distances.reduce((s, d) => s + d, 0);
-    let r = rng() * sum;
+    let r = Math.random() * sum;
     let idx = 0;
     for (; idx < distances.length - 1; idx++) {
       r -= distances[idx];
@@ -74,11 +68,10 @@ function kmeansPlusPlusInit(
 function runKmeansOnce(
   points: Point[],
   k: number,
-  rng: () => number,
   maxIter = 100,
 ): { assignments: number[]; centroids: number[][]; inertia: number } {
-  let centroids = kmeansPlusPlusInit(points, k, rng);
-  let assignments = new Array(points.length).fill(-1);
+  let centroids = kmeansPlusPlusInit(points, k);
+  let assignments: number[] = new Array<number>(points.length).fill(-1);
 
   for (let iter = 0; iter < maxIter; iter++) {
     const newAssignments = points.map((p) => {
@@ -98,8 +91,10 @@ function runKmeansOnce(
     assignments = newAssignments;
 
     const dim = points[0].z.length;
-    const sums = Array.from({ length: k }, () => new Array(dim).fill(0));
-    const counts = new Array(k).fill(0);
+    const sums = Array.from({ length: k }, () =>
+      new Array<number>(dim).fill(0),
+    );
+    const counts = new Array<number>(k).fill(0);
     points.forEach((p, i) => {
       const c = assignments[i];
       counts[c]++;
@@ -119,26 +114,12 @@ function runKmeansOnce(
   return { assignments, centroids, inertia };
 }
 
-// seed fija (77, igual que el Random Forest de no-show y el notebook) para
-// que el resultado sea reproducible y no cambie entre llamadas al mismo
-// endpoint con los mismos datos: antes usaba Math.random() sin semilla,
-// así que dos clientes pidiendo la segmentación en momentos distintos
-// podían ver clústeres distintos aunque la base de datos no hubiera
-// cambiado. Los `restarts` siguen siendo aleatorios entre sí (mismo rng,
-// sin reiniciarlo en cada uno) para no perder la ventaja de probar varias
-// inicializaciones y quedarse con la de menor inercia.
-export function kmeans(
-  rows: ClientFeatures[],
-  k: number,
-  restarts = 8,
-  seed = 77,
-) {
+export function kmeans(rows: ClientFeatures[], k: number, restarts = 8) {
   const points = standardize(rows);
-  const rng = mulberry32(seed);
 
   let best: ReturnType<typeof runKmeansOnce> | null = null;
   for (let r = 0; r < restarts; r++) {
-    const result = runKmeansOnce(points, k, rng);
+    const result = runKmeansOnce(points, k);
     if (!best || result.inertia < best.inertia) best = result;
   }
 
@@ -172,8 +153,10 @@ export function silhouetteScore(
     for (let c = 0; c < k; c++) {
       if (c === ci || clusterIdx[c].length === 0) continue;
       const avgDist =
-        clusterIdx[c].reduce((s, j) => s + euclidean(points[i].z, points[j].z), 0) /
-        clusterIdx[c].length;
+        clusterIdx[c].reduce(
+          (s, j) => s + euclidean(points[i].z, points[j].z),
+          0,
+        ) / clusterIdx[c].length;
       if (avgDist < b) b = avgDist;
     }
     if (!Number.isFinite(b)) continue;
@@ -209,7 +192,9 @@ function powerIteration(
   iterations = 200,
 ): { vector: number[]; value: number } {
   const dim = matrix.length;
-  let v = normalizeVec(Array.from({ length: dim }, (_, i) => (i === 0 ? 1 : 0.1)));
+  let v = normalizeVec(
+    Array.from({ length: dim }, (_, i) => (i === 0 ? 1 : 0.1)),
+  );
 
   for (let i = 0; i < iterations; i++) {
     v = normalizeVec(matVecMul(matrix, v));
@@ -225,7 +210,9 @@ export function pca2D(points: Point[]): { x: number; y: number }[] {
   const dim = points[0]?.z.length ?? 0;
   if (n === 0 || dim === 0) return [];
 
-  const cov: number[][] = Array.from({ length: dim }, () => new Array(dim).fill(0));
+  const cov: number[][] = Array.from({ length: dim }, () =>
+    new Array<number>(dim).fill(0),
+  );
   for (const p of points) {
     for (let i = 0; i < dim; i++) {
       for (let j = 0; j < dim; j++) {
@@ -238,7 +225,9 @@ export function pca2D(points: Point[]): { x: number; y: number }[] {
   }
 
   const { vector: v1, value: lambda1 } = powerIteration(cov);
-  const deflated = cov.map((row, i) => row.map((val, j) => val - lambda1 * v1[i] * v1[j]));
+  const deflated = cov.map((row, i) =>
+    row.map((val, j) => val - lambda1 * v1[i] * v1[j]),
+  );
   const { vector: v2 } = powerIteration(deflated);
 
   return points.map((p) => ({

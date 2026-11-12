@@ -4,21 +4,24 @@ import { DatabaseModule } from '../database/database.module';
 import { AuthModule } from '../auth/auth.module';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
+import { OrderWorkflowService } from './order-workflow.service';
 import jwtConfig from '../common/config/jwt.config';
 
 @Module({
   imports: [
     DatabaseModule,
-    AuthModule,                       // 👈 Importa el módulo de autenticación (contiene JwtAuthGuard, RolesGuard, etc.)
+    AuthModule, // 👈 Importa el módulo de autenticación (contiene JwtAuthGuard, RolesGuard, etc.)
     ConfigModule.forFeature(jwtConfig), // 👈 Hace disponible la configuración JWT
   ],
   controllers: [OrdersController],
   providers: [
     OrdersService,
+    OrderWorkflowService,
     // Provider explícito para 'CONFIGURATION(jwt)', igual que en ReservationsModule
     {
       provide: 'CONFIGURATION(jwt)',
-      useFactory: (configService: ConfigService) => configService.get('jwt'),
+      useFactory: (configService: ConfigService) =>
+        configService.get<Record<string, unknown>>('jwt'),
       inject: [ConfigService],
     },
   ],

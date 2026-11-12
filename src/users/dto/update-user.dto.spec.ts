@@ -1,0 +1,72 @@
+import 'reflect-metadata';
+import { BadRequestException } from '@nestjs/common';
+
+import { createWhitelistPipe } from '../../common/config/validation.config';
+import { UpdateUserDto } from './update-user.dto';
+
+const validate = (value: unknown) =>
+  createWhitelistPipe().transform(value, {
+    type: 'body',
+    metatype: UpdateUserDto,
+  });
+
+describe('UpdateUserDto con pipe de lista blanca', () => {
+  it('acepta nombre, apellido y teléfono válidos', async () => {
+    const result = (await validate({
+      name: 'Ana',
+      lastname: 'López',
+      phone: '+525512345678',
+    })) as UpdateUserDto;
+
+    // Los textos de negocio se guardan en MAYÚSCULAS (normalización del API).
+    expect(result).toMatchObject({
+      name: 'ANA',
+      lastname: 'LÓPEZ',
+      phone: '+525512345678',
+    });
+  });
+
+  it('descarta roleId, password, isActive, verified y email', async () => {
+    const result = (await validate({
+      name: 'Ana',
+      roleId: 1,
+      password: 'sin-hash',
+      isActive: false,
+      verified: true,
+      email: 'otra@quijote.mx',
+    })) as UpdateUserDto;
+
+    expect(result).toEqual({ name: 'ANA' });
+  });
+
+  // NP-06: 10 dígitos de México, con o sin +52 y con separadores, se normalizan a E.164.
+  it.each([
+    ['sin "+"', '5512345678'],
+    ['con espacios', '+52 55 1234 5678'],
+  ])('normaliza el teléfono %s', async (_caso, phone) => {
+    await expect(validate({ phone })).resolves.toEqual({
+      phone: '+525512345678',
+    });
+  });
+
+  it.each([
+    ['demasiado corto', '+52'],
+    ['de 8 dígitos', '55123456'],
+  ])('rechaza teléfono %s', async (_caso, phone) => {
+    await expect(validate({ phone })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('rechaza un nombre de más de 50 caracteres', async () => {
+    await expect(validate({ name: 'x'.repeat(51) })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('rechaza un nombre vacío', async () => {
+    await expect(validate({ name: '' })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+});
