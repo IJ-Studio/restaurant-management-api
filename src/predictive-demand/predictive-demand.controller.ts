@@ -1,4 +1,11 @@
-import { Controller, Get, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { PredictiveDemandService } from './predictive-demand.service';
@@ -7,11 +14,15 @@ import { PredictiveDemandService } from './predictive-demand.service';
 @UseGuards(RolesGuard)
 @Roles(1) // admin
 export class PredictiveDemandController {
-  constructor(private readonly predictiveDemandService: PredictiveDemandService) {}
+  constructor(
+    private readonly predictiveDemandService: PredictiveDemandService,
+  ) {}
 
   @Get('ranking')
   async getRanking(@Query('dias') dias?: string) {
-    return this.predictiveDemandService.getRanking(dias ? parseInt(dias, 10) : undefined);
+    return this.predictiveDemandService.getRanking(
+      dias ? parseInt(dias, 10) : undefined,
+    );
   }
 
   @Get(':platilloId')

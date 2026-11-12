@@ -20,7 +20,8 @@ import jwtConfig from '../common/config/jwt.config';
     // Provider explícito para 'CONFIGURATION(jwt)', igual que en ReservationsModule
     {
       provide: 'CONFIGURATION(jwt)',
-      useFactory: (configService: ConfigService) => configService.get('jwt'),
+      useFactory: (configService: ConfigService) =>
+        configService.get<Record<string, unknown>>('jwt'),
       inject: [ConfigService],
     },
   ],

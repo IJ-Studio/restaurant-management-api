@@ -101,7 +101,10 @@ function buildTree(
 ): TreeNode {
   let w0 = 0;
   let w1 = 0;
-  for (const s of samples) s.y === 1 ? (w1 += s.w) : (w0 += s.w);
+  for (const s of samples) {
+    if (s.y === 1) w1 += s.w;
+    else w0 += s.w;
+  }
   const totalW = w0 + w1;
   const prob1 = totalW > 0 ? w1 / totalW : 0;
 
@@ -147,10 +150,12 @@ function buildTree(
       samples.forEach((s, idx) => {
         if (s.x[f] <= threshold) {
           leftIdx.push(idx);
-          s.y === 0 ? (lw0 += s.w) : (lw1 += s.w);
+          if (s.y === 0) lw0 += s.w;
+          else lw1 += s.w;
         } else {
           rightIdx.push(idx);
-          s.y === 0 ? (rw0 += s.w) : (rw1 += s.w);
+          if (s.y === 0) rw0 += s.w;
+          else rw1 += s.w;
         }
       });
 
@@ -232,12 +237,12 @@ export function fitRandomForest(
     minSamplesLeaf,
     maxFeatures,
   };
-  const importances = new Array(nFeatures).fill(0);
+  const importances = new Array<number>(nFeatures).fill(0);
   const trees: TreeNode[] = [];
 
   for (let t = 0; t < nTrees; t++) {
     // Bootstrap: muestreo con reemplazo del tamaño del set de entrenamiento
-    const bootstrap: Sample[] = new Array(n);
+    const bootstrap: Sample[] = new Array<Sample>(n);
     for (let i = 0; i < n; i++)
       bootstrap[i] = allSamples[Math.floor(rng() * n)];
     trees.push(buildTree(bootstrap, 0, fitParams, rng, importances));

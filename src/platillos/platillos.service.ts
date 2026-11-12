@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
+import { Workbook, type Cell, type Row } from 'exceljs';
 import {
   ETIQUETAS_PLATILLO,
   type ActualizarPlatilloDto,
@@ -385,8 +386,9 @@ export class PlatillosService {
         const h = headers[i];
         try {
           record[h] = castValue(row[i] ?? '', colByName.get(h)!);
-        } catch (e: any) {
-          const msg = e?.message ? String(e.message) : 'valor inválido';
+        } catch (e: unknown) {
+          const msg =
+            e instanceof Error && e.message ? e.message : 'valor inválido';
           throw new BadRequestException(
             `Fila ${rowIdx + 2}, columna "${h}": ${msg}`,
           );
@@ -427,8 +429,9 @@ export class PlatillosService {
       for (const h of headers) {
         try {
           record[h] = castJsonValue(row[h], colByName.get(h)!);
-        } catch (e: any) {
-          const msg = e?.message ? String(e.message) : 'valor inválido';
+        } catch (e: unknown) {
+          const msg =
+            e instanceof Error && e.message ? e.message : 'valor inválido';
           throw new BadRequestException(
             `Fila ${rowIdx + 1}, columna "${h}": ${msg}`,
           );
@@ -441,9 +444,11 @@ export class PlatillosService {
   }
 
   async importExcel(buffer: Buffer, mode: 'insert' | 'upsert') {
-    const ExcelJS = require('exceljs');
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
+    const workbook = new Workbook();
+    // Los tipos de exceljs usan el Buffer de @types/node anterior; en ejecución es el mismo objeto.
+    await workbook.xlsx.load(
+      buffer as unknown as Parameters<typeof workbook.xlsx.load>[0],
+    );
 
     const sheet = workbook.worksheets[0];
     if (!sheet) throw new BadRequestException('El archivo Excel está vacío');
@@ -451,8 +456,9 @@ export class PlatillosService {
     const headerRow = sheet.getRow(1);
     const headers: string[] = [];
 
-    headerRow.eachCell((cell: any) => {
-      if (cell.value) headers.push(String(cell.value).trim());
+    headerRow.eachCell((cell: Cell) => {
+      // `cell.text` es el texto que muestra Excel (igual que String() para números y textos).
+      if (cell.value) headers.push(cell.text.trim());
     });
 
     if (headers.length === 0) {
@@ -471,7 +477,7 @@ export class PlatillosService {
 
     const normalizedRows: Array<Record<string, unknown>> = [];
 
-    sheet.eachRow((row: any, rowNumber: number) => {
+    sheet.eachRow((row: Row, rowNumber: number) => {
       if (rowNumber === 1) return; // Skip header
 
       const record: Record<string, unknown> = {};
@@ -484,8 +490,9 @@ export class PlatillosService {
           hasContent = true;
           try {
             record[header] = castJsonValue(cellValue, colByName.get(header)!);
-          } catch (e: any) {
-            const msg = e?.message ? String(e.message) : 'valor inválido';
+          } catch (e: unknown) {
+            const msg =
+              e instanceof Error && e.message ? e.message : 'valor inválido';
             throw new BadRequestException(
               `Fila ${rowNumber}, columna "${header}": ${msg}`,
             );
@@ -788,7 +795,7 @@ function parseJsonPayload(body: unknown): Array<Record<string, unknown>> {
     >;
   }
   if (body && typeof body === 'object') {
-    const maybeRows = (body as any).rows;
+    const maybeRows = (body as { rows?: unknown }).rows;
     if (Array.isArray(maybeRows)) {
       return maybeRows.filter((x) => x && typeof x === 'object') as Array<
         Record<string, unknown>
@@ -840,7 +847,10 @@ function csvCell(value: unknown): string {
   if (value instanceof Date) s = value.toISOString();
   else if (typeof value === 'bigint') s = value.toString();
   else if (typeof value === 'object') s = JSON.stringify(value);
-  else s = String(value);
+  else if (typeof value === 'string') s = value;
+  else if (typeof value === 'number' || typeof value === 'boolean')
+    s = String(value);
+  else s = '';
 
   const mustQuote = /[",\r\n]/.test(s);
   if (!mustQuote) return s;

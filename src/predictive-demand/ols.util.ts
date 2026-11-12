@@ -8,7 +8,7 @@
 function transposeTimesSelf(X: number[][]): number[][] {
   const n = X.length;
   const p = X[0].length;
-  const result = Array.from({ length: p }, () => new Array(p).fill(0));
+  const result = Array.from({ length: p }, () => new Array<number>(p).fill(0));
   for (let i = 0; i < p; i++) {
     for (let j = 0; j < p; j++) {
       let sum = 0;
@@ -22,7 +22,7 @@ function transposeTimesSelf(X: number[][]): number[][] {
 function transposeTimesVector(X: number[][], y: number[]): number[] {
   const n = X.length;
   const p = X[0].length;
-  const result = new Array(p).fill(0);
+  const result = new Array<number>(p).fill(0);
   for (let i = 0; i < p; i++) {
     let sum = 0;
     for (let k = 0; k < n; k++) sum += X[k][i] * y[k];
@@ -77,7 +77,8 @@ export function predictLinearRegression(
   features: number[],
 ): number {
   let pred = coefficients[0];
-  for (let i = 0; i < features.length; i++) pred += coefficients[i + 1] * features[i];
+  for (let i = 0; i < features.length; i++)
+    pred += coefficients[i + 1] * features[i];
   return Math.max(0, pred); // no tiene sentido predecir unidades negativas
 }
 
