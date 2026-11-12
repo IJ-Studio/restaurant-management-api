@@ -33,6 +33,14 @@ class OrderItemDto {
 }
 
 export class CreateOrderMesaDto {
+  /**
+   * Compatibilidad con la app móvil 1.0.0 (versionCode 9), que todavía lo envía. Se acepta y se
+   * ignora: el pedido siempre se asigna al usuario del token (DT-04).
+   */
+  @IsInt()
+  @IsOptional()
+  usuarioId?: number;
+
   @IsNumber()
   @IsOptional()
   @Min(1)
