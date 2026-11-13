@@ -218,7 +218,7 @@ describe('OrderWorkflowService', () => {
         expect(notifications.sendToRoles).toHaveBeenCalledWith([ROLES.MESERO], {
           title: 'Pedido listo',
           body: 'Mesa B01: listo para entregar.',
-          data: { type: 'order_ready', orderId: 'orden-1' },
+          data: { type: 'order_ready', orderId: 'orden-1', place: 'Mesa B01' },
         });
       });
 
@@ -236,7 +236,11 @@ describe('OrderWorkflowService', () => {
         expect(notifications.sendToRoles).toHaveBeenCalledWith([ROLES.CAJERO], {
           title: 'Cuenta por cobrar',
           body: 'Mesa B01: entregado, falta cobrar.',
-          data: { type: 'order_delivered', orderId: 'orden-1' },
+          data: {
+            type: 'order_delivered',
+            orderId: 'orden-1',
+            place: 'Mesa B01',
+          },
         });
       });
 
