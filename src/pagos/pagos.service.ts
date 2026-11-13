@@ -23,6 +23,7 @@ import { eq, and } from 'drizzle-orm';
 import Stripe from 'stripe';
 import Facturapi, { type Invoice } from 'facturapi';
 import { ROLES } from '../common/constants/roles';
+import { ESTATUS_COBRABLES } from '../orders/order-workflow.service';
 import {
   CrearDireccionDto,
   GuardarMetodoPagoDto,
@@ -451,11 +452,20 @@ export class PagosService {
     let clienteId: string | undefined = orden.clienteId ?? undefined;
 
     if (esPersonal) {
-      if (
-        !['pendiente', 'para_cobrar', 'abierta'].includes(orden.estatus ?? '')
-      ) {
+      // Caja cobra con tarjeta en cualquier momento en que cobraría en caja (también ya entregada).
+      if (!['pendiente', ...ESTATUS_COBRABLES].includes(orden.estatus ?? '')) {
         throw new BadRequestException(
           `Esta orden ya no admite pago (estatus actual: ${orden.estatus}).`,
+        );
+      }
+      // La intención cobra el total de la orden: con pagos parciales en caja cobraría de más.
+      const previos = await this.db
+        .select({ id: pagos.id })
+        .from(pagos)
+        .where(eq(pagos.ordenId, orden.id));
+      if (previos.length > 0) {
+        throw new BadRequestException(
+          'Este pedido ya tiene pagos en caja: cobra lo que falta en caja.',
         );
       }
     } else {

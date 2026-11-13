@@ -124,6 +124,56 @@ describe('PagosService.crearIntentoPago (DT-16)', () => {
     });
   });
 
+  it.each(['lista', 'entregada'])(
+    'el cajero puede cobrar con tarjeta una orden %s (el flujo normal de la mesa)',
+    async (estatus) => {
+      const orden = {
+        id: 'orden-1',
+        clienteId: null,
+        estatus,
+        total: '215.00',
+      };
+      const { service, create } = setup([[orden], []]);
+
+      await service.crearIntentoPago({ ordenId: 'orden-1' }, 8, ROLES.CAJERO);
+
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: 21500 }),
+        expect.anything(),
+      );
+    },
+  );
+
+  it('el cajero no puede cobrar con tarjeta un pedido con pagos parciales en caja', async () => {
+    const orden = {
+      id: 'orden-1',
+      clienteId: null,
+      estatus: 'entregada',
+      total: '215.00',
+    };
+    const { service, create } = setup([[orden], [{ id: 'pago-1' }]]);
+
+    await expect(
+      service.crearIntentoPago({ ordenId: 'orden-1' }, 8, ROLES.CAJERO),
+    ).rejects.toThrow('Este pedido ya tiene pagos en caja');
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('una orden pagada o cancelada no admite tarjeta', async () => {
+    const orden = {
+      id: 'orden-1',
+      clienteId: null,
+      estatus: 'pagada',
+      total: '215.00',
+    };
+    const { service, create } = setup([[orden]]);
+
+    await expect(
+      service.crearIntentoPago({ ordenId: 'orden-1' }, 8, ROLES.CAJERO),
+    ).rejects.toThrow('ya no admite pago');
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it('el cajero puede cobrar una orden en para_cobrar', async () => {
     const orden = {
       id: 'orden-1',
