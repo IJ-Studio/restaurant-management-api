@@ -44,7 +44,9 @@ import { validateEnv } from './common/config/env.validation';
     ThrottlerModule.forRoot([
       {
         ttl: 60000, // 1 minuto (en milisegundos)
-        limit: 40, // Máximo 40 peticiones por minuto por cada IP / Cliente
+        // Por IP. Todo el personal del restaurante sale por la misma IP: subirlo en producción con
+        // THROTTLE_LIMIT si hay 429 en hora pico (ver docs/rendimiento.md). Las pruebas de carga lo suben.
+        limit: Number(process.env.THROTTLE_LIMIT) || 40,
       },
     ]),
     DatabaseModule,
