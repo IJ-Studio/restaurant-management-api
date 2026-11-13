@@ -28,7 +28,7 @@ describe('POST /reportes-problemas y POST /imagenes/firma (HTTP)', () => {
   const values = jest.fn().mockResolvedValue(undefined);
   const db = { insert: jest.fn().mockReturnValue({ values }) };
   const sign = async (id: string, roleId: number) => {
-    await cache.set(`user-${id}`, `tok-${id}`);
+    await cache.set(`session-tok-${id}`, id);
     return jwt.signAsync(
       { id, email: 'x@quijote.mx', roleId, tokenId: `tok-${id}` },
       { secret: SECRET, expiresIn: 60 },

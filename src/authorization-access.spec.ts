@@ -54,8 +54,8 @@ describe('Rutas administrativas con rol', () => {
   beforeAll(async () => {
     adminToken = await sign('1', ROLES.ADMIN, 'tok-admin');
     meseroToken = await sign('3', ROLES.MESERO, 'tok-mesero');
-    await cache.set('user-1', 'tok-admin');
-    await cache.set('user-3', 'tok-mesero');
+    await cache.set('session-tok-admin', '1');
+    await cache.set('session-tok-mesero', '3');
 
     const moduleRef = await Test.createTestingModule({
       controllers: [

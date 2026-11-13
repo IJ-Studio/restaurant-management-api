@@ -68,7 +68,7 @@ describe('OrdersController (DT-04)', () => {
       },
       { secret: SECRET, expiresIn: 60 },
     );
-    await cache.set('user-7', 'tok-7');
+    await cache.set('session-tok-7', '7');
     cajeroToken = await jwt.signAsync(
       {
         id: '8',
@@ -78,7 +78,7 @@ describe('OrdersController (DT-04)', () => {
       },
       { secret: SECRET, expiresIn: 60 },
     );
-    await cache.set('user-8', 'tok-8');
+    await cache.set('session-tok-8', '8');
 
     const moduleRef = await Test.createTestingModule({
       controllers: [OrdersController],

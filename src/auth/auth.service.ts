@@ -4,6 +4,7 @@ import {
   HttpStatus,
   Inject,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
@@ -22,6 +23,7 @@ import { CacheService } from 'src/cache/cache.service';
 // import { RedisService } from '../redis/redis.service';
 
 import { BcryptService } from './bcrypt.service';
+import { RefreshTokensService } from './refresh-tokens.service';
 import { randomUUID } from 'crypto';
 
 import { SignUpDto } from './dto/sign-up.dto';
@@ -91,6 +93,15 @@ export const accountLockedMessage = (seconds: number): string =>
 export const SIGN_UP_FAILED_MESSAGE =
   'No se pudo crear la cuenta con esos datos. Si ya tienes una cuenta, inicia sesión o recupera tu contraseña.';
 
+export const SESSION_EXPIRED = 'La sesión expiró. Vuelve a iniciar sesión.';
+
+/** Respuesta del login y del refresco. `refreshToken` falta solo si su tabla aún no existe. */
+export interface SessionTokens {
+  accessToken: string;
+  refreshToken?: string;
+  user: PublicUser;
+}
+
 const PG_UNIQUE_VIOLATION = '23505';
 
 /** Drizzle envuelve el error del driver: el código de Postgres puede estar en `cause`. */
@@ -115,6 +126,8 @@ const correoIgual = (email: string) =>
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @Inject(DRIZZLE)
     private readonly db: PostgresJsDatabase<typeof schema>,
@@ -124,6 +137,7 @@ export class AuthService {
     private readonly bcryptService: BcryptService,
     private readonly jwtService: JwtService,
     private readonly cacheService: CacheService,
+    private readonly refreshTokens: RefreshTokensService,
   ) {}
 
   async SignUp(signUpDto: SignUpDto): Promise<PublicUser> {
@@ -172,9 +186,7 @@ export class AuthService {
     }
   }
 
-  async SignIn(
-    signInDto: SignInDto,
-  ): Promise<{ accessToken: string; user: PublicUser }> {
+  async SignIn(signInDto: SignInDto): Promise<SessionTokens> {
     const { email, password } = signInDto;
 
     const [userData] = await this.db
@@ -217,9 +229,36 @@ export class AuthService {
       await this.resetLoginAttempts(userData.id);
     }
 
-    const tokenData = await this.generateAccessToken(userData);
+    return this.openSession(userData);
+  }
 
-    return { accessToken: tokenData.accessToken, user: toPublicUser(userData) };
+  /**
+   * Renueva la sesión con un token de refresco (un solo uso: devuelve otro). Sirve cuando el token
+   * de acceso caducó o el servidor se reinició y perdió las sesiones en memoria.
+   */
+  async refresh(refreshToken: string): Promise<SessionTokens> {
+    const userId = await this.refreshTokens.consume(refreshToken);
+    const [user] =
+      userId === null
+        ? []
+        : await this.db.select().from(users).where(eq(users.id, userId));
+
+    if (!user?.isActive) throw new UnauthorizedException(SESSION_EXPIRED);
+    return this.openSession(user);
+  }
+
+  private async openSession(user: User): Promise<SessionTokens> {
+    const { accessToken } = await this.generateAccessToken(user);
+    let refreshToken: string | undefined;
+    try {
+      refreshToken = await this.refreshTokens.issue(user.id);
+    } catch (error) {
+      // Sin la tabla (migración sin aplicar) el login debe seguir funcionando, solo sin refresco.
+      this.logger.error(
+        `No se pudo emitir el token de refresco: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    return { accessToken, refreshToken, user: toPublicUser(user) };
   }
 
   /** Suma un intento fallido (incremento atómico en SQL) y bloquea la cuenta al llegar al máximo. */
@@ -259,8 +298,20 @@ export class AuthService {
     return toPublicUser(user);
   }
 
-  async signOut(userId: number): Promise<void> {
-    await this.cacheService.delete(`user-${String(userId)}`);
+  /** Cierra la sesión de este dispositivo; las de otros dispositivos de la misma persona siguen. */
+  async signOut(session: ActiveUserData, refreshToken?: string): Promise<void> {
+    await this.cacheService.delete(`session-${session.tokenId}`);
+    if (refreshToken) await this.refreshTokens.revoke(refreshToken);
+  }
+
+  /** Cierra todas las sesiones de la persona (p. ej. al eliminar su cuenta). */
+  async revokeAllSessions(userId: number): Promise<void> {
+    await this.cacheService.set(
+      `revoked-${String(userId)}`,
+      Date.now(),
+      this.jwtConfiguration.accessTokenTtl,
+    );
+    await this.refreshTokens.revokeAllForUser(userId);
   }
 
   async generateAccessToken(
@@ -269,8 +320,8 @@ export class AuthService {
     const tokenId = randomUUID();
     const ttl = this.jwtConfiguration.accessTokenTtl;
 
-    // ✅ Guardar tokenId en caché
-    await this.cacheService.set(`user-${String(user.id)}`, tokenId, ttl);
+    // Una entrada por sesión: la misma persona puede estar a la vez en la web y en la app.
+    await this.cacheService.set(`session-${tokenId}`, String(user.id), ttl);
 
     const accessToken = await this.jwtService.signAsync(
       {
