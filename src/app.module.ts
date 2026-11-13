@@ -6,6 +6,7 @@ import { APP_GUARD, APP_PIPE } from '@nestjs/core'; // 👈 AGREGADO
 import { PagosModule } from './pagos/pagos.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { ReglasModule } from './reglas/reglas.module';
+import { SolicitudesFacturaModule } from './solicitudes-factura/solicitudes-factura.module';
 import { AuthModule } from './auth/auth.module';
 import { BackupsModule } from './database/features/backups/backups.module';
 import { ReportsModule } from './reports/reports.module';
@@ -56,6 +57,7 @@ import { validateEnv } from './common/config/env.validation';
     PagosModule,
     ReservationsModule,
     ReglasModule,
+    SolicitudesFacturaModule,
     ScheduleModule.forRoot(),
     BackupsModule,
     ReportsModule,
