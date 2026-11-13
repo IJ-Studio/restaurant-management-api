@@ -60,7 +60,13 @@ export class JwtAuthGuard implements CanActivate {
         throw new UnauthorizedException('Token revocado');
       }
 
-      Object.assign(request, { [REQUEST_USER_KEY]: payload, user: payload });
+      // Los controladores leen el usuario por `REQUEST_USER_KEY` y por `request.user`.
+
+      const target = request as Request & Record<string, unknown>;
+
+      target[REQUEST_USER_KEY] = payload;
+
+      target.user = payload;
 
       return true;
     } catch (error) {
