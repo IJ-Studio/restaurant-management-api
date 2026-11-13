@@ -11,10 +11,22 @@ import {
   Query,
   Req,
   Res,
+  Sse,
   UseGuards,
+  type MessageEvent,
 } from '@nestjs/common';
+import {
+  interval,
+  map,
+  merge,
+  of,
+  takeUntil,
+  timer,
+  type Observable,
+} from 'rxjs';
 import { OrdersService, type OrderRequester } from './orders.service';
 import { OrderWorkflowService } from './order-workflow.service';
+import { OrderEventsService, type OrderChange } from './order-events.service';
 import { CreateOrderMesaDto } from './dto/create-order-mesa.dto';
 import { ChargeOrderDto } from './dto/charge-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
@@ -28,12 +40,49 @@ import { ActiveUser } from '../auth/decorators/active-user.decorator';
 import { ROLES } from '../common/constants/roles';
 import type { ActiveUserData } from '../common/interfaces/active-user-data.interface';
 
+/** Latido del flujo: los proxies cortan las conexiones que pasan mucho tiempo sin transmitir. */
+export const STREAM_HEARTBEAT_MS = 25_000;
+/** El flujo se cierra solo y el cliente reconecta: así la sesión se vuelve a validar. */
+export const STREAM_MAX_MS = 15 * 60_000;
+
 @Controller('pedidos')
 export class OrdersController {
   constructor(
     private readonly ordersService: OrdersService,
     private readonly workflow: OrderWorkflowService,
+    private readonly events: OrderEventsService,
   ) {}
+
+  /** Avisa por el flujo en tiempo real y devuelve la respuesta tal cual. */
+  private changed<T>(
+    change: OrderChange,
+    orderId: string | undefined,
+    result: T,
+    estatus?: string,
+  ): T {
+    if (orderId) this.events.emit(change, orderId, estatus);
+    return result;
+  }
+
+  /**
+   * Tiempo real de pedidos para el personal (HU-06), por Server-Sent Events. Emite `ready` al
+   * conectar, `order` en cada cambio y `ping` como latido. Solo viaja el id del pedido y el tipo
+   * de cambio. Va antes de `:id` para que esa ruta no la capture.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(ROLES.ADMIN, ROLES.CAJERO, ROLES.MESERO, ROLES.COCINA)
+  @Sse('stream')
+  streamOrders(): Observable<MessageEvent> {
+    return merge(
+      of({ type: 'ready', data: {} }),
+      this.events
+        .stream()
+        .pipe(map((event) => ({ type: 'order', data: event }))),
+      interval(STREAM_HEARTBEAT_MS).pipe(
+        map(() => ({ type: 'ping', data: {} })),
+      ),
+    ).pipe(takeUntil(timer(STREAM_MAX_MS)));
+  }
 
   private requester(user: ActiveUserData): OrderRequester {
     return { id: Number(user.id), roleId: user.roleId };
@@ -44,11 +93,12 @@ export class OrdersController {
     @Body() createOrderMesaDto: CreateOrderMesaDto,
     @ActiveUser() user: ActiveUserData,
   ) {
-    return await this.ordersService.createOrderMesa(
+    const result = await this.ordersService.createOrderMesa(
       createOrderMesaDto,
       Number(user.id),
       user.roleId,
     );
+    return this.changed('items', result.ordenId, result);
   }
 
   @Get('usuario')
@@ -77,10 +127,11 @@ export class OrdersController {
     @Param('id') id: string,
     @ActiveUser() user: ActiveUserData,
   ) {
-    return await this.ordersService.confirmarOrdenMesa(
+    const result = await this.ordersService.confirmarOrdenMesa(
       id,
       this.requester(user),
     );
+    return this.changed('sent', id, result);
   }
 
   // Quita un producto individual de un pedido que sigue en 'pendiente'
@@ -91,10 +142,11 @@ export class OrdersController {
     @Param('id') id: string,
     @ActiveUser() user: ActiveUserData,
   ) {
-    return await this.ordersService.eliminarItemOrden(
+    const result = await this.ordersService.eliminarItemOrden(
       Number(id),
       this.requester(user),
     );
+    return this.changed('items', result.ordenId, result);
   }
 
   @Patch('cancelar/:id')
@@ -103,11 +155,12 @@ export class OrdersController {
     @ActiveUser() user: ActiveUserData,
     @Body(createStrictValidationPipe()) dto: CancelOrderDto,
   ) {
-    return await this.ordersService.cancelarOrden(
+    const result = await this.ordersService.cancelarOrden(
       id,
       this.requester(user),
       dto.motivo,
     );
+    return this.changed('cancelled', id, result);
   }
 
   // Pedidos activos del día: panel de administración y app móvil del personal
@@ -163,11 +216,12 @@ export class OrdersController {
     @Body(createStrictValidationPipe()) dto: UpdateOrderStatusDto,
     @ActiveUser() user: ActiveUserData,
   ) {
-    return await this.workflow.cambiarEstatus(
+    const result = await this.workflow.cambiarEstatus(
       id,
       dto.estatus,
       this.requester(user),
     );
+    return this.changed('status', id, result, dto.estatus);
   }
 
   // Cobro en caja (efectivo o terminal física). El monto sale de la orden.
@@ -179,7 +233,8 @@ export class OrdersController {
     @Body(createStrictValidationPipe()) dto: ChargeOrderDto,
     @ActiveUser() user: ActiveUserData,
   ) {
-    return await this.workflow.cobrar(id, dto, Number(user.id));
+    const result = await this.workflow.cobrar(id, dto, Number(user.id));
+    return this.changed('charged', id, result);
   }
 
   // Detalle de un pedido. Va al final: `:id` no debe capturar las rutas fijas de arriba.
