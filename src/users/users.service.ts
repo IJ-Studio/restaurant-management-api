@@ -95,16 +95,14 @@ export class UsersService {
     const limit = query.limit ?? USERS_DEFAULT_LIMIT;
     const cursorCondition =
       query.cursor === undefined ? undefined : gt(users.id, query.cursor);
-    const activeCondition = eq(users.isActive, true);
+    const activeCondition = query.incluirInactivos
+      ? undefined
+      : eq(users.isActive, true);
 
     const allUsers = await this.db
       .select()
       .from(users)
-      .where(
-        cursorCondition
-          ? and(activeCondition, cursorCondition)
-          : activeCondition,
-      )
+      .where(and(activeCondition, cursorCondition))
       .orderBy(asc(users.id))
       .limit(limit);
 
