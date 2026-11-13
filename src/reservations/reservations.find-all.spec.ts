@@ -11,7 +11,7 @@ function setup() {
   const db = {
     select: () => ({ from: () => ({ where }) }),
   };
-  const service = new ReservationsService(db as never);
+  const service = new ReservationsService(db as never, {} as never);
   const condition = () => {
     const [arg] = where.mock.calls[0] as [SQL | undefined];
     return arg ? dialect.sqlToQuery(arg) : undefined;

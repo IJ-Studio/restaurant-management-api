@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DatabaseModule } from '../database/database.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ReglasModule } from '../reglas/reglas.module';
 import { AuthModule } from '../auth/auth.module';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
@@ -14,6 +15,7 @@ import jwtConfig from '../common/config/jwt.config';
     DatabaseModule,
     AuthModule, // 👈 Importa el módulo de autenticación (contiene JwtAuthGuard, RolesGuard, etc.)
     NotificationsModule, // avisos push al cambiar el estado del pedido (HU-07)
+    ReglasModule, // horario de cocina y cantidades máximas (Fase 3)
     ConfigModule.forFeature(jwtConfig), // 👈 Hace disponible la configuración JWT
   ],
   controllers: [OrdersController],

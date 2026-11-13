@@ -1,3 +1,4 @@
+import { ReglasService } from '../reglas/reglas.service';
 import {
   Injectable,
   BadRequestException,
@@ -115,7 +116,10 @@ function mensajeDeError(error: unknown): string {
 
 @Injectable()
 export class OrdersService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly reglas: ReglasService,
+  ) {}
 
   private async resolverClienteId(usuarioId: number): Promise<string> {
     const [clienteExistente] = await this.db
@@ -205,6 +209,42 @@ export class OrdersService {
     return nuevoTotal.toString();
   }
 
+  /**
+   * Reglas del pedido (Fase 3), con los mismos mensajes que muestra la app: platillos que existen y
+   * están disponibles, cantidades enteras dentro del máximo y, en una mesa, cocina abierta.
+   */
+  private async validarPedido(
+    items: ItemPedido[],
+    platillosMap: Map<number, typeof platillos.$inferSelect>,
+    esDomicilio: boolean,
+  ): Promise<void> {
+    const { pedidos } = await this.reglas.obtener();
+    for (const item of items) {
+      const platillo = platillosMap.get(item.platilloId);
+      if (!platillo) {
+        throw new NotFoundException(
+          'Un platillo del pedido ya no está en la carta.',
+        );
+      }
+      if (platillo.disponible === false) {
+        throw new BadRequestException(
+          `${platillo.nombre} no está disponible por ahora.`,
+        );
+      }
+      if (
+        !Number.isInteger(item.cantidad) ||
+        item.cantidad < 1 ||
+        item.cantidad > pedidos.cantidadMaxPorPlatillo
+      ) {
+        throw new BadRequestException(
+          `La cantidad de cada platillo debe ser de 1 a ${pedidos.cantidadMaxPorPlatillo}.`,
+        );
+      }
+    }
+    // El carrito a domicilio se valida al pagar; un pedido de mesa va directo a cocina.
+    if (!esDomicilio) await this.reglas.validarCocinaAbierta();
+  }
+
   async createOrderMesa(
     dto: CreateOrderMesaDto,
     usuarioId: number,
@@ -243,9 +283,10 @@ export class OrdersService {
       );
     }
     const platillosMap = new Map(dbPlatillos.map((p) => [p.id, p]));
+    const esDomicilio = !dto.mesa;
+    await this.validarPedido(listaItems, platillosMap, esDomicilio);
 
     const clienteId = await this.resolverClienteId(usuarioId);
-    const esDomicilio = !dto.mesa;
 
     try {
       if (esDomicilio) {
