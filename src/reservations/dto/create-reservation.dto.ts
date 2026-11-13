@@ -6,11 +6,9 @@ import {
   Max,
   IsOptional,
   IsDateString,
-  IsBoolean,
   Length,
   Matches,
 } from 'class-validator';
-import { Type } from 'class-transformer';
 import {
   Correo,
   Telefono,

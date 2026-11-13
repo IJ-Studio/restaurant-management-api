@@ -88,23 +88,38 @@ export class PredictiveDemandService {
   private construirSeries(ventas: VentaRow[]) {
     const fechasSet = new Set(ventas.map((v) => v.fecha));
     const fechas = Array.from(fechasSet).sort();
-    if (fechas.length === 0) return { fechas: [] as string[], seriesPorPlatillo: new Map<number, number[]>() };
+    if (fechas.length === 0)
+      return {
+        fechas: [] as string[],
+        seriesPorPlatillo: new Map<number, number[]>(),
+      };
 
     const fechaMin = new Date(fechas[0]);
     const fechaMax = new Date(fechas[fechas.length - 1]);
     const todasFechas: string[] = [];
-    for (let d = new Date(fechaMin); d <= fechaMax; d.setUTCDate(d.getUTCDate() + 1)) {
+    for (
+      let d = new Date(fechaMin);
+      d <= fechaMax;
+      d.setUTCDate(d.getUTCDate() + 1)
+    ) {
       todasFechas.push(d.toISOString().slice(0, 10));
     }
 
     const ventasMap = new Map<string, number>();
-    for (const v of ventas) ventasMap.set(`${v.fecha}|${v.platillo_id}`, v.unidades);
+    for (const v of ventas)
+      ventasMap.set(`${v.fecha}|${v.platillo_id}`, v.unidades);
 
     const diasConVentasPorPlatillo = new Map<number, number>();
     const totalUnidadesPorPlatillo = new Map<number, number>();
     for (const v of ventas) {
-      diasConVentasPorPlatillo.set(v.platillo_id, (diasConVentasPorPlatillo.get(v.platillo_id) ?? 0) + 1);
-      totalUnidadesPorPlatillo.set(v.platillo_id, (totalUnidadesPorPlatillo.get(v.platillo_id) ?? 0) + v.unidades);
+      diasConVentasPorPlatillo.set(
+        v.platillo_id,
+        (diasConVentasPorPlatillo.get(v.platillo_id) ?? 0) + 1,
+      );
+      totalUnidadesPorPlatillo.set(
+        v.platillo_id,
+        (totalUnidadesPorPlatillo.get(v.platillo_id) ?? 0) + v.unidades,
+      );
     }
 
     const platilloIdsCalificados = [...diasConVentasPorPlatillo.entries()]
@@ -158,7 +173,9 @@ export class PredictiveDemandService {
     return filas;
   }
 
-  private clasificar(variacionPct: number): 'Alta demanda' | 'Demanda media' | 'Baja demanda' {
+  private clasificar(
+    variacionPct: number,
+  ): 'Alta demanda' | 'Demanda media' | 'Baja demanda' {
     if (variacionPct > 15) return 'Alta demanda';
     if (variacionPct < -15) return 'Baja demanda';
     return 'Demanda media';
@@ -186,10 +203,17 @@ export class PredictiveDemandService {
     const promedioEntrenoPorPlatillo = new Map<number, number>();
     for (const [pid, serie] of seriesPorPlatillo.entries()) {
       const train = serie.slice(0, corte);
-      promedioEntrenoPorPlatillo.set(pid, train.reduce((a, b) => a + b, 0) / train.length);
+      promedioEntrenoPorPlatillo.set(
+        pid,
+        train.reduce((a, b) => a + b, 0) / train.length,
+      );
     }
 
-    const filas = this.construirFeatures(fechas, seriesPorPlatillo, promedioEntrenoPorPlatillo);
+    const filas = this.construirFeatures(
+      fechas,
+      seriesPorPlatillo,
+      promedioEntrenoPorPlatillo,
+    );
     const filasTrain = filas.filter((f) => f.dayIdx < corte);
     const filasVal = filas.filter((f) => f.dayIdx >= corte);
 
@@ -200,7 +224,9 @@ export class PredictiveDemandService {
       filasTrain.map((f) => f.y),
     );
 
-    const predVal = filasVal.map((f) => predictLinearRegression(coefValidacion, f.x));
+    const predVal = filasVal.map((f) =>
+      predictLinearRegression(coefValidacion, f.x),
+    );
     const baselineVal = filasVal.map((f) => f.x[7]); // índice 7 = lag_7
     const yVal = filasVal.map((f) => f.y);
 
@@ -211,9 +237,16 @@ export class PredictiveDemandService {
     // predicciones hacia adelante que sí se van a mostrar/usar.
     const promedioFinalPorPlatillo = new Map<number, number>();
     for (const [pid, serie] of seriesPorPlatillo.entries()) {
-      promedioFinalPorPlatillo.set(pid, serie.reduce((a, b) => a + b, 0) / serie.length);
+      promedioFinalPorPlatillo.set(
+        pid,
+        serie.reduce((a, b) => a + b, 0) / serie.length,
+      );
     }
-    const filasFinal = this.construirFeatures(fechas, seriesPorPlatillo, promedioFinalPorPlatillo);
+    const filasFinal = this.construirFeatures(
+      fechas,
+      seriesPorPlatillo,
+      promedioFinalPorPlatillo,
+    );
     const coefFinal = fitLinearRegression(
       filasFinal.map((f) => f.x),
       filasFinal.map((f) => f.y),
@@ -245,16 +278,26 @@ export class PredictiveDemandService {
       const fecha = new Date(ultimaFecha);
       fecha.setUTCDate(fecha.getUTCDate() + o);
 
-      const idx = historia.length; // índice que tendría este día si extendiéramos la serie real
       const lag1 = historia[historia.length - 1];
       const lag7 = historia[historia.length - 7];
-      const mm7 = historia.slice(historia.length - 7).reduce((a, b) => a + b, 0) / 7;
+      const mm7 =
+        historia.slice(historia.length - 7).reduce((a, b) => a + b, 0) / 7;
       const tendencia = (fechas.length - 1 + o) / fechas.length;
 
-      const x = [...dowDummies(fecha), lag1, lag7, mm7, promedioPlatillo, tendencia];
+      const x = [
+        ...dowDummies(fecha),
+        lag1,
+        lag7,
+        mm7,
+        promedioPlatillo,
+        tendencia,
+      ];
       const pred = Math.round(predictLinearRegression(coef, x) * 10) / 10;
 
-      resultado.push({ fecha: fecha.toISOString().slice(0, 10), unidadesPredichas: pred });
+      resultado.push({
+        fecha: fecha.toISOString().slice(0, 10),
+        unidadesPredichas: pred,
+      });
       historia.push(pred); // recursive forecasting: el pronóstico alimenta el siguiente lag_1/media móvil
     }
 
@@ -266,21 +309,41 @@ export class PredictiveDemandService {
     if (!modelo) {
       return {
         disponible: false,
-        motivo: 'No hay suficiente historial de ventas diarias para entrenar el modelo todavía.',
+        motivo:
+          'No hay suficiente historial de ventas diarias para entrenar el modelo todavía.',
       };
     }
 
-    const { fechas, seriesPorPlatillo, promedioFinalPorPlatillo, coefFinal, wapeModelo, wapeBaseline, platillos } =
-      modelo;
+    const {
+      fechas,
+      seriesPorPlatillo,
+      promedioFinalPorPlatillo,
+      coefFinal,
+      wapeModelo,
+      wapeBaseline,
+      platillos,
+    } = modelo;
 
     const items = [...seriesPorPlatillo.entries()].map(([pid, serie]) => {
       const info = platillos.get(pid);
       const unidadesUltimos7 = serie.slice(-7).reduce((a, b) => a + b, 0);
-      const pronostico = this.pronosticar(serie, fechas, promedioFinalPorPlatillo.get(pid) ?? 0, coefFinal, dias);
-      const unidadesPredichas = pronostico.reduce((s, p) => s + p.unidadesPredichas, 0);
+      const pronostico = this.pronosticar(
+        serie,
+        fechas,
+        promedioFinalPorPlatillo.get(pid) ?? 0,
+        coefFinal,
+        dias,
+      );
+      const unidadesPredichas = pronostico.reduce(
+        (s, p) => s + p.unidadesPredichas,
+        0,
+      );
       const variacionPct =
         unidadesUltimos7 > 0
-          ? Math.round(((unidadesPredichas - unidadesUltimos7) / unidadesUltimos7) * 1000) / 10
+          ? Math.round(
+              ((unidadesPredichas - unidadesUltimos7) / unidadesUltimos7) *
+                1000,
+            ) / 10
           : unidadesPredichas > 0
             ? 100
             : 0;
@@ -315,23 +378,38 @@ export class PredictiveDemandService {
     if (!modelo) {
       return {
         disponible: false,
-        motivo: 'No hay suficiente historial de ventas diarias para entrenar el modelo todavía.',
+        motivo:
+          'No hay suficiente historial de ventas diarias para entrenar el modelo todavía.',
       };
     }
 
-    const { fechas, seriesPorPlatillo, promedioFinalPorPlatillo, coefFinal, wapeModelo, wapeBaseline, platillos } =
-      modelo;
+    const {
+      fechas,
+      seriesPorPlatillo,
+      promedioFinalPorPlatillo,
+      coefFinal,
+      wapeModelo,
+      wapeBaseline,
+      platillos,
+    } = modelo;
 
     const serie = seriesPorPlatillo.get(platilloId);
     if (!serie) {
       return {
         disponible: false,
-        motivo: 'Este platillo no tiene suficiente historial de ventas diarias todavía (mínimo 15 días con venta).',
+        motivo:
+          'Este platillo no tiene suficiente historial de ventas diarias todavía (mínimo 15 días con venta).',
       };
     }
 
     const info = platillos.get(platilloId);
-    const pronostico = this.pronosticar(serie, fechas, promedioFinalPorPlatillo.get(platilloId) ?? 0, coefFinal, dias);
+    const pronostico = this.pronosticar(
+      serie,
+      fechas,
+      promedioFinalPorPlatillo.get(platilloId) ?? 0,
+      coefFinal,
+      dias,
+    );
 
     const serieHistorica = fechas.slice(-30).map((f, i) => ({
       fecha: f,
@@ -340,7 +418,12 @@ export class PredictiveDemandService {
 
     return {
       disponible: true,
-      platillo: info ?? { id: platilloId, nombre: `Platillo ${platilloId}`, categoria: '', precio: 0 },
+      platillo: info ?? {
+        id: platilloId,
+        nombre: `Platillo ${platilloId}`,
+        categoria: '',
+        precio: 0,
+      },
       wapeModelo: Math.round(wapeModelo * 1000) / 1000,
       wapeBaseline: Math.round(wapeBaseline * 1000) / 1000,
       serieHistorica,

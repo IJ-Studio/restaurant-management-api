@@ -1,11 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import {
-  IsEmail,
-  MaxLength,
-  MinLength,
-  IsNotEmpty,
-  Matches,
-} from 'class-validator';
+import { IsEmail, MaxLength, MinLength, IsNotEmpty } from 'class-validator';
 import { Correo } from '../../common/normalizacion/normalizar';
 
 export class SignInDto {

@@ -27,7 +27,7 @@ import jwtConfig from '../common/config/jwt.config';
     {
       provide: 'CONFIGURATION(jwt)',
       useFactory: (configService: ConfigService) =>
-        configService.get<unknown>('jwt'),
+        configService.get<Record<string, unknown>>('jwt'),
       inject: [ConfigService],
     },
   ],

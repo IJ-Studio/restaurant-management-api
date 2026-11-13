@@ -22,6 +22,27 @@ describe('CreateOrderMesaDto con ValidationPipe global', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('acepta el usuarioId que manda la app 1.0.0 (se ignora; el usuario sale del token)', async () => {
+    await expect(
+      validate({
+        mesa: 'T04',
+        items: [{ platilloId: 1, cantidad: 1 }],
+        usuarioId: 7,
+        numComensales: 2,
+      }),
+    ).resolves.toBeInstanceOf(CreateOrderMesaDto);
+  });
+
+  it('rechaza un usuarioId que no es número', async () => {
+    await expect(
+      validate({
+        mesa: '1',
+        items: [{ platilloId: 1, cantidad: 1 }],
+        usuarioId: 'x',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('rechaza campos que no están en el DTO', async () => {
     await expect(
       validate({

@@ -166,15 +166,12 @@ describe('UsersController', () => {
     'deleteUser',
     'reactivateUser',
     'changeRole',
-  ])(
-    '%s exige el rol admin (ROLES.ADMIN, no el número mágico 1)',
-    (method) => {
-      const handler = Object.getOwnPropertyDescriptor(
-        UsersController.prototype,
-        method,
-      )?.value as object;
+  ])('%s exige el rol admin (ROLES.ADMIN, no el número mágico 1)', (method) => {
+    const handler = Object.getOwnPropertyDescriptor(
+      UsersController.prototype,
+      method,
+    )?.value as object;
 
-      expect(Reflect.getMetadata('roles', handler)).toEqual([ROLES.ADMIN]);
-    },
-  );
+    expect(Reflect.getMetadata('roles', handler)).toEqual([ROLES.ADMIN]);
+  });
 });

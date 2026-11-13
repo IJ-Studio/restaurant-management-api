@@ -4,7 +4,6 @@ import {
   IsIn,
   IsInt,
   Min,
-  Max,
   IsDateString,
   IsBoolean,
   MaxLength,
