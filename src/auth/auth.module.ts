@@ -29,10 +29,6 @@ import { CacheModule } from 'src/cache/cache.module';
       useClass: JwtAuthGuard,
     },
   ],
-  exports: [
-    JwtModule,
-    BcryptService,
-    JwtAuthGuard,
-  ],
+  exports: [JwtModule, AuthService, BcryptService, JwtAuthGuard],
 })
 export class AuthModule {}
