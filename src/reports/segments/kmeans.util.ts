@@ -71,7 +71,7 @@ function runKmeansOnce(
   maxIter = 100,
 ): { assignments: number[]; centroids: number[][]; inertia: number } {
   let centroids = kmeansPlusPlusInit(points, k);
-  let assignments = new Array(points.length).fill(-1);
+  let assignments: number[] = new Array<number>(points.length).fill(-1);
 
   for (let iter = 0; iter < maxIter; iter++) {
     const newAssignments = points.map((p) => {
@@ -91,8 +91,10 @@ function runKmeansOnce(
     assignments = newAssignments;
 
     const dim = points[0].z.length;
-    const sums = Array.from({ length: k }, () => new Array(dim).fill(0));
-    const counts = new Array(k).fill(0);
+    const sums = Array.from({ length: k }, () =>
+      new Array<number>(dim).fill(0),
+    );
+    const counts = new Array<number>(k).fill(0);
     points.forEach((p, i) => {
       const c = assignments[i];
       counts[c]++;
@@ -151,8 +153,10 @@ export function silhouetteScore(
     for (let c = 0; c < k; c++) {
       if (c === ci || clusterIdx[c].length === 0) continue;
       const avgDist =
-        clusterIdx[c].reduce((s, j) => s + euclidean(points[i].z, points[j].z), 0) /
-        clusterIdx[c].length;
+        clusterIdx[c].reduce(
+          (s, j) => s + euclidean(points[i].z, points[j].z),
+          0,
+        ) / clusterIdx[c].length;
       if (avgDist < b) b = avgDist;
     }
     if (!Number.isFinite(b)) continue;
@@ -188,7 +192,9 @@ function powerIteration(
   iterations = 200,
 ): { vector: number[]; value: number } {
   const dim = matrix.length;
-  let v = normalizeVec(Array.from({ length: dim }, (_, i) => (i === 0 ? 1 : 0.1)));
+  let v = normalizeVec(
+    Array.from({ length: dim }, (_, i) => (i === 0 ? 1 : 0.1)),
+  );
 
   for (let i = 0; i < iterations; i++) {
     v = normalizeVec(matVecMul(matrix, v));
@@ -204,7 +210,9 @@ export function pca2D(points: Point[]): { x: number; y: number }[] {
   const dim = points[0]?.z.length ?? 0;
   if (n === 0 || dim === 0) return [];
 
-  const cov: number[][] = Array.from({ length: dim }, () => new Array(dim).fill(0));
+  const cov: number[][] = Array.from({ length: dim }, () =>
+    new Array<number>(dim).fill(0),
+  );
   for (const p of points) {
     for (let i = 0; i < dim; i++) {
       for (let j = 0; j < dim; j++) {
@@ -217,7 +225,9 @@ export function pca2D(points: Point[]): { x: number; y: number }[] {
   }
 
   const { vector: v1, value: lambda1 } = powerIteration(cov);
-  const deflated = cov.map((row, i) => row.map((val, j) => val - lambda1 * v1[i] * v1[j]));
+  const deflated = cov.map((row, i) =>
+    row.map((val, j) => val - lambda1 * v1[i] * v1[j]),
+  );
   const { vector: v2 } = powerIteration(deflated);
 
   return points.map((p) => ({

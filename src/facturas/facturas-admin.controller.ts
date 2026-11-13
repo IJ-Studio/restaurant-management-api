@@ -29,10 +29,17 @@ export class FacturasAdminController {
     @Query('q') busqueda?: string,
   ) {
     if (pagina < 1) throw new BadRequestException('Página no válida.');
-    if (estatus && !ESTATUS.includes(estatus))
+    // `?estatus=a&estatus=b` llega como arreglo: solo se acepta un texto.
+    if (
+      estatus !== undefined &&
+      (typeof estatus !== 'string' || !ESTATUS.includes(estatus))
+    )
       throw new BadRequestException('Estatus no válido.');
-    if (busqueda && busqueda.length > 100)
-      throw new BadRequestException('Búsqueda demasiado larga.');
+    if (
+      busqueda !== undefined &&
+      (typeof busqueda !== 'string' || busqueda.length > 100)
+    )
+      throw new BadRequestException('Búsqueda no válida.');
     return this.servicio.listar({ pagina, estatus, busqueda });
   }
 }

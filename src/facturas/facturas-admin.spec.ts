@@ -44,6 +44,16 @@ describe('GET /facturas (admin)', () => {
     const c = new FacturasAdminController({ listar: jest.fn() } as never);
     expect(() => c.listar(0)).toThrow(BadRequestException);
     expect(() => c.listar(1, 'pagada')).toThrow(BadRequestException);
+    // Parámetros repetidos (?q=a&q=b) llegan como arreglo: se rechazan, no truenan con 500.
+    expect(() => c.listar(1, ['vigente', 'cancelada'] as never)).toThrow(
+      BadRequestException,
+    );
+    expect(() => c.listar(1, undefined, ['a', 'b'] as never)).toThrow(
+      BadRequestException,
+    );
+    expect(() => c.listar(1, undefined, 'x'.repeat(101))).toThrow(
+      BadRequestException,
+    );
     expect(Reflect.getMetadata('roles', FacturasAdminController)).toEqual([
       ROLES.ADMIN,
     ]);

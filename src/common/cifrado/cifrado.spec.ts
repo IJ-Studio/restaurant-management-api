@@ -42,7 +42,13 @@ describe('cifrado de campos sensibles', () => {
 
   it('un valor manipulado no se descifra', () => {
     const c = cifrar('dato');
-    const roto = c.slice(0, -2) + (c.endsWith('A') ? 'B' : 'A') + c.slice(-1);
+    // Se invierte un bit del texto cifrado ya decodificado: así el valor siempre cambia
+    // (cambiar un carácter del base64 a veces lo dejaba igual y la prueba fallaba 1 de cada 64).
+    const partes = c.split('.');
+    const datos = Buffer.from(partes[2], 'base64url');
+    datos[0] ^= 0x01;
+    const roto = [partes[0], partes[1], datos.toString('base64url')].join('.');
+    expect(roto).not.toBe(c);
     expect(() => descifrar(roto)).toThrow();
   });
 
