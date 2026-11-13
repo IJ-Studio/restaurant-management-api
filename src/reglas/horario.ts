@@ -74,6 +74,21 @@ export function desfaseUtcMin(fecha: Date, zonaHoraria: string): number {
   );
 }
 
+/** «2026-11-13» y «20:00» en la hora del restaurante → instante real (UTC). */
+export function instanteLocal(
+  fecha: string,
+  hora: string,
+  zonaHoraria: string,
+): Date {
+  const [y, m, d] = fecha.split('-').map(Number);
+  const [h, min] = hora.split(':').map(Number);
+  const comoUtc = Date.UTC(y, m - 1, d, h, min);
+  // El desfase se mide en ese mismo día (por si la zona tuviera horario de verano).
+  return new Date(
+    comoUtc - desfaseUtcMin(new Date(comoUtc), zonaHoraria) * 60_000,
+  );
+}
+
 export const aMinutos = (hora: string): number => {
   const [h, m] = hora.split(':').map(Number);
   return h * 60 + m;
