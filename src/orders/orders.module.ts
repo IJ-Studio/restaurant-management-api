@@ -6,6 +6,7 @@ import { AuthModule } from '../auth/auth.module';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { OrderWorkflowService } from './order-workflow.service';
+import { OrderEventsService } from './order-events.service';
 import jwtConfig from '../common/config/jwt.config';
 
 @Module({
@@ -19,6 +20,7 @@ import jwtConfig from '../common/config/jwt.config';
   providers: [
     OrdersService,
     OrderWorkflowService,
+    OrderEventsService,
     // Provider explícito para 'CONFIGURATION(jwt)', igual que en ReservationsModule
     {
       provide: 'CONFIGURATION(jwt)',

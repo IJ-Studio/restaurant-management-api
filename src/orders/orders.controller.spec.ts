@@ -9,7 +9,12 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guards';
 import { CacheService } from '../cache/cache.service';
 import jwtConfig from '../common/config/jwt.config';
 import { ROLES } from '../common/constants/roles';
-import { OrdersController } from './orders.controller';
+import { OrderEventsService, type OrderEvent } from './order-events.service';
+import {
+  OrdersController,
+  STREAM_HEARTBEAT_MS,
+  STREAM_MAX_MS,
+} from './orders.controller';
 import { OrdersService } from './orders.service';
 import { OrderWorkflowService } from './order-workflow.service';
 
@@ -17,13 +22,20 @@ const SECRET = 'secreto-de-prueba';
 const jwt = new JwtService({});
 const cache = new CacheService();
 
+// Las respuestas llevan `ordenId`, como las del servicio real: de ahí sale el evento de tiempo real.
 const ordersService = {
-  createOrderMesa: jest.fn(),
+  createOrderMesa: jest
+    .fn()
+    .mockResolvedValue({ success: true, ordenId: 'orden-1' }),
   findOrdersByUser: jest.fn().mockResolvedValue([]),
   findDeliveryOrdersByUser: jest.fn().mockResolvedValue([]),
-  confirmarOrdenMesa: jest.fn(),
-  eliminarItemOrden: jest.fn(),
-  cancelarOrden: jest.fn(),
+  confirmarOrdenMesa: jest
+    .fn()
+    .mockResolvedValue({ success: true, ordenId: 'orden-1' }),
+  eliminarItemOrden: jest
+    .fn()
+    .mockResolvedValue({ success: true, ordenId: 'orden-1' }),
+  cancelarOrden: jest.fn().mockResolvedValue({ success: true }),
 };
 
 const workflowService = {
@@ -92,6 +104,7 @@ describe('OrdersController (DT-04)', () => {
         },
         { provide: OrdersService, useValue: ordersService },
         { provide: OrderWorkflowService, useValue: workflowService },
+        OrderEventsService,
         { provide: APP_GUARD, useClass: JwtAuthGuard },
       ],
     }).compile();
@@ -282,6 +295,143 @@ describe('OrdersController (DT-04)', () => {
         .set('Authorization', `Bearer ${cajeroToken}`)
         .expect(200);
       expect(workflowService.listarMetodosPago).toHaveBeenCalled();
+    });
+  });
+
+  describe('tiempo real de pedidos (HU-06)', () => {
+    const ORDEN = '5f0c8a5e-4a43-4b7e-9d1c-2f3e4a5b6c7d';
+    const server = () => request(app.getHttpServer() as Server);
+    const auth = () => ({ Authorization: `Bearer ${cajeroToken}` });
+
+    /** Eventos emitidos mientras corre `action`. */
+    async function eventsDuring(action: () => Promise<unknown>) {
+      const seen: OrderEvent[] = [];
+      const subscription = app
+        .get(OrderEventsService)
+        .stream()
+        .subscribe((event) => seen.push(event));
+      await action();
+      subscription.unsubscribe();
+      return seen.map(({ change, orderId, estatus }) => ({
+        change,
+        orderId,
+        estatus,
+      }));
+    }
+
+    it('GET /pedidos/stream sin token → 401', async () => {
+      await server().get('/pedidos/stream').expect(401);
+    });
+
+    it('un cliente no puede abrir el flujo de pedidos → 403', async () => {
+      await server()
+        .get('/pedidos/stream')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+    });
+
+    it.each([
+      [
+        'agregar platillos',
+        () => server().post('/pedidos/mesa').set(auth()).send({}),
+        { change: 'items', orderId: 'orden-1' },
+      ],
+      [
+        'mandar a cocina',
+        () => server().post('/pedidos/confirmar/orden-1').set(auth()),
+        { change: 'sent', orderId: 'orden-1' },
+      ],
+      [
+        'quitar un platillo',
+        () => server().delete('/pedidos/item/5').set(auth()),
+        { change: 'items', orderId: 'orden-1' },
+      ],
+      [
+        'cancelar',
+        () =>
+          server()
+            .patch('/pedidos/cancelar/orden-1')
+            .set(auth())
+            .send({ motivo: 'prueba' }),
+        { change: 'cancelled', orderId: 'orden-1' },
+      ],
+      [
+        'cambiar el estatus',
+        () =>
+          server()
+            .patch(`/pedidos/${ORDEN}/estatus`)
+            .set(auth())
+            .send({ estatus: 'lista' }),
+        { change: 'status', orderId: ORDEN, estatus: 'lista' },
+      ],
+      [
+        'cobrar',
+        () =>
+          server()
+            .post(`/pedidos/${ORDEN}/cobrar`)
+            .set(auth())
+            .send({ metodoPagoId: 1 }),
+        { change: 'charged', orderId: ORDEN },
+      ],
+    ])('%s emite su evento', async (_caso, action, expected) => {
+      const events = await eventsDuring(action);
+
+      expect(events).toEqual([expect.objectContaining(expected)]);
+    });
+
+    it('una operación rechazada no emite nada', async () => {
+      workflowService.cambiarEstatus.mockRejectedValueOnce(
+        new Error('rechazada'),
+      );
+
+      const events = await eventsDuring(() =>
+        server()
+          .patch(`/pedidos/${ORDEN}/estatus`)
+          .set(auth())
+          .send({ estatus: 'lista' }),
+      );
+
+      expect(events).toEqual([]);
+    });
+
+    describe('contenido del flujo', () => {
+      beforeEach(() => jest.useFakeTimers());
+      afterEach(() => jest.useRealTimers());
+
+      it('avisa al conectar, reenvía cada cambio, late y se cierra solo', () => {
+        const types: string[] = [];
+        const complete = jest.fn();
+        app
+          .get(OrdersController)
+          .streamOrders()
+          .subscribe({
+            next: (message) => types.push(String(message.type)),
+            complete,
+          });
+
+        expect(types).toEqual(['ready']);
+
+        app.get(OrderEventsService).emit('status', ORDEN, 'lista');
+        expect(types).toEqual(['ready', 'order']);
+
+        jest.advanceTimersByTime(STREAM_HEARTBEAT_MS);
+        expect(types).toEqual(['ready', 'order', 'ping']);
+
+        jest.advanceTimersByTime(STREAM_MAX_MS);
+        expect(complete).toHaveBeenCalledTimes(1);
+      });
+
+      it('quien se conecta después no recibe cambios anteriores', () => {
+        app.get(OrderEventsService).emit('sent', ORDEN);
+        const types: string[] = [];
+
+        app
+          .get(OrdersController)
+          .streamOrders()
+          .subscribe((message) => types.push(String(message.type)));
+
+        expect(types).toEqual(['ready']);
+      });
     });
   });
 });
