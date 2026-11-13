@@ -129,7 +129,8 @@ export class OrderWorkflowService {
       await this.notifications.sendToRoles(aviso.roles, {
         title: aviso.title,
         body: aviso.body(lugar),
-        data: { type: aviso.type, orderId: orden.id },
+        // `place` es el título que la app pone al abrir el pedido desde el aviso.
+        data: { type: aviso.type, orderId: orden.id, place: lugar },
       });
     } catch {
       // Sin aviso: el personal lo ve igual en su lista de pedidos.
