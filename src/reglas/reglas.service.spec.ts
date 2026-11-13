@@ -1,6 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 
-import { desfaseUtcMin, horarioDelDia, momentoLocal } from './horario';
+import {
+  desfaseUtcMin,
+  horarioDelDia,
+  instanteLocal,
+  momentoLocal,
+} from './horario';
 import { MENSAJES, ReglasService, type Reglas } from './reglas.service';
 
 const TZ = 'America/Mexico_City';
@@ -55,6 +60,14 @@ describe('desfaseUtcMin', () => {
 
   it('funciona también de noche, cuando en UTC ya es el día siguiente', () => {
     expect(desfaseUtcMin(new Date('2026-11-14T03:30:00Z'), TZ)).toBe(-360);
+  });
+});
+
+describe('instanteLocal', () => {
+  it('las 20:00 del restaurante son las 02:00 UTC del día siguiente', () => {
+    expect(instanteLocal('2026-11-13', '20:00', TZ).toISOString()).toBe(
+      '2026-11-14T02:00:00.000Z',
+    );
   });
 });
 
