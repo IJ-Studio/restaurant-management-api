@@ -10,8 +10,6 @@ import {
   reservaciones,
   mesas,
   areasSalon,
-  horarios,
-  horariosEspeciales,
   restaurante,
 } from '../../src/database/schema/public.schema';
 import {
@@ -28,12 +26,16 @@ import {
   ilike,
   type SQL,
 } from 'drizzle-orm';
+import { ReglasService } from '../reglas/reglas.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
 
 @Injectable()
 export class ReservationsService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly reglas: ReglasService,
+  ) {}
 
   async getRestaurantConfig() {
     const config = await this.db.select().from(restaurante).limit(1);
@@ -51,66 +53,6 @@ export class ReservationsService {
       duracionReservaDefault: c.duracionReservaDefault || 90,
       diasConfirmacion: c.diasConfirmacion || 3,
     };
-  }
-
-  async validateBusinessHours(fecha: Date): Promise<boolean> {
-    // Validación defensiva por si el objeto Date quedó corrupto o inválido
-    if (!fecha || isNaN(fecha.getTime())) {
-      throw new BadRequestException(
-        'La fecha y hora de la reserva no es válida.',
-      );
-    }
-
-    const diaSemana = fecha.getDay();
-    const horaStr = fecha.toTimeString().slice(0, 5);
-
-    // Extraemos de forma segura el formato YYYY-MM-DD sin usar .toISOString() directamente
-    const anio = fecha.getFullYear();
-    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
-    const dia = String(fecha.getDate()).padStart(2, '0');
-    const fechaHoyStr = `${anio}-${mes}-${dia}`;
-
-    const specialDay = await this.db
-      .select()
-      .from(horariosEspeciales)
-      .where(eq(horariosEspeciales.fecha, fechaHoyStr))
-      .limit(1);
-    if (specialDay.length && specialDay[0].cerrado) {
-      throw new BadRequestException(
-        'El restaurante está cerrado este día (día especial)',
-      );
-    }
-
-    const schedule = await this.db
-      .select()
-      .from(horarios)
-      .where(eq(horarios.diaSemana, diaSemana))
-      .limit(1);
-    if (!schedule.length || schedule[0].cerrado) {
-      throw new BadRequestException(
-        'El restaurante está cerrado este día de la semana',
-      );
-    }
-
-    const { apertura, cierre } = schedule[0];
-    if (!apertura || !cierre)
-      throw new BadRequestException('Horario no definido para este día');
-
-    const toMinutes = (t: string) => {
-      const [h, m] = t.split(':').map(Number);
-      return h * 60 + m;
-    };
-    const horaMin = toMinutes(horaStr);
-    const aperturaMin = toMinutes(apertura);
-    const cierreMin = toMinutes(cierre);
-
-    const margen = 30;
-    if (horaMin < aperturaMin || horaMin > cierreMin - margen) {
-      throw new BadRequestException(
-        `El horario de atención es de ${apertura} a ${cierre}. Las reservas deben ser al menos ${margen} min antes del cierre.`,
-      );
-    }
-    return true;
   }
 
   async getAvailableTables(
@@ -187,21 +129,8 @@ export class ReservationsService {
   async createReservation(dto: CreateReservationDto) {
     const fecha = new Date(dto.fechaHora);
 
-    if (isNaN(fecha.getTime())) {
-      throw new BadRequestException(
-        'El formato de fechaHora enviado no es válido para JavaScript.',
-      );
-    }
-
-    if (fecha < new Date())
-      throw new BadRequestException('Fecha debe ser futura');
-    if (fecha.getTime() - Date.now() < 60 * 60 * 1000) {
-      throw new BadRequestException(
-        'Las reservas deben ser con al menos 1 hora de anticipación',
-      );
-    }
-
-    await this.validateBusinessHours(fecha);
+    // Horario, antelación, comensales y días especiales, en la hora local del restaurante (Fase 3).
+    await this.reglas.validarReserva(fecha, dto.numComensales);
 
     const config = await this.getRestaurantConfig();
     const duracionDefault = config.duracionReservaDefault;
@@ -224,7 +153,9 @@ export class ReservationsService {
         dto.numComensales,
       );
       if (!available.available.some((t) => t.id === mesaId)) {
-        throw new BadRequestException('Mesa no disponible');
+        throw new BadRequestException(
+          `Esa mesa no está libre a esa hora o no tiene lugar para ${dto.numComensales} personas.`,
+        );
       }
     }
 

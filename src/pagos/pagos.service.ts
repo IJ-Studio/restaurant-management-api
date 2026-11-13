@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Optional,
   BadRequestException,
   NotFoundException,
   Inject,
@@ -23,6 +24,7 @@ import { eq, and } from 'drizzle-orm';
 import Stripe from 'stripe';
 import Facturapi, { type Invoice } from 'facturapi';
 import { ROLES } from '../common/constants/roles';
+import { ReglasService } from '../reglas/reglas.service';
 import { ESTATUS_COBRABLES } from '../orders/order-workflow.service';
 import {
   CrearDireccionDto,
@@ -39,7 +41,11 @@ export class PagosService {
   private readonly logger = new Logger(PagosService.name);
   private readonly webhookSecret: string;
 
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    // Opcional para las pruebas que construyen el servicio a mano; Nest siempre lo inyecta.
+    @Optional() private readonly reglas?: ReglasService,
+  ) {
     // Inicialización de Stripe
     const stripeKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeKey) {
@@ -479,6 +485,8 @@ export class PagosService {
           `Esta orden ya no admite pago (estatus actual: ${orden.estatus}).`,
         );
       }
+      // Un pedido a domicilio del cliente se acepta solo con cocina abierta (Fase 3).
+      await this.reglas?.validarCocinaAbierta();
     }
 
     // Validación para evitar null en el total

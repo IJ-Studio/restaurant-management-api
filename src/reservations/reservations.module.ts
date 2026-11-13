@@ -1,3 +1,4 @@
+import { ReglasModule } from '../reglas/reglas.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DatabaseModule } from '../database/database.module';
@@ -12,6 +13,7 @@ import jwtConfig from '../common/config/jwt.config';
   imports: [
     DatabaseModule,
     AuthModule,
+    ReglasModule,
     ConfigModule.forFeature(jwtConfig), // Esto registra el provider 'jwt'
   ],
   controllers: [ReservationsController, NoShowController],
@@ -21,7 +23,8 @@ import jwtConfig from '../common/config/jwt.config';
     // Provider explícito para 'CONFIGURATION(jwt)'
     {
       provide: 'CONFIGURATION(jwt)',
-      useFactory: (configService: ConfigService) => configService.get('jwt'),
+      useFactory: (configService: ConfigService) =>
+        configService.get<unknown>('jwt'),
       inject: [ConfigService],
     },
   ],

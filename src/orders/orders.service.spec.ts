@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { NotFoundException } from '@nestjs/common';
 
 import { ROLES } from '../common/constants/roles';
@@ -35,8 +36,20 @@ function setup(whereResults: unknown[][]) {
     delete: del,
   };
 
-  return { service: new OrdersService(db as never), set, del };
+  return {
+    service: new OrdersService(db as never, reglasAbiertas as never),
+    set,
+    del,
+  };
 }
+
+/** Reglas con cocina abierta y el máximo por defecto: estas pruebas no prueban el horario. */
+const reglasAbiertas = {
+  obtener: jest
+    .fn()
+    .mockResolvedValue({ pedidos: { cantidadMaxPorPlatillo: 99 } }),
+  validarCocinaAbierta: jest.fn().mockResolvedValue(undefined),
+};
 
 describe('OrdersService (DT-04)', () => {
   it('un cliente no puede confirmar la orden de otro → 404', async () => {
@@ -145,10 +158,70 @@ describe('OrdersService: pedido de mesa desde la app del mesero', () => {
       update: jest.fn(chain),
       delete: jest.fn(chain),
     };
-    return { service: new OrdersService(db as never), writes };
+    return {
+      service: new OrdersService(db as never, reglasAbiertas as never),
+      writes,
+    };
   }
 
   const platillo = { id: 1, precio: '145.50', nombre: 'Enchiladas' };
+
+  describe('reglas del pedido (Fase 3)', () => {
+    const pedir = (
+      service: { createOrderMesa: OrdersService['createOrderMesa'] },
+      cantidad = 1,
+    ) =>
+      service.createOrderMesa(
+        { mesa: '5', items: [{ platilloId: 1, cantidad }] },
+        3,
+        ROLES.MESERO,
+      );
+
+    it('un platillo agotado no se puede pedir', async () => {
+      const { service } = setupCreate([[{ ...platillo, disponible: false }]]);
+
+      await expect(pedir(service)).rejects.toThrow(
+        'Enchiladas no está disponible por ahora.',
+      );
+    });
+
+    it.each([100, 1.5])('una cantidad de %s se rechaza', async (cantidad) => {
+      const { service } = setupCreate([[platillo]]);
+
+      await expect(pedir(service, cantidad)).rejects.toThrow(
+        'La cantidad de cada platillo debe ser de 1 a 99.',
+      );
+    });
+
+    it('un platillo que ya no está en la carta se rechaza', async () => {
+      const { service } = setupCreate([[{ ...platillo, id: 2 }]]);
+
+      await expect(
+        service.createOrderMesa(
+          {
+            mesa: '5',
+            items: [
+              { platilloId: 1, cantidad: 1 },
+              { platilloId: 2, cantidad: 1 },
+            ],
+          },
+          3,
+          ROLES.MESERO,
+        ),
+      ).rejects.toThrow('Un platillo del pedido ya no está en la carta.');
+    });
+
+    it('con cocina cerrada no se manda un pedido de mesa', async () => {
+      reglasAbiertas.validarCocinaAbierta.mockRejectedValueOnce(
+        new BadRequestException('Cocina recibe pedidos de 08:00 a 21:30.'),
+      );
+      const { service } = setupCreate([[platillo]]);
+
+      await expect(pedir(service)).rejects.toThrow(
+        'Cocina recibe pedidos de 08:00 a 21:30.',
+      );
+    });
+  });
 
   it('guarda comensales, notas, el mesero que atendió y separa líneas con notas distintas', async () => {
     const { service, writes } = setupCreate([
