@@ -58,6 +58,22 @@ export function momentoLocal(fecha: Date, zonaHoraria: string): MomentoLocal {
   };
 }
 
+/** Minutos que la hora local va adelante de UTC en ese instante (México: −360). */
+export function desfaseUtcMin(fecha: Date, zonaHoraria: string): number {
+  const local = momentoLocal(fecha, zonaHoraria);
+  const [y, m, d] = local.fecha.split('-').map(Number);
+  const comoUtc = Date.UTC(
+    y,
+    m - 1,
+    d,
+    Math.floor(local.minutos / 60),
+    local.minutos % 60,
+  );
+  return Math.round(
+    (comoUtc - Math.floor(fecha.getTime() / 60_000) * 60_000) / 60_000,
+  );
+}
+
 export const aMinutos = (hora: string): number => {
   const [h, m] = hora.split(':').map(Number);
   return h * 60 + m;

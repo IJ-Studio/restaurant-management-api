@@ -11,6 +11,7 @@ import {
 } from '../database/schema/public.schema';
 import {
   aMinutos,
+  desfaseUtcMin,
   hhmm,
   horarioDelDia,
   momentoLocal,
@@ -26,6 +27,8 @@ export const REGLAS_POR_DEFECTO = {
 
 export interface Reglas {
   zonaHoraria: string;
+  /** Desfase actual respecto de UTC, para que los clientes calculen la hora local sin depender de su zona. */
+  utcOffsetMin: number;
   aceptaReservas: boolean;
   reservas: {
     anticipacionMin: number;
@@ -78,6 +81,7 @@ export class ReglasService {
 
     return {
       zonaHoraria,
+      utcOffsetMin: desfaseUtcMin(ahora, zonaHoraria),
       aceptaReservas: config?.aceptaReservas !== false,
       reservas: {
         ...REGLAS_POR_DEFECTO.reservas,

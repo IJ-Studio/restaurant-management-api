@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 
-import { horarioDelDia, momentoLocal } from './horario';
+import { desfaseUtcMin, horarioDelDia, momentoLocal } from './horario';
 import { MENSAJES, ReglasService, type Reglas } from './reglas.service';
 
 const TZ = 'America/Mexico_City';
@@ -13,6 +13,7 @@ const semana = Array.from({ length: 7 }, (_, dia) => ({
 }));
 const reglas = (overrides: Partial<Reglas> = {}): Reglas => ({
   zonaHoraria: TZ,
+  utcOffsetMin: -360,
   aceptaReservas: true,
   reservas: {
     anticipacionMin: 60,
@@ -44,6 +45,16 @@ describe('momentoLocal', () => {
       dia: 5,
       minutos: 20 * 60,
     });
+  });
+});
+
+describe('desfaseUtcMin', () => {
+  it('Ciudad de México va 6 horas detrás de UTC (sin horario de verano)', () => {
+    expect(desfaseUtcMin(AHORA, TZ)).toBe(-360);
+  });
+
+  it('funciona también de noche, cuando en UTC ya es el día siguiente', () => {
+    expect(desfaseUtcMin(new Date('2026-11-14T03:30:00Z'), TZ)).toBe(-360);
   });
 });
 
