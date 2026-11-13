@@ -854,6 +854,10 @@ function csvCell(value: unknown): string {
 }
 
 function csvToGrid(text: string): string[][] {
+  // El texto llega del cliente: un objeto con `length` enorme bloquearía el bucle.
+  if (typeof text !== 'string') {
+    throw new BadRequestException('El CSV debe ser texto.');
+  }
   const rows: string[][] = [];
   let currentRow: string[] = [];
   let current = '';
