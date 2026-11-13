@@ -128,6 +128,16 @@ describe('UsersService.getAllUsers', () => {
     expect(selectWhere).toHaveBeenCalledTimes(2);
   });
 
+  it('sin incluirInactivos filtra activos; con él no filtra', async () => {
+    const solo = setup([[admin]], { listRows: listed });
+    await solo.service.getAllUsers(1, {});
+    expect(solo.selectWhere.mock.calls[1]).toEqual([expect.anything()]);
+
+    const todos = setup([[admin]], { listRows: listed });
+    await todos.service.getAllUsers(1, { incluirInactivos: true });
+    expect(todos.selectWhere.mock.calls[1]).toEqual([undefined]);
+  });
+
   it('un usuario que no es admin no puede listar → 403', async () => {
     const { service } = setup([[row]]);
 
