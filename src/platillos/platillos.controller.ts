@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
+import { ImportarCartaService } from './importar-carta.service';
 import { PlatillosService } from './platillos.service';
 import { ExportService } from '../reports/export/export.service';
 import { ExportFormat, ExportType } from '../reports/export/dto/queryDTO';
@@ -39,6 +40,7 @@ export class PlatillosController {
   constructor(
     private readonly platillosService: PlatillosService,
     private readonly exportService: ExportService,
+    private readonly importacion: ImportarCartaService,
   ) {}
 
   @Get('template.json')
@@ -102,6 +104,45 @@ export class PlatillosController {
   @Get('schema')
   async schema() {
     return this.platillosService.getSchema();
+  }
+
+  /** Plantilla de importación de la carta (Fase 4.2). */
+  @Get('plantilla.csv')
+  plantilla(@Res() res: Response) {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="plantilla-carta.csv"',
+    );
+    // BOM: Excel abre bien los acentos.
+    res.send(`\uFEFF${this.importacion.plantillaCsv()}`);
+  }
+
+  /**
+   * Importa la carta desde Excel o CSV con la plantilla en español. `confirmar=false` devuelve la
+   * vista previa; `modo=reemplazar` deshabilita (no borra) lo que no venga; `forzar=true` es
+   * «Importar de todas formas» (omite las filas con error).
+   */
+  @Post('importar')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }),
+  )
+  importarCarta(
+    @UploadedFile() file: UploadedCsvFile | undefined,
+    @Query('modo') modo = 'agregar',
+    @Query('confirmar') confirmar = 'false',
+    @Query('forzar') forzar = 'false',
+  ) {
+    if (!file) throw new BadRequestException('Falta el archivo (campo file).');
+    if (modo !== 'agregar' && modo !== 'reemplazar') {
+      throw new BadRequestException('El modo debe ser agregar o reemplazar.');
+    }
+    return this.importacion.importar(
+      file,
+      modo,
+      confirmar === 'true',
+      forzar === 'true',
+    );
   }
 
   @Post('import.csv')

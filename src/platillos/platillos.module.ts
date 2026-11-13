@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
 import { PlatillosController } from './platillos.controller';
 import { PlatillosService } from './platillos.service';
+import { ImportarCartaService } from './importar-carta.service';
 import { ReportsModule } from '../reports/reports.module';
 
 @Module({
   imports: [ReportsModule],
   controllers: [PlatillosController],
-  providers: [PlatillosService],
+  providers: [PlatillosService, ImportarCartaService],
   exports: [PlatillosService],
 })
 export class PlatillosModule {}
-
