@@ -78,6 +78,9 @@ describe('DeviceTokensService', () => {
     expect(innerJoin).toHaveBeenCalled();
     const query = firstCondition(selectWhere);
     expect(query.sql).toContain('"users"."is_active" = $2');
+    // Oposición (ARCO): quien desactivó los avisos en Privacidad queda fuera.
+    expect(query.sql).toContain("c.tipo = 'notificaciones_push'");
+    expect(query.sql).toContain('c.user_id = "users"."id"');
     expect(query.params).toEqual([4, true]);
   });
 
