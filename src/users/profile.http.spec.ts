@@ -33,7 +33,7 @@ describe('Derechos ARCO: /profile y /account (HTTP)', () => {
   };
 
   beforeAll(async () => {
-    await cache.set('user-3', 'tok-3');
+    await cache.set('session-tok-3', '3');
     token = await jwt.signAsync(
       {
         id: '3',

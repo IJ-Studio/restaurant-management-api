@@ -5,7 +5,7 @@ import { PrivacyService } from './privacy.service';
 
 const USER = {
   id: 7,
-  roleId: ROLES.MESERO,
+  roleId: ROLES.MESERO as number,
   isActive: true,
   password: 'hash-actual',
 };
@@ -67,7 +67,7 @@ function setup(options: SetupOptions = {}) {
     compare: jest.fn().mockResolvedValue(passwordMatches),
     hash: jest.fn().mockResolvedValue('hash-inservible'),
   };
-  const auth = { signOut: jest.fn().mockResolvedValue(undefined) };
+  const auth = { revokeAllSessions: jest.fn().mockResolvedValue(undefined) };
   const service = new PrivacyService(db as never, bcrypt, auth as never);
   return {
     service,
@@ -169,7 +169,7 @@ describe('PrivacyService', () => {
         new BadRequestException('La contraseña no es correcta'),
       );
       expect(transaction).not.toHaveBeenCalled();
-      expect(auth.signOut).not.toHaveBeenCalled();
+      expect(auth.revokeAllSessions).not.toHaveBeenCalled();
     });
 
     it('una cuenta ya desactivada no se puede eliminar otra vez', async () => {
@@ -223,7 +223,7 @@ describe('PrivacyService', () => {
       // Personal sin ficha de cliente: solo se borran sus dispositivos.
       expect(txDeleteWhere).toHaveBeenCalledTimes(1);
       expect(tx.update).toHaveBeenCalledTimes(1);
-      expect(auth.signOut).toHaveBeenCalledWith(7);
+      expect(auth.revokeAllSessions).toHaveBeenCalledWith(7);
     });
 
     it('con ficha de cliente borra direcciones, tarjetas y perfiles fiscales, y vacía sus datos', async () => {

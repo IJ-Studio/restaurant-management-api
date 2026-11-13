@@ -144,6 +144,7 @@ describe('AuthService.SignUp', () => {
       { hash: jest.fn().mockResolvedValue(fila.password) } as never,
       {} as never,
       {} as never,
+      {} as never,
     );
 
     const result = await service.SignUp(webPayload());

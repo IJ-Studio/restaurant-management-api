@@ -6,6 +6,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { BcryptService } from './bcrypt.service';
+import { RefreshTokensService } from './refresh-tokens.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guards';
 
 import jwtConfig from 'src/common/config/jwt.config';
@@ -22,6 +23,7 @@ import { CacheModule } from 'src/cache/cache.module';
   controllers: [AuthController], // ✅ CORREGIDO
   providers: [
     AuthService,
+    RefreshTokensService,
     BcryptService,
     JwtAuthGuard,
     {

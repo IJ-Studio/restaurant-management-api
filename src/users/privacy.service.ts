@@ -190,6 +190,6 @@ export class PrivacyService {
         .where(eq(clientes.userId, userId));
     });
 
-    await this.authService.signOut(userId);
+    await this.authService.revokeAllSessions(userId);
   }
 }

@@ -29,6 +29,7 @@ function serviceWhoseInsertFails(error: Error, existentes: unknown[] = []) {
     { hash } as never,
     {} as never,
     {} as never,
+    {} as never,
   );
   return { service, hash };
 }

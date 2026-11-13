@@ -41,26 +41,38 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     try {
-      const payload = await this.jwtService.verifyAsync<ActiveUserData>(token, {
-        secret: this.jwtConfiguration.secret,
-      });
+      const payload = await this.jwtService.verifyAsync<
+        ActiveUserData & { iat?: number }
+      >(token, { secret: this.jwtConfiguration.secret });
 
-      const cachedTokenId = await this.cacheService.get(`user-${payload.id}`);
-
-      if (!cachedTokenId) {
+      // La sesión vive en memoria: se pierde al cerrar sesión, al caducar o al reiniciar el servidor.
+      const owner = (await this.cacheService.get(
+        `session-${payload.tokenId}`,
+      )) as string | null;
+      if (owner !== payload.id) {
         throw new UnauthorizedException('Token no encontrado o expirado');
       }
 
-      if (cachedTokenId !== payload.tokenId) {
+      const revokedAt = (await this.cacheService.get(
+        `revoked-${payload.id}`,
+      )) as number | null;
+      if (revokedAt && (payload.iat ?? 0) * 1000 <= revokedAt) {
         throw new UnauthorizedException('Token revocado');
       }
 
-      (request as any)[REQUEST_USER_KEY] = payload;
-      (request as any).user = payload;
+      // Los controladores leen el usuario por `REQUEST_USER_KEY` y por `request.user`.
+
+      const target = request as Request & Record<string, unknown>;
+
+      target[REQUEST_USER_KEY] = payload;
+
+      target.user = payload;
 
       return true;
-    } catch (error: any) {
-      throw new UnauthorizedException(error.message || 'Token inválido');
+    } catch (error) {
+      throw new UnauthorizedException(
+        (error instanceof Error && error.message) || 'Token inválido',
+      );
     }
   }
 

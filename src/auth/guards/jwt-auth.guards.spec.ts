@@ -25,7 +25,7 @@ function contextWith(authorization?: string): ExecutionContext {
 
 async function setup() {
   const cache = new CacheService();
-  await cache.set('user-7', 'tok-1');
+  await cache.set('session-tok-1', '7');
   const reflector = { getAllAndOverride: () => false } as unknown as Reflector;
   return new JwtAuthGuard(
     { secret: SECRET, accessTokenTtl: 3600 },
@@ -47,6 +47,63 @@ describe('JwtAuthGuard', () => {
     await expect(
       (await setup()).canActivate(contextWith(`Bearer ${token}`)),
     ).resolves.toBe(true);
+  });
+
+  it('la misma persona puede tener dos sesiones a la vez (web y app)', async () => {
+    const guard = await setup();
+    const cache = (guard as unknown as { cacheService: CacheService })
+      .cacheService;
+    await cache.set('session-tok-2', '7');
+    const first = await jwt.signAsync(payload, {
+      secret: SECRET,
+      expiresIn: 60,
+    });
+    const second = await jwt.signAsync(
+      { ...payload, tokenId: 'tok-2' },
+      { secret: SECRET, expiresIn: 60 },
+    );
+
+    await expect(
+      guard.canActivate(contextWith(`Bearer ${first}`)),
+    ).resolves.toBe(true);
+    await expect(
+      guard.canActivate(contextWith(`Bearer ${second}`)),
+    ).resolves.toBe(true);
+  });
+
+  it('sesión cerrada (o servidor reiniciado) → 401', async () => {
+    const token = await jwt.signAsync(
+      { ...payload, tokenId: 'tok-cerrado' },
+      { secret: SECRET, expiresIn: 60 },
+    );
+    await expect(
+      (await setup()).canActivate(contextWith(`Bearer ${token}`)),
+    ).rejects.toThrow('Token no encontrado o expirado');
+  });
+
+  it('la sesión de otra persona no sirve aunque el token esté bien firmado', async () => {
+    const token = await jwt.signAsync(
+      { ...payload, id: '8' },
+      { secret: SECRET, expiresIn: 60 },
+    );
+    await expect(
+      (await setup()).canActivate(contextWith(`Bearer ${token}`)),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('tras revocar todas las sesiones de la persona → 401', async () => {
+    const guard = await setup();
+    const cache = (guard as unknown as { cacheService: CacheService })
+      .cacheService;
+    const token = await jwt.signAsync(payload, {
+      secret: SECRET,
+      expiresIn: 60,
+    });
+    await cache.set('revoked-7', Date.now() + 1000);
+
+    await expect(
+      guard.canActivate(contextWith(`Bearer ${token}`)),
+    ).rejects.toThrow('Token revocado');
   });
 
   it('sin token → 401', async () => {
@@ -90,16 +147,6 @@ describe('JwtAuthGuard', () => {
     await expect(
       (await setup()).canActivate(contextWith(`Bearer ${token}`)),
     ).rejects.toBeInstanceOf(UnauthorizedException);
-  });
-
-  it('token revocado por sign-out (tokenId distinto en caché) → 401', async () => {
-    const token = await jwt.signAsync(
-      { ...payload, tokenId: 'tok-viejo' },
-      { secret: SECRET, expiresIn: 60 },
-    );
-    await expect(
-      (await setup()).canActivate(contextWith(`Bearer ${token}`)),
-    ).rejects.toThrow('Token revocado');
   });
 
   it('formato distinto de Bearer → 401', async () => {
