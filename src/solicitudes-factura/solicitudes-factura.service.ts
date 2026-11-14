@@ -5,7 +5,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, lt, or, sql } from 'drizzle-orm';
+
+import { ROLES } from '../common/constants/roles';
 
 import { CorreoService, type ResultadoCorreo } from '../correo/correo.service';
 import { DRIZZLE } from '../database/drizzle/constants';
@@ -25,7 +27,11 @@ export const MENSAJES = {
   yaAtendida: 'Esta solicitud ya fue atendida.',
   sinPago: 'La orden todavía no aparece como pagada: no se puede facturar aún.',
   motivo: 'Escribe el motivo del rechazo (al menos 5 caracteres).',
+  enCurso: 'Otra persona está emitiendo esta factura. Espera un momento.',
 };
+
+/** Caja y administración piden la factura de cuentas sin cliente registrado (consumo en mesa). */
+const PERSONAL_DE_CAJA: number[] = [ROLES.ADMIN, ROLES.CAJERO];
 
 /**
  * Solicitudes de factura en cola (Fase 4.1). El cliente pide la factura al pagar —aunque el webhook
@@ -40,20 +46,22 @@ export class SolicitudesFacturaService {
   ) {}
 
   /** Una sola solicitud por orden: si ya existe, se actualizan los datos mientras siga pendiente. */
-  async solicitar(dto: CrearFacturaDto, usuarioId: number) {
+  async solicitar(dto: CrearFacturaDto, usuarioId: number, roleId?: number) {
     const [orden] = await this.db
       .select({ id: ordenes.id, clienteId: ordenes.clienteId })
       .from(ordenes)
       .where(eq(ordenes.id, dto.ordenId))
       .limit(1);
     if (!orden) throw new NotFoundException('La orden no existe.');
-    const [cliente] = await this.db
-      .select({ id: clientes.id })
-      .from(clientes)
-      .where(eq(clientes.userId, usuarioId))
-      .limit(1);
-    if (!cliente || orden.clienteId !== cliente.id) {
-      throw new BadRequestException(MENSAJES.noEsTuya);
+    if (!PERSONAL_DE_CAJA.includes(roleId ?? -1)) {
+      const [cliente] = await this.db
+        .select({ id: clientes.id })
+        .from(clientes)
+        .where(eq(clientes.userId, usuarioId))
+        .limit(1);
+      if (!cliente || orden.clienteId !== cliente.id) {
+        throw new BadRequestException(MENSAJES.noEsTuya);
+      }
     }
 
     const datos = Object.fromEntries(
@@ -157,10 +165,41 @@ export class SolicitudesFacturaService {
     if (orden?.estatus !== 'pagada')
       throw new BadRequestException(MENSAJES.sinPago);
 
-    const factura = await this.pagos.crearFactura(
-      { ...solicitud.datos, ordenId: solicitud.ordenId },
-      solicitud.usuarioId,
-    );
+    // Se aparta la solicitud antes de timbrar: dos administradores a la vez no emiten dos CFDI.
+    // Si el proceso se cae a medias, a los 2 minutos se puede volver a intentar.
+    const [apartada] = await this.db
+      .update(solicitudesFactura)
+      .set({ atendidaPor: adminId, atendidaEn: sql`now()` })
+      .where(
+        and(
+          eq(solicitudesFactura.id, id),
+          eq(solicitudesFactura.estatus, 'pendiente'),
+          or(
+            isNull(solicitudesFactura.atendidaEn),
+            lt(
+              solicitudesFactura.atendidaEn,
+              sql`now() - interval '2 minutes'`,
+            ),
+          ),
+        ),
+      )
+      .returning({ id: solicitudesFactura.id });
+    if (!apartada) throw new ConflictException(MENSAJES.enCurso);
+
+    let factura: Awaited<ReturnType<PagosService['crearFactura']>>;
+    try {
+      factura = await this.pagos.crearFactura(
+        { ...solicitud.datos, ordenId: solicitud.ordenId },
+        solicitud.usuarioId,
+        { deCola: true },
+      );
+    } catch (error) {
+      await this.db
+        .update(solicitudesFactura)
+        .set({ atendidaPor: null, atendidaEn: null })
+        .where(eq(solicitudesFactura.id, id));
+      throw error;
+    }
     await this.db
       .update(solicitudesFactura)
       .set({

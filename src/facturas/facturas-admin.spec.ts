@@ -41,7 +41,10 @@ describe('GET /facturas (admin)', () => {
   });
 
   it('valida página y estatus, y es solo del administrador', () => {
-    const c = new FacturasAdminController({ listar: jest.fn() } as never);
+    const c = new FacturasAdminController(
+      { listar: jest.fn() } as never,
+      {} as never,
+    );
     expect(() => c.listar(0)).toThrow(BadRequestException);
     expect(() => c.listar(1, 'pagada')).toThrow(BadRequestException);
     // Parámetros repetidos (?q=a&q=b) llegan como arreglo: se rechazan, no truenan con 500.
@@ -57,5 +60,22 @@ describe('GET /facturas (admin)', () => {
     expect(Reflect.getMetadata('roles', FacturasAdminController)).toEqual([
       ROLES.ADMIN,
     ]);
+  });
+
+  it('cancelar exige un motivo del catálogo (02 o 03)', async () => {
+    const cancelarFactura = jest
+      .fn()
+      .mockResolvedValue({ estatus: 'cancelada' });
+    const c = new FacturasAdminController(
+      {} as never,
+      { cancelarFactura } as never,
+    );
+    const id = '0b7c1f3e-8f9e-4c55-9d7e-2a6b1c3d4e5f';
+    expect(() => c.cancelar(id, '01')).toThrow(BadRequestException);
+    expect(() => c.cancelar(id, undefined)).toThrow(BadRequestException);
+    await expect(c.cancelar(id, '03')).resolves.toEqual({
+      estatus: 'cancelada',
+    });
+    expect(cancelarFactura).toHaveBeenCalledWith(id, '03');
   });
 });

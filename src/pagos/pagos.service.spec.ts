@@ -1,8 +1,12 @@
 import { BadRequestException, HttpException } from '@nestjs/common';
 import Stripe from 'stripe';
 
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
+
 import { ROLES } from '../common/constants/roles';
-import { PagosService } from './pagos.service';
+import { CrearFacturaDto } from './dto/pagos.dto';
+import { formaDePagoSat, PagosService } from './pagos.service';
 
 process.env.STRIPE_SECRET_KEY = 'sk_test_falso';
 process.env.FACTURAPI_TEST_KEY = 'sk_test_falso';
@@ -436,5 +440,49 @@ describe('PagosService.manejarWebhookStripe (DT-D10 / NH-11 / NH-12)', () => {
 
     expect(result).toEqual({ received: true });
     expect(set).not.toHaveBeenCalled();
+  });
+});
+
+describe('formaDePagoSat (CFDI)', () => {
+  it.each([
+    ['Efectivo', 'efectivo', '01'],
+    ['Tarjeta débito', 'tarjeta', '28'],
+    ['Tarjeta crédito', 'tarjeta', '04'],
+    ['TARJETA', 'tarjeta', '04'],
+    ['Transferencia', 'digital', '03'],
+    ['Mercado Pago', 'digital', '31'],
+    ['Tarjeta en línea (Stripe)', 'online', '31'],
+    ['', '', '99'],
+  ])('%s → %s', (nombre, tipo, clave) => {
+    expect(formaDePagoSat(nombre, tipo)).toBe(clave);
+  });
+});
+
+describe('CrearFacturaDto: catálogos del SAT', () => {
+  const validar = (datos: Record<string, unknown>) =>
+    validate(
+      plainToInstance(CrearFacturaDto, {
+        ordenId: '0b7c1f3e-8f9e-4c55-9d7e-2a6b1c3d4e5f',
+        rfc: 'xaxx010101000',
+        razonSocial: 'Público en general',
+        usoCfdi: 'g03',
+        regimenFiscal: '616',
+        codigoPostalFiscal: '43000',
+        ...datos,
+      }),
+    ).then((errores) => errores.map((e) => e.property));
+
+  it('acepta datos válidos (normaliza RFC y uso a mayúsculas)', async () => {
+    await expect(validar({})).resolves.toEqual([]);
+  });
+
+  it.each([
+    ['rfc', 'XAXX0101010'],
+    ['rfc', 'XAXX01010100$'],
+    ['usoCfdi', 'Z99'],
+    ['regimenFiscal', '699'],
+    ['codigoPostalFiscal', '4300A'],
+  ])('rechaza %s = %s', async (campo, valor) => {
+    await expect(validar({ [campo]: valor })).resolves.toContain(campo);
   });
 });
