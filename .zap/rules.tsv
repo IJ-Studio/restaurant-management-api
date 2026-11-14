@@ -3,3 +3,4 @@
 # Las High bloquean siempre aunque no estén aquí (paso «Veredicto» de zap.yml). Las Medium aceptadas
 # se documentan en docs/seguridad-zap.md con responsable y fecha.
 10049	IGNORE	(Contenido no almacenable o almacenable en caché: informativo; el API responde JSON y las rutas con sesión no se comparten entre usuarios)
+10106	WARN	(HTTP Only Site: solo en CI, donde el API corre en http://localhost; en producción Render sirve el API solo por HTTPS)
