@@ -62,16 +62,20 @@ export class ReglasService {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
 
   async obtener(ahora = new Date()): Promise<Reglas> {
-    const [config] = await this.db.select().from(restaurante).limit(1);
+    // En paralelo: Render y Supabase están en regiones distintas y cada consulta es un viaje (~200 ms).
+    const [[config], [ajuste], semana] = await Promise.all([
+      this.db.select().from(restaurante).limit(1),
+      this.db
+        .select({ value: systemSettings.value })
+        .from(systemSettings)
+        .where(eq(systemSettings.key, 'reglas_operacion'))
+        .limit(1),
+      this.db.select().from(horarios),
+    ]);
     const zonaHoraria = config?.zonaHoraria || 'America/Mexico_City';
-    const [ajuste] = await this.db
-      .select({ value: systemSettings.value })
-      .from(systemSettings)
-      .where(eq(systemSettings.key, 'reglas_operacion'))
-      .limit(1);
     const propio = (ajuste?.value ?? {}) as Partial<typeof REGLAS_POR_DEFECTO>;
 
-    const semana = await this.db.select().from(horarios);
+    // Los días especiales dependen de la fecha local, que depende de la zona del restaurante.
     const especiales = await this.db
       .select()
       .from(horariosEspeciales)
