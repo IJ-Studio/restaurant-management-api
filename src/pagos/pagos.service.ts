@@ -21,6 +21,7 @@ import {
   ordenes,
   pagos,
   facturas,
+  reembolsos,
 } from '../database/schema/public.schema';
 import { stripeEvents } from '../database/schema/stripe-events.schema';
 import { solicitudesFactura } from '../database/schema/solicitudes-factura.schema';
@@ -36,6 +37,7 @@ import {
   CrearIntentoPagoDto,
   CrearFacturaDto,
   GuardarPerfilFacturacionDto,
+  ReembolsarPagoDto,
 } from './dto/pagos.dto';
 
 /** Rechazo de la tarjeta en palabras del cajero o del cliente (sin el detalle de Stripe). */
@@ -502,7 +504,9 @@ export class PagosService {
       const previos = await this.db
         .select({ id: pagos.id })
         .from(pagos)
-        .where(eq(pagos.ordenId, orden.id));
+        .where(
+          and(eq(pagos.ordenId, orden.id), eq(pagos.estatus, 'completado')),
+        );
       if (previos.length > 0) {
         throw new BadRequestException(
           'Este pedido ya tiene pagos en caja: cobra lo que falta en caja.',
@@ -767,6 +771,106 @@ export class PagosService {
     }
 
     return { received: true };
+  }
+
+  /**
+   * Reembolso o reversa de un pago (solo administración). Un cobro de Stripe se devuelve en
+   * Stripe; uno de caja solo se registra (el dinero se devuelve en mostrador o en la terminal).
+   * El pago deja de contar en lo pagado y en el corte; si la orden tiene una factura vigente,
+   * primero hay que cancelarla.
+   */
+  async reembolsarPago(
+    pagoId: number,
+    dto: ReembolsarPagoDto,
+    adminId: number,
+  ) {
+    return await this.db.transaction(async (tx) => {
+      const [pago] = await tx
+        .select()
+        .from(pagos)
+        .where(eq(pagos.id, pagoId))
+        .for('update');
+      if (!pago) throw new NotFoundException('El pago no existe.');
+      if (pago.estatus !== 'completado') {
+        throw new ConflictException('Este pago ya se reembolsó.');
+      }
+      const vigentes = await tx
+        .select({ id: facturas.id })
+        .from(facturas)
+        .where(
+          and(
+            eq(facturas.ordenId, pago.ordenId),
+            eq(facturas.estatus, 'vigente'),
+          ),
+        );
+      if (vigentes.length > 0) {
+        throw new ConflictException(
+          'La orden tiene una factura vigente: cancélala primero (motivo 03).',
+        );
+      }
+
+      const montoCents =
+        Math.round(Number(pago.monto) * 100) +
+        Math.round(Number(pago.propina ?? 0) * 100);
+      let referencia: string | null = null;
+      if (pago.pasarela === 'stripe' && pago.idTransaccionPasarela) {
+        // Misma llave en un reintento: Stripe devuelve el mismo reembolso, no otro.
+        const reembolso = await this.stripe.refunds.create(
+          { payment_intent: pago.idTransaccionPasarela, amount: montoCents },
+          { idempotencyKey: `reembolso-pago-${pagoId}` },
+        );
+        referencia = reembolso.id;
+      }
+
+      await tx
+        .update(pagos)
+        .set({ estatus: 'reembolsado' })
+        .where(eq(pagos.id, pagoId));
+      await tx.insert(reembolsos).values({
+        pagoId,
+        monto: (montoCents / 100).toFixed(2),
+        motivo: dto.motivo,
+        aprobadoPor: adminId,
+        metodoDevolucion: referencia ? 'stripe' : 'caja',
+        referencia,
+      });
+
+      const [orden] = await tx
+        .select({ estatus: ordenes.estatus, propina: ordenes.propina })
+        .from(ordenes)
+        .where(eq(ordenes.id, pago.ordenId))
+        .for('update');
+      const ahora = new Date().toISOString();
+      const propina = (
+        Math.max(
+          0,
+          Math.round(Number(orden?.propina ?? 0) * 100) -
+            Math.round(Number(pago.propina ?? 0) * 100),
+        ) / 100
+      ).toFixed(2);
+      let estatus = orden?.estatus ?? null;
+      if (dto.cancelarPedido) estatus = 'cancelada';
+      else if (estatus === 'pagada') estatus = 'entregada';
+      await tx
+        .update(ordenes)
+        .set({
+          estatus: estatus ?? undefined,
+          propina,
+          actualizadoEn: ahora,
+          ...(estatus === 'pagada' ? {} : { tiempoCierre: null }),
+          ...(dto.cancelarPedido ? { motivoCancelacion: dto.motivo } : {}),
+        })
+        .where(eq(ordenes.id, pago.ordenId));
+
+      return {
+        pagoId,
+        ordenId: pago.ordenId,
+        monto: (montoCents / 100).toFixed(2),
+        devolucion: referencia ? 'stripe' : 'caja',
+        referencia,
+        estatusOrden: estatus,
+      };
+    });
   }
 
   // ══════════════════════════════════════════════════════════════

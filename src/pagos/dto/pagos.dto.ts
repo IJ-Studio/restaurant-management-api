@@ -255,3 +255,17 @@ export class GuardarPerfilFacturacionDto {
   @IsOptional()
   esPrincipal?: boolean;
 }
+
+export class ReembolsarPagoDto {
+  @Texto({ obligatorio: true })
+  @IsString()
+  @Length(5, 300, {
+    message: 'Escribe el motivo del reembolso (5 a 300 caracteres).',
+  })
+  motivo: string;
+
+  /** Sin él, un pedido pagado vuelve a «entregada» para cobrarlo bien; con él, se cancela. */
+  @IsBoolean()
+  @IsOptional()
+  cancelarPedido?: boolean;
+}

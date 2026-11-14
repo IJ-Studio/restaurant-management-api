@@ -8,8 +8,10 @@ import {
   Post,
   Put,
   Query,
+  ParseIntPipe,
   Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { SkipThrottle } from '@nestjs/throttler';
@@ -17,6 +19,10 @@ import { PagosService } from './pagos.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { ActiveUser } from '../auth/decorators/active-user.decorator';
 import type { ActiveUserData } from '../common/interfaces/active-user-data.interface';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { ROLES } from '../common/constants/roles';
+import { createStrictValidationPipe } from '../common/config/validation.config';
 import {
   CrearDireccionDto,
   ActualizarDireccionDto,
@@ -24,6 +30,7 @@ import {
   CrearIntentoPagoDto,
   CrearFacturaDto,
   GuardarPerfilFacturacionDto,
+  ReembolsarPagoDto,
 } from './dto/pagos.dto';
 
 @Controller()
@@ -109,6 +116,18 @@ export class PagosController {
       Number(user.id),
       user.roleId,
     );
+  }
+
+  /** Devuelve un pago (Stripe lo reembolsa; en caja solo se registra la devolución). */
+  @UseGuards(RolesGuard)
+  @Roles(ROLES.ADMIN)
+  @Post('pagos/:id/reembolso')
+  async reembolsarPago(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(createStrictValidationPipe()) dto: ReembolsarPagoDto,
+    @ActiveUser() user: ActiveUserData,
+  ) {
+    return await this.pagosService.reembolsarPago(id, dto, Number(user.id));
   }
 
   // IMPORTANTE: esta ruta necesita el body SIN parsear (raw) para poder
