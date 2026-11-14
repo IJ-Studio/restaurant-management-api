@@ -22,7 +22,9 @@ const errores = async (body: object) =>
   (await validate(plainToInstance(SitioDto, body))).flatMap((e) => [
     ...Object.values(e.constraints ?? {}),
     ...(e.children ?? []).flatMap((c) =>
-      (c.children ?? [c]).flatMap((d) => Object.values(d.constraints ?? {})),
+      (c.children?.length ? c.children : [c]).flatMap((d) =>
+        Object.values(d.constraints ?? {}),
+      ),
     ),
   ]);
 
@@ -47,6 +49,23 @@ describe('SitioDto (P1.5)', () => {
         'La imagen debe estar en la nube del restaurante.',
         'El color debe ser hexadecimal (#RRGGBB).',
         'Escribe un teléfono válido (10 dígitos o con lada).',
+      ]),
+    );
+  });
+
+  it('textos de la landing opcionales y con tope de largo', async () => {
+    expect(
+      await errores({ ...valido, textos: { titulo: 'Sabor con alma' } }),
+    ).toEqual([]);
+    expect(
+      await errores({
+        ...valido,
+        textos: { titulo: 'x'.repeat(81), nosotros: 'y'.repeat(601) },
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        'El titular admite hasta 80 caracteres.',
+        '«Nosotros» admite hasta 600 caracteres.',
       ]),
     );
   });
@@ -93,6 +112,7 @@ describe('SitioService', () => {
       login: null,
       registro: null,
       colorRespaldo: '#2B2119',
+      textos: { titulo: null, subtitulo: null, nosotros: null },
       telefono: '+52 771 702 8172',
       whatsapp: null,
     });
@@ -100,12 +120,24 @@ describe('SitioService', () => {
 
   it('mezcla lo guardado sobre los valores por defecto', async () => {
     const s = new SitioService(
-      db([{ value: { portada: [imagen()], login: imagen(2) } }], []),
+      db(
+        [
+          {
+            value: {
+              portada: [imagen()],
+              login: imagen(2),
+              textos: { titulo: 'Hola' },
+            },
+          },
+        ],
+        [],
+      ),
     );
     await expect(s.obtener()).resolves.toMatchObject({
       portada: [imagen()],
       login: imagen(2),
       registro: null,
+      textos: { titulo: 'Hola', subtitulo: null, nosotros: null },
       telefono: null,
     });
   });
