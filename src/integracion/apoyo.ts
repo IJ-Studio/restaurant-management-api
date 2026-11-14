@@ -6,9 +6,6 @@
  * - `LOCAL_DATABASE_URL`: la base local de pruebas, para comprobar lo que quedó guardado. Solo
  *   localhost: con cualquier otro host las pruebas que la usan no corren.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import postgres from 'postgres';
 
 export const API = process.env.API_URL ?? 'http://localhost:10000';
@@ -50,45 +47,36 @@ export async function http(
   };
 }
 
-// El login admite 5 intentos por minuto por IP y cada suite corre en su propio módulo: las sesiones
-// se guardan en un archivo temporal para que las suites las compartan.
-const ARCHIVO_SESIONES = join(tmpdir(), 'quijote-integracion-sesiones.json');
+/** Variable donde `sesiones.global.ts` deja el token de cada rol para todas las suites. */
+export const variableToken = (rol: Rol) =>
+  `INTEGRACION_TOKEN_${rol.toUpperCase()}`;
 
-function leerSesiones(): Partial<Record<Rol, string>> {
-  try {
-    return JSON.parse(readFileSync(ARCHIVO_SESIONES, 'utf8')) as Partial<
-      Record<Rol, string>
-    >;
-  } catch {
-    return {};
-  }
-}
-
-/** Token de `<rol>@prueba.local`: reutiliza la sesión si sigue viva y respeta el límite del login. */
-export async function sesion(rol: Rol): Promise<string> {
-  const guardadas = leerSesiones();
-  const guardada = guardadas[rol];
-  if (guardada && (await http('GET', '/auth/me', guardada)).status === 200)
-    return guardada;
-
+/** Inicia sesión como `<rol>@prueba.local`. El login admite 5 por minuto: si se pasa, espera. */
+export async function entrar(rol: Rol): Promise<string> {
   for (let intento = 0; intento < 3; intento++) {
     const r = await http('POST', '/auth/sign-in', undefined, {
       email: `${rol}@prueba.local`,
       password: CLAVE,
     });
-    if (r.status === 201) {
-      const token = r.body.accessToken as string;
-      writeFileSync(
-        ARCHIVO_SESIONES,
-        JSON.stringify({ ...leerSesiones(), [rol]: token }),
-      );
-      return token;
-    }
+    if (r.status === 201) return r.body.accessToken as string;
     if (r.status !== 429)
       throw new Error(`No se pudo entrar como ${rol}: ${r.status}`);
     await new Promise((listo) => setTimeout(listo, 61_000));
   }
   throw new Error(`El login de ${rol} sigue limitado`);
+}
+
+/**
+ * Token de `<rol>@prueba.local`. Lo toma del login que hizo `sesiones.global.ts` una sola vez para
+ * todas las suites (solo en memoria, nunca en disco); si no está o ya no sirve, entra de nuevo.
+ */
+export async function sesion(rol: Rol): Promise<string> {
+  const guardada = process.env[variableToken(rol)];
+  if (guardada && (await http('GET', '/auth/me', guardada)).status === 200)
+    return guardada;
+  const token = await entrar(rol);
+  process.env[variableToken(rol)] = token;
+  return token;
 }
 
 let sql: ReturnType<typeof postgres> | null = null;

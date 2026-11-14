@@ -92,7 +92,9 @@ jobs:
           echo "El API no arrancó:"; tail -50 api.log; exit 1
 
       - name: Pruebas de integración
-        run: pnpm test:integracion --ci --json --outputFile=reports/integration/jest.json
+        run: |
+          mkdir -p reports/integration
+          pnpm test:integracion --ci --json --outputFile=reports/integration/jest.json
 
       - name: Escenarios en el Summary
         if: always()
