@@ -967,7 +967,10 @@ export class PagosService {
             product: {
               description: `Pedido #${dto.ordenId.slice(0, 8).toUpperCase()} - Restaurante El Quijote`,
               product_key: '90101501', // "Servicios de restaurante" (catálogo SAT)
-              price: subtotal,
+              // Los precios de la carta ya incluyen IVA: Facturapi desglosa a partir del total,
+              // así el CFDI ampara exactamente lo cobrado (antes salía por el subtotal).
+              price: total,
+              tax_included: true,
               taxes: [{ type: 'IVA', rate: 0.16 }],
             },
           },

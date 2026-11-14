@@ -42,7 +42,7 @@ function setup(rowsQueue: unknown[][], eventsInserted: unknown[][] = []) {
   const del = jest.fn().mockReturnValue({ where: deleteWhere });
 
   const db = {
-    select: () => ({ from: () => ({ where }) }),
+    select: () => ({ from: () => ({ where, leftJoin: () => ({ where }) }) }),
     insert: () => ({ values: insertValues }),
     update: () => ({ set }),
     delete: del,
@@ -70,7 +70,24 @@ function setup(rowsQueue: unknown[][], eventsInserted: unknown[][] = []) {
     refunds: { create: refund },
   };
 
-  return { service, create, constructEvent, set, insertValues, refund };
+  const facturar = jest
+    .fn()
+    .mockResolvedValue({ id: 'inv_1', uuid: 'UUID-1', total: 100.01 });
+  (
+    service as unknown as {
+      facturapi: { invoices: { create: typeof facturar } };
+    }
+  ).facturapi = { invoices: { create: facturar } };
+
+  return {
+    service,
+    create,
+    constructEvent,
+    set,
+    insertValues,
+    refund,
+    facturar,
+  };
 }
 
 describe('PagosService.crearIntentoPago (DT-16)', () => {
@@ -440,6 +457,55 @@ describe('PagosService.manejarWebhookStripe (DT-D10 / NH-11 / NH-12)', () => {
 
     expect(result).toEqual({ received: true });
     expect(set).not.toHaveBeenCalled();
+  });
+});
+
+describe('PagosService.crearFactura: el CFDI ampara lo cobrado', () => {
+  it('manda el total con IVA incluido, la forma del pago mayor y una llave de idempotencia', async () => {
+    const orden = {
+      id: 'o-1',
+      estatus: 'pagada',
+      total: '100.01',
+      clienteId: null,
+    };
+    const { service, facturar } = setup(
+      [
+        [orden],
+        [],
+        [
+          { monto: '33.34', nombre: 'EFECTIVO', tipo: 'efectivo' },
+          { monto: '66.67', nombre: 'Tarjeta débito', tipo: 'tarjeta' },
+        ],
+      ],
+      [[{ id: 'fac-1' }]],
+    );
+
+    await service.crearFactura(
+      {
+        ordenId: 'o-1',
+        rfc: 'EKU9003173C9',
+        razonSocial: 'ESCUELA KEMPER URGATE',
+        usoCfdi: 'G03',
+        regimenFiscal: '601',
+        codigoPostalFiscal: '42501',
+      },
+      5,
+      { deCola: true },
+    );
+
+    const [enviado] = facturar.mock.calls[0] as [
+      {
+        payment_form: string;
+        idempotency_key: string;
+        items: { product: { price: number; tax_included: boolean } }[];
+      },
+    ];
+    expect(enviado.payment_form).toBe('28');
+    expect(enviado.idempotency_key).toBe('factura-orden-o-1-0');
+    expect(enviado.items[0].product).toMatchObject({
+      price: 100.01,
+      tax_included: true,
+    });
   });
 });
 
