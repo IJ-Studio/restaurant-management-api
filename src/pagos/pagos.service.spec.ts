@@ -552,3 +552,97 @@ describe('CrearFacturaDto: catálogos del SAT', () => {
     await expect(validar({ [campo]: valor })).resolves.toContain(campo);
   });
 });
+
+describe('PagosService.reembolsarPago', () => {
+  const pagoStripe = {
+    id: 40,
+    ordenId: 'orden-1',
+    monto: '116.00',
+    propina: '0.00',
+    estatus: 'completado',
+    pasarela: 'stripe',
+    idTransaccionPasarela: 'pi_9',
+  };
+  const pagoCaja = {
+    ...pagoStripe,
+    id: 41,
+    monto: '50.00',
+    propina: '5.00',
+    pasarela: null,
+    idTransaccionPasarela: null,
+  };
+  const motivo = { motivo: 'Cobro equivocado' };
+
+  it('un cobro de Stripe se reembolsa en Stripe y el pedido vuelve a cobrarse', async () => {
+    const { service, set, refund } = setup([
+      [pagoStripe],
+      [],
+      [{ estatus: 'pagada', propina: '0.00' }],
+    ]);
+
+    const r = await service.reembolsarPago(40, motivo, 1);
+
+    expect(refund).toHaveBeenCalledWith(
+      { payment_intent: 'pi_9', amount: 11600 },
+      { idempotencyKey: `reembolso-pago-${pagoStripe.id}` },
+    );
+    expect(set).toHaveBeenCalledWith({ estatus: 'reembolsado' });
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({ estatus: 'entregada', tiempoCierre: null }),
+    );
+    expect(r).toMatchObject({ devolucion: 'stripe', monto: '116.00' });
+  });
+
+  it('un pago de caja solo se registra (monto + propina) y descuenta la propina del pedido', async () => {
+    const { service, set, refund } = setup([
+      [pagoCaja],
+      [],
+      [{ estatus: 'para_cobrar', propina: '5.00' }],
+    ]);
+
+    const r = await service.reembolsarPago(41, motivo, 1);
+
+    expect(refund).not.toHaveBeenCalled();
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({ estatus: 'para_cobrar', propina: '0.00' }),
+    );
+    expect(r).toMatchObject({ devolucion: 'caja', monto: '55.00' });
+  });
+
+  it('con cancelarPedido el pedido queda cancelado con el motivo', async () => {
+    const { service, set } = setup([
+      [pagoStripe],
+      [],
+      [{ estatus: 'pagada', propina: '0.00' }],
+    ]);
+
+    await service.reembolsarPago(40, { ...motivo, cancelarPedido: true }, 1);
+
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        estatus: 'cancelada',
+        motivoCancelacion: 'Cobro equivocado',
+      }),
+    );
+  });
+
+  it('no reembolsa dos veces el mismo pago', async () => {
+    const { service, refund } = setup([
+      [{ ...pagoStripe, estatus: 'reembolsado' }],
+    ]);
+
+    await expect(service.reembolsarPago(40, motivo, 1)).rejects.toThrow(
+      'Este pago ya se reembolsó.',
+    );
+    expect(refund).not.toHaveBeenCalled();
+  });
+
+  it('con una factura vigente pide cancelarla primero', async () => {
+    const { service, refund } = setup([[pagoStripe], [{ id: 'fac-1' }]]);
+
+    await expect(service.reembolsarPago(40, motivo, 1)).rejects.toThrow(
+      /factura vigente/,
+    );
+    expect(refund).not.toHaveBeenCalled();
+  });
+});
