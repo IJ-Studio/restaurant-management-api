@@ -4,6 +4,17 @@ import { ROLES } from '../common/constants/roles';
 import { DeviceTokensService } from './device-tokens.service';
 
 export const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+
+/**
+ * A dónde se mandan los avisos. Fuera de producción, la variable `EXPO_PUSH_URL` lo cambia por un
+ * Expo simulado (pruebas de integración, api#83); en producción siempre es Expo.
+ */
+export function expoPushUrl(): string {
+  const simulado = process.env.EXPO_PUSH_URL;
+  return simulado && process.env.NODE_ENV !== 'production'
+    ? simulado
+    : EXPO_PUSH_URL;
+}
 const EXPO_BATCH_SIZE = 100; // máximo por petición que admite Expo
 const PUSH_TIMEOUT_MS = 5_000;
 
@@ -63,7 +74,7 @@ export class NotificationsService {
     tokens: string[],
     message: PushMessage,
   ): Promise<void> {
-    const response = await fetch(EXPO_PUSH_URL, {
+    const response = await fetch(expoPushUrl(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

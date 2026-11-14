@@ -1,6 +1,10 @@
 import { ROLES } from '../common/constants/roles';
 import type { DeviceTokensService } from './device-tokens.service';
-import { NotificationsService, EXPO_PUSH_URL } from './notifications.service';
+import {
+  NotificationsService,
+  EXPO_PUSH_URL,
+  expoPushUrl,
+} from './notifications.service';
 
 const validToken = 'ExponentPushToken[abcDEF123_-xyz]';
 
@@ -98,5 +102,34 @@ describe('NotificationsService.sendToRoles', () => {
         body: 'b',
       }),
     ).resolves.toBeUndefined();
+  });
+
+  describe('Expo simulado para las pruebas de integración (api#83)', () => {
+    const original = {
+      url: process.env.EXPO_PUSH_URL,
+      env: process.env.NODE_ENV,
+    };
+    afterEach(() => {
+      process.env.EXPO_PUSH_URL = original.url;
+      process.env.NODE_ENV = original.env;
+      if (original.url === undefined) delete process.env.EXPO_PUSH_URL;
+    });
+
+    it('fuera de producción usa EXPO_PUSH_URL', () => {
+      process.env.EXPO_PUSH_URL = 'http://127.0.0.1:10099/push';
+      process.env.NODE_ENV = 'test';
+      expect(expoPushUrl()).toBe('http://127.0.0.1:10099/push');
+    });
+
+    it('en producción siempre manda a Expo, aunque la variable exista', () => {
+      process.env.EXPO_PUSH_URL = 'http://127.0.0.1:10099/push';
+      process.env.NODE_ENV = 'production';
+      expect(expoPushUrl()).toBe(EXPO_PUSH_URL);
+    });
+
+    it('sin la variable manda a Expo', () => {
+      delete process.env.EXPO_PUSH_URL;
+      expect(expoPushUrl()).toBe(EXPO_PUSH_URL);
+    });
   });
 });
