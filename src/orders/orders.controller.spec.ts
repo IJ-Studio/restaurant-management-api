@@ -2,7 +2,8 @@ import { INestApplication } from '@nestjs/common';
 import { APP_GUARD, Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import { Server } from 'node:http';
+import { get as httpGet, Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guards';
@@ -328,6 +329,121 @@ describe('OrdersController (DT-04)', () => {
         .get('/pedidos/stream')
         .set('Authorization', `Bearer ${token}`)
         .expect(403);
+    });
+
+    // api#73: el canal no acepta tokens que el resto del API rechazaría.
+    it.each([
+      [
+        'vencido',
+        () =>
+          jwt.signAsync(
+            {
+              id: '8',
+              email: 'caja@quijote.mx',
+              roleId: ROLES.CAJERO,
+              tokenId: 'tok-8',
+              exp: 1,
+            },
+            { secret: SECRET },
+          ),
+      ],
+      [
+        'firmado con otra clave',
+        () =>
+          jwt.signAsync(
+            {
+              id: '8',
+              email: 'caja@quijote.mx',
+              roleId: ROLES.CAJERO,
+              tokenId: 'tok-8',
+            },
+            { secret: 'otra-clave', expiresIn: 60 },
+          ),
+      ],
+      [
+        'de una sesión cerrada',
+        () =>
+          jwt.signAsync(
+            {
+              id: '8',
+              email: 'caja@quijote.mx',
+              roleId: ROLES.CAJERO,
+              tokenId: 'tok-cerrada',
+            },
+            { secret: SECRET, expiresIn: 60 },
+          ),
+      ],
+      [
+        'con la sesión de otro usuario',
+        () =>
+          jwt.signAsync(
+            {
+              id: '1',
+              email: 'admin@quijote.mx',
+              roleId: ROLES.ADMIN,
+              tokenId: 'tok-8',
+            },
+            { secret: SECRET, expiresIn: 60 },
+          ),
+      ],
+    ])('GET /pedidos/stream con un token %s → 401', async (_caso, firmar) => {
+      await server()
+        .get('/pedidos/stream')
+        .set('Authorization', `Bearer ${await firmar()}`)
+        .expect(401);
+    });
+
+    it('el personal abre el flujo: 200, text/event-stream y primero `ready`', async () => {
+      const servidor = app.getHttpServer() as Server;
+      if (!servidor.listening)
+        await new Promise<void>((listo) => servidor.listen(0, listo));
+      const { port } = servidor.address() as AddressInfo;
+
+      // Basta con el primer evento: después se corta la conexión.
+      const res = await new Promise<{
+        status?: number;
+        tipo?: string;
+        primero: string;
+      }>((resolve, reject) => {
+        const peticion = httpGet(
+          { host: '127.0.0.1', port, path: '/pedidos/stream', headers: auth() },
+          (respuesta) => {
+            let primero = '';
+            respuesta.on('data', (chunk: Buffer) => {
+              primero += chunk.toString();
+              if (!primero.includes('event:')) return;
+              resolve({
+                status: respuesta.statusCode,
+                tipo: respuesta.headers['content-type'],
+                primero,
+              });
+              peticion.destroy();
+            });
+          },
+        );
+        peticion.on('error', reject);
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.tipo).toContain('text/event-stream');
+      expect(res.primero).toContain('event: ready');
+    });
+
+    it('cada evento solo lleva el tipo de cambio, el id, el estatus y la hora (ningún dato del pedido)', () => {
+      const seen: OrderEvent[] = [];
+      const subscription = app
+        .get(OrderEventsService)
+        .stream()
+        .subscribe((event) => seen.push(event));
+
+      app.get(OrderEventsService).emit('status', ORDEN, 'lista');
+      app.get(OrderEventsService).emit('charged', ORDEN);
+      subscription.unsubscribe();
+
+      expect(seen.map((event) => Object.keys(event).sort())).toEqual([
+        ['at', 'change', 'estatus', 'orderId'],
+        ['at', 'change', 'orderId'],
+      ]);
     });
 
     it.each([
