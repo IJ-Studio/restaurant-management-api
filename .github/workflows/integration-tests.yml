@@ -1,0 +1,124 @@
+# Pruebas de integración del API (api#79, api#83): app ↔ API ↔ BD ↔ Expo simulado.
+#
+# Levanta PostgreSQL como service container con la estructura de test/db/ y datos sintéticos,
+# arranca el API compilado contra esa base y corre `pnpm test:integracion`. Nada toca producción:
+# la base, el JWT_SECRET y la contraseña de los usuarios de prueba se crean en cada corrida, y
+# Stripe y Facturapi llevan valores de mentira (las pruebas que los necesitan se saltan solas).
+#
+# Evidencia: el Summary con la lista de escenarios y el artefacto integration-tests-report.
+name: Integration tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop, 'release/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration-tests:
+    name: integration-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: quijote_local
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: quijote_local
+      LOCAL_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/quijote_local
+      API_URL: http://localhost:10000
+      EXPO_PUSH_URL: http://127.0.0.1:10099/push
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+
+      - name: Base de pruebas (estructura y datos sintéticos)
+        run: |
+          set -euo pipefail
+          CLAVE="Ci#$(openssl rand -hex 12)"
+          echo "::add-mask::$CLAVE"
+          echo "CLAVE_PRUEBAS=$CLAVE" >> "$GITHUB_ENV"
+          psql -v ON_ERROR_STOP=1 -q -f test/db/preparar.sql
+          psql -v ON_ERROR_STOP=1 -q -f test/db/esquema.sql
+          psql -v ON_ERROR_STOP=1 -q -v clave_pruebas="$CLAVE" -f test/db/semilla.sql
+          psql -tAc "select count(*) || ' tablas' from information_schema.tables where table_schema = 'public'"
+
+      - name: Arrancar el API contra la base de pruebas
+        run: |
+          set -euo pipefail
+          JWT="$(openssl rand -hex 32)"
+          echo "::add-mask::$JWT"
+          nohup env NODE_ENV=development PORT=10000 \
+            DATABASE_URL="$LOCAL_DATABASE_URL" DATABASE_SSL=false \
+            SUPABASE_URL=http://127.0.0.1:9 SUPABASE_SERVICE_ROLE_KEY=ci-sin-supabase \
+            JWT_SECRET="$JWT" JWT_ACCESS_TOKEN_TTL=3600 \
+            STRIPE_SECRET_KEY=sk_test_ci_sin_stripe STRIPE_WEBHOOK_SECRET=whsec_ci_sin_stripe \
+            FACTURAPI_TEST_KEY=sk_test_ci_sin_facturapi \
+            CORS_ORIGINS=http://localhost:3000 EXPO_PUSH_URL="$EXPO_PUSH_URL" \
+            node dist/src/main.js > api.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -sf "$API_URL/reglas" > /dev/null && exit 0
+            sleep 1
+          done
+          echo "El API no arrancó:"; tail -50 api.log; exit 1
+
+      - name: Pruebas de integración
+        run: pnpm test:integracion --ci --json --outputFile=reports/integration/jest.json
+
+      - name: Escenarios en el Summary
+        if: always()
+        run: |
+          [ -f reports/integration/jest.json ] || exit 0
+          node -e '
+            const r = require(process.argv[1]);
+            const out = [`### Integración: ${r.numPassedTests} en verde, ${r.numFailedTests} en rojo, ${r.numPendingTests} saltadas`, ""];
+            for (const s of r.testResults) {
+              out.push(`**${s.name.split("/").pop()}**`, "");
+              for (const t of s.assertionResults) {
+                const icono = { passed: "✅", failed: "❌" }[t.status] ?? "⏭️";
+                out.push(`- ${icono} ${t.ancestorTitles.slice(1).concat(t.title).join(" › ")}`);
+              }
+              out.push("");
+            }
+            console.log(out.join("\n"));
+          ' "$PWD/reports/integration/jest.json" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Subir reportes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-tests-report
+          path: |
+            reports/integration/
+            api.log
+          retention-days: 30
+          if-no-files-found: ignore
