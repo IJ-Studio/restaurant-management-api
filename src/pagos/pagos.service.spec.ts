@@ -1,4 +1,5 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, HttpException } from '@nestjs/common';
+import Stripe from 'stripe';
 
 import { ROLES } from '../common/constants/roles';
 import { PagosService } from './pagos.service';
@@ -256,6 +257,46 @@ describe('PagosService.crearIntentoPago (DT-16)', () => {
 
     expect(error).toBeInstanceOf(BadRequestException);
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe('PagosService.crearIntentoPago: tarjeta rechazada', () => {
+  it('fondos insuficientes → 402 con mensaje claro, sin el detalle de Stripe', async () => {
+    const orden = {
+      id: 'orden-1',
+      estatus: 'entregada',
+      total: '25.50',
+      clienteId: null,
+    };
+    const { service, create } = setup([[orden], []]);
+    create.mockRejectedValueOnce(
+      new Stripe.errors.StripeCardError({
+        type: 'card_error',
+        code: 'card_declined',
+        decline_code: 'insufficient_funds',
+        message: 'Your card has insufficient funds.',
+      }),
+    );
+
+    const error: unknown = await service
+      .crearIntentoPago(
+        { ordenId: 'orden-1', paymentMethodId: 'pm_x' },
+        1,
+        ROLES.CAJERO,
+      )
+      .catch((e: unknown) => e);
+
+    expect((error as HttpException).getStatus()).toBe(402);
+    expect((error as Error).message).toBe(
+      'La tarjeta no tiene fondos suficientes.',
+    );
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        confirm: true,
+        automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
+      }),
+      expect.anything(),
+    );
   });
 });
 

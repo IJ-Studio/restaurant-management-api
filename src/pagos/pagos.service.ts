@@ -5,6 +5,8 @@ import {
   NotFoundException,
   Inject,
   Logger,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { DRIZZLE } from '../database/drizzle/constants';
 import type { DrizzleDB } from '../database/drizzle/drizzle.provider';
@@ -33,6 +35,22 @@ import {
   CrearFacturaDto,
   GuardarPerfilFacturacionDto,
 } from './dto/pagos.dto';
+
+/** Rechazo de la tarjeta en palabras del cajero o del cliente (sin el detalle de Stripe). */
+export function mensajeRechazo(codigo?: string): string {
+  switch (codigo) {
+    case 'insufficient_funds':
+      return 'La tarjeta no tiene fondos suficientes.';
+    case 'expired_card':
+      return 'La tarjeta está vencida.';
+    case 'incorrect_cvc':
+      return 'El código de seguridad de la tarjeta es incorrecto.';
+    case 'authentication_required':
+      return 'El banco pide autenticar la tarjeta: cobra con la tarjeta presente.';
+    default:
+      return 'El banco rechazó la tarjeta. Prueba con otra o cobra en caja.';
+  }
+}
 
 @Injectable()
 export class PagosService {
@@ -574,21 +592,34 @@ export class PagosService {
     const metadata: Record<string, string> = { ordenId: dto.ordenId };
     if (clienteId) metadata.clienteId = clienteId;
 
-    const paymentIntent = await this.stripe.paymentIntents.create(
-      {
-        amount: montoEnCentavos,
-        currency: 'mxn',
-        customer: stripeCustomerId,
-        payment_method: paymentMethodId,
-        confirm: !!paymentMethodId,
-        automatic_payment_methods: paymentMethodId
-          ? undefined
-          : { enabled: true },
-        off_session: !!stripeCustomerId,
-        metadata,
-      },
-      { idempotencyKey },
-    );
+    let paymentIntent: Stripe.PaymentIntent;
+    try {
+      paymentIntent = await this.stripe.paymentIntents.create(
+        {
+          amount: montoEnCentavos,
+          currency: 'mxn',
+          customer: stripeCustomerId,
+          payment_method: paymentMethodId,
+          confirm: !!paymentMethodId,
+          // Con la tarjeta ya elegida se confirma aquí, sin página a la que regresar: Stripe
+          // exige entonces descartar los métodos con redirección.
+          automatic_payment_methods: paymentMethodId
+            ? { enabled: true, allow_redirects: 'never' }
+            : { enabled: true },
+          off_session: !!stripeCustomerId,
+          metadata,
+        },
+        { idempotencyKey },
+      );
+    } catch (error: unknown) {
+      if (error instanceof Stripe.errors.StripeCardError) {
+        throw new HttpException(
+          { message: mensajeRechazo(error.decline_code ?? error.code) },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+      throw error;
+    }
 
     return {
       clientSecret: paymentIntent.client_secret,
