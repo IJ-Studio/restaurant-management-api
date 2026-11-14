@@ -1,7 +1,26 @@
-# Despliegue a producción (plan; no ejecutado)
+# Despliegue a producción
 
-> Diagnóstico de **solo lectura** del 13-nov. Nadie ha desplegado nada. El despliegue lo hace el
-> usuario: fusionar `develop` → `main` dispara Render.
+> **Ejecutado el 14-nov** (release #157, `develop` → `main`; Render en línea a las 00:20). Abajo, el
+> registro y, después, el plan original del 13-nov. Fusionar `develop` → `main` dispara Render.
+
+## Registro del 14-nov
+
+1. Respaldo completo con `pg_dump -Fc` (pooler en modo sesión, puerto 5432), verificado contra los
+   conteos de producción. Se guarda fuera del repositorio: contiene datos personales.
+2. Migraciones aplicadas una por una con `apply_migration` de Supabase (quedan registradas en
+   `supabase_migrations`): `consentimientos_20261113`, `refresh_tokens_20261113`,
+   `solicitudes_factura_20261114`. Tras cada una: tabla, RLS y política comprobadas, y la carta en 200.
+3. No aplicadas: normalización B, teléfonos E.164, activación del cifrado y `codigos-verificacion`.
+4. #135 cerrado (lo sustituyó #150). Release #157 con el CI en verde.
+5. Humo sin sesión: carta, `/reglas` (`America/Mexico_City`) y `/sitio` en 200; `sign-in` con
+   credenciales erróneas y `refresh` falso en 401; rutas protegidas en 401.
+6. Variables que faltan en Render: `THROTTLE_LIMIT` (por defecto 40/min por IP) y `CLOUDINARY_*`
+   (ya faltaban antes del release; sin ellas no se pueden subir imágenes).
+
+> Si se usa el `.env` local con `psql`/`pg_dump`, quitar los retornos de carro (`tr -d '\r'`): el
+> archivo tiene finales CRLF y el nombre de la base llega como `postgres\r`.
+
+## Plan original (13-nov)
 
 ## Estado
 
