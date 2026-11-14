@@ -4,12 +4,14 @@ import { eq, sql } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle/constants';
 import type { DrizzleDB } from '../database/drizzle/drizzle.provider';
 import { restaurante, systemSettings } from '../database/schema/public.schema';
-import type { ImagenSitioDto, SitioDto } from './sitio.dto';
+import type { ImagenSitioDto, SitioDto, TextosSitioDto } from './sitio.dto';
 
 const CLAVE = 'sitio_imagenes';
+type Textos = { [K in keyof TextosSitioDto]-?: string | null };
 type Imagenes = Pick<SitioDto, 'portada' | 'colorRespaldo'> & {
   login: ImagenSitioDto | null;
   registro: ImagenSitioDto | null;
+  textos: Textos;
 };
 /** Sin configurar: la web usa sus imágenes locales con este color de respaldo. */
 const POR_DEFECTO: Imagenes = {
@@ -17,14 +19,16 @@ const POR_DEFECTO: Imagenes = {
   login: null,
   registro: null,
   colorRespaldo: '#2B2119',
+  textos: { titulo: null, subtitulo: null, nosotros: null },
 };
+const textoOVacio = (t?: string | null) => t?.trim() || null;
 
 export type Sitio = Imagenes & {
   telefono: string | null;
   whatsapp: string | null;
 };
 
-/** Imágenes de la landing, login y registro, y teléfono/WhatsApp del restaurante (P1.5). */
+/** Imágenes y textos de la landing, fotos de login y registro, y teléfono/WhatsApp (P1.5). */
 @Injectable()
 export class SitioService {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
@@ -42,9 +46,12 @@ export class SitioService {
       })
       .from(restaurante)
       .limit(1);
+    const guardado = (ajuste?.value ?? {}) as Partial<Imagenes>;
     return {
       ...POR_DEFECTO,
-      ...((ajuste?.value ?? {}) as Partial<Imagenes>),
+      ...guardado,
+      // Lo guardado antes de existir los textos no los trae: se completa con vacíos.
+      textos: { ...POR_DEFECTO.textos, ...guardado.textos },
       telefono: config?.telefono ?? null,
       whatsapp: config?.whatsapp ?? null,
     };
@@ -56,6 +63,11 @@ export class SitioService {
       login: dto.login ?? null,
       registro: dto.registro ?? null,
       colorRespaldo: dto.colorRespaldo,
+      textos: {
+        titulo: textoOVacio(dto.textos?.titulo),
+        subtitulo: textoOVacio(dto.textos?.subtitulo),
+        nosotros: textoOVacio(dto.textos?.nosotros),
+      },
     };
     await this.db.transaction(async (tx) => {
       await tx

@@ -9,6 +9,8 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+import { TextoNegocio } from '../common/normalizacion/normalizar';
+
 /** Solo la nube del restaurante (D-18): nada de terceros. */
 export const URL_CLOUDINARY =
   /^https:\/\/res\.cloudinary\.com\/dcb1tspbj\/image\/upload\/[^\s"'<>]+$/;
@@ -28,6 +30,27 @@ export class ImagenSitioDto {
   @IsString()
   @MaxLength(150)
   readonly alt!: string;
+}
+
+/** Textos de la landing; vacío o ausente = el texto de la web. */
+export class TextosSitioDto {
+  @TextoNegocio()
+  @IsOptional()
+  @IsString()
+  @MaxLength(80, { message: 'El titular admite hasta 80 caracteres.' })
+  readonly titulo?: string | null;
+
+  @TextoNegocio()
+  @IsOptional()
+  @IsString()
+  @MaxLength(200, { message: 'La entradilla admite hasta 200 caracteres.' })
+  readonly subtitulo?: string | null;
+
+  @TextoNegocio()
+  @IsOptional()
+  @IsString()
+  @MaxLength(600, { message: '«Nosotros» admite hasta 600 caracteres.' })
+  readonly nosotros?: string | null;
 }
 
 export class SitioDto {
@@ -66,4 +89,9 @@ export class SitioDto {
     message: 'Escribe un WhatsApp válido (10 dígitos o con lada).',
   })
   readonly whatsapp?: string | null;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TextosSitioDto)
+  readonly textos?: TextosSitioDto | null;
 }
