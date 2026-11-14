@@ -53,19 +53,6 @@ jobs:
           - nombre: zap-full-mesero
             modo: full
             rol: mesero
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: quijote_local
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       # El escaneo activo es largo: en los PR solo corre el baseline, salvo con la etiqueta zap-full.
       - name: ¿Toca este escaneo?
@@ -94,10 +81,15 @@ jobs:
         if: steps.toca.outputs.si == 'true'
         run: pnpm install --frozen-lockfile && pnpm run build
 
+      # Postgres con docker run (no como service) para arrancarlo con poco log: el escaneo provoca
+      # miles de errores esperados y el log del service tapaba el resultado de ZAP.
       - name: Base de pruebas y API
         if: steps.toca.outputs.si == 'true'
         run: |
           set -euo pipefail
+          docker run -d --name pg -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=quijote_local \
+            postgres:17 -c log_min_messages=fatal -c log_min_error_statement=panic > /dev/null
+          for _ in $(seq 1 30); do pg_isready -q -h localhost && break; sleep 1; done
           CLAVE="Ci#$(openssl rand -hex 12)"; JWT="$(openssl rand -hex 32)"
           echo "::add-mask::$CLAVE"; echo "::add-mask::$JWT"
           echo "CLAVE_PRUEBAS=$CLAVE" >> "$GITHUB_ENV"
@@ -147,6 +139,7 @@ jobs:
       - name: Veredicto (cero High)
         if: steps.toca.outputs.si == 'true'
         run: |
+          set -o pipefail
           node -e '
             const fs = require("fs");
             const [json, reglas] = process.argv.slice(1);
@@ -161,7 +154,7 @@ jobs:
             console.log(["### ${{ matrix.nombre }}", "", "| Riesgo | Regla | Alerta | Instancias |", "|---|---|---|---|", ...filas].join("\n"));
             const altas = alertas.filter((a) => Number(a.riskcode) === 3);
             if (altas.length) { console.error(`Hay ${altas.length} alertas High.`); process.exit(1); }
-          ' "zap/${{ matrix.nombre }}.json" zap/rules.tsv >> "$GITHUB_STEP_SUMMARY"
+          ' "zap/${{ matrix.nombre }}.json" zap/rules.tsv | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Subir reportes
         if: always() && steps.toca.outputs.si == 'true'
