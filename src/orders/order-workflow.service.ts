@@ -21,6 +21,7 @@ import {
   platillos,
   users,
 } from '../database/schema/public.schema';
+import { NotificationsService } from '../notifications/notifications.service';
 import type { ChargeOrderDto } from './dto/charge-order.dto';
 import type { EstatusOperativo } from './dto/update-order-status.dto';
 import type { OrderRequester } from './orders.service';
@@ -54,6 +55,36 @@ const TRANSICIONES: Record<
   },
 };
 
+/**
+ * Avisos push cuando el pedido cambia de manos (HU-07): cocina avisa al piso que ya está listo y
+ * el piso avisa a caja que ya se entregó. El aviso solo lleva la mesa y el id del pedido: nunca
+ * nombres de clientes ni importes, porque se ve con el teléfono bloqueado.
+ */
+export const AVISOS: Partial<
+  Record<
+    EstatusOperativo,
+    {
+      roles: number[];
+      type: string;
+      title: string;
+      body: (lugar: string) => string;
+    }
+  >
+> = {
+  lista: {
+    roles: [ROLES.MESERO],
+    type: 'order_ready',
+    title: 'Pedido listo',
+    body: (lugar) => `${lugar}: listo para entregar.`,
+  },
+  entregada: {
+    roles: [ROLES.CAJERO],
+    type: 'order_delivered',
+    title: 'Cuenta por cobrar',
+    body: (lugar) => `${lugar}: entregado, falta cobrar.`,
+  },
+};
+
 const MENSAJE: Record<EstatusOperativo, string> = {
   en_preparacion: 'Cocina empezó a preparar el pedido.',
   lista: 'El pedido está listo para entregarse.',
@@ -71,7 +102,40 @@ const pesos = (cents: number) => (cents / 100).toFixed(2);
 
 @Injectable()
 export class OrderWorkflowService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly notifications: NotificationsService,
+  ) {}
+
+  /** Nunca lanza: un aviso que falla no debe deshacer ni retrasar el cambio de estado. */
+  private async avisar(
+    estatus: EstatusOperativo,
+    orden: { id: string; mesaId: number | null },
+  ): Promise<void> {
+    const aviso = AVISOS[estatus];
+    if (!aviso) return;
+    try {
+      const [mesa] = orden.mesaId
+        ? await this.db
+            .select({ numero: mesas.numero })
+            .from(mesas)
+            .where(eq(mesas.id, orden.mesaId))
+            .limit(1)
+        : [];
+      // Sin mesa (para llevar o a domicilio) se usa el folio corto que ve el personal en pantalla.
+      const lugar = mesa
+        ? `Mesa ${mesa.numero}`
+        : `Pedido ${orden.id.slice(0, 6).toUpperCase()}`;
+      await this.notifications.sendToRoles(aviso.roles, {
+        title: aviso.title,
+        body: aviso.body(lugar),
+        // `place` es el título que la app pone al abrir el pedido desde el aviso.
+        data: { type: aviso.type, orderId: orden.id, place: lugar },
+      });
+    } catch {
+      // Sin aviso: el personal lo ve igual en su lista de pedidos.
+    }
+  }
 
   private async buscarOrden(ordenId: string) {
     const [orden] = await this.db
@@ -225,6 +289,9 @@ export class OrderWorkflowService {
         )
         .where(eq(ordenItems.ordenId, ordenId));
     }
+
+    // Sin `await`: la respuesta no espera al servicio de avisos.
+    void this.avisar(estatus, orden);
 
     return { success: true, message: MENSAJE[estatus], ordenId, estatus };
   }

@@ -1,3 +1,4 @@
+import { instanteLocal } from '../reglas/horario';
 import {
   Controller,
   Get,
@@ -28,9 +29,14 @@ export class ReservationsController {
   @Public()
   @Get('availability')
   async getAvailability(@Query() query: AvailabilityQueryDto) {
-    const fecha = new Date(`${query.fecha}T${query.hora}:00`);
-    const duracionDefault = 90; // hardcodeado por ahora
-    const duracion = query.duracionMin || duracionDefault;
+    // La fecha y la hora son del restaurante: no se interpretan con la zona del servidor (UTC en Render).
+    const config = await this.reservationsService.getRestaurantConfig();
+    const fecha = instanteLocal(
+      query.fecha,
+      query.hora,
+      config.zonaHoraria || 'America/Mexico_City',
+    );
+    const duracion = query.duracionMin || config.duracionReservaDefault;
     const result = await this.reservationsService.getAvailableTables(
       fecha,
       duracion,

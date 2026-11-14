@@ -24,6 +24,7 @@ import {
   users,
 } from '../database/schema/public.schema';
 import { aPesos, type Calculo } from '../common/calculo';
+import { diaLocal } from '../reglas/horario';
 import type {
   CloseCashDto,
   CreateIncidentDto,
@@ -53,17 +54,12 @@ export function claseDeMetodo(
 }
 
 /** Inicio y fin del día de hoy (hora del servidor), como en el resto del Dashboard. */
-export function rangoDeHoy(ahora = new Date()) {
-  const inicio = new Date(
-    ahora.getFullYear(),
-    ahora.getMonth(),
-    ahora.getDate(),
-  );
-  const fin = new Date(
-    ahora.getFullYear(),
-    ahora.getMonth(),
-    ahora.getDate() + 1,
-  );
+/**
+ * «Hoy» en la hora del restaurante (no la del servidor: Render corre en UTC y a las 18:00 de
+ * México ya era «mañana»). Es la zona por defecto de `restaurante.zona_horaria`.
+ */
+export function rangoDeHoy(ahora = new Date(), zona = 'America/Mexico_City') {
+  const { inicio, fin } = diaLocal(ahora, zona);
   return { inicio: inicio.toISOString(), fin: fin.toISOString() };
 }
 

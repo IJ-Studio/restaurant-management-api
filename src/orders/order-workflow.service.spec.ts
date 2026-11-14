@@ -52,8 +52,17 @@ function setup(results: unknown[]) {
     insert: jest.fn(query),
     transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn(db)),
   };
-  return { service: new OrderWorkflowService(db as never), writes, db };
+  const notifications = { sendToRoles: jest.fn().mockResolvedValue(undefined) };
+  return {
+    service: new OrderWorkflowService(db as never, notifications as never),
+    writes,
+    db,
+    notifications,
+  };
 }
+
+/** El aviso sale sin `await`: deja que termine antes de revisar qué se mandó. */
+const avisoEnviado = () => new Promise((resolve) => setImmediate(resolve));
 
 interface FakeDb {
   select: jest.Mock<Chain, []>;
@@ -192,6 +201,107 @@ describe('OrderWorkflowService', () => {
       expect(
         typeof (writes.set[1] as { tiempoEntrega: unknown }).tiempoEntrega,
       ).toBe('string');
+    });
+
+    describe('avisos push al cambiar de manos (HU-07)', () => {
+      it('cocina marca listo → aviso a los meseros con la mesa y sin datos del cliente', async () => {
+        const { service, notifications } = setup([
+          [orden({ estatus: 'en_preparacion' })],
+          [{ id: 'orden-1' }],
+          [],
+          [{ numero: 'B01' }],
+        ]);
+
+        await service.cambiarEstatus('orden-1', 'lista', cocina);
+        await avisoEnviado();
+
+        expect(notifications.sendToRoles).toHaveBeenCalledWith([ROLES.MESERO], {
+          title: 'Pedido listo',
+          body: 'Mesa B01: listo para entregar.',
+          data: { type: 'order_ready', orderId: 'orden-1', place: 'Mesa B01' },
+        });
+      });
+
+      it('el mesero entrega → aviso a caja para cobrar', async () => {
+        const { service, notifications } = setup([
+          [orden({ estatus: 'lista' })],
+          [{ id: 'orden-1' }],
+          [],
+          [{ numero: 'B01' }],
+        ]);
+
+        await service.cambiarEstatus('orden-1', 'entregada', mesero);
+        await avisoEnviado();
+
+        expect(notifications.sendToRoles).toHaveBeenCalledWith([ROLES.CAJERO], {
+          title: 'Cuenta por cobrar',
+          body: 'Mesa B01: entregado, falta cobrar.',
+          data: {
+            type: 'order_delivered',
+            orderId: 'orden-1',
+            place: 'Mesa B01',
+          },
+        });
+      });
+
+      it('un pedido sin mesa se identifica por su folio corto', async () => {
+        const { service, notifications } = setup([
+          [orden({ id: 'a1b2c3d4-0000', mesaId: null, estatus: 'abierta' })],
+          [{ id: 'a1b2c3d4-0000' }],
+          [],
+        ]);
+
+        await service.cambiarEstatus('a1b2c3d4-0000', 'lista', cocina);
+        await avisoEnviado();
+
+        expect(notifications.sendToRoles).toHaveBeenCalledWith(
+          [ROLES.MESERO],
+          expect.objectContaining({
+            body: 'Pedido A1B2C3: listo para entregar.',
+          }),
+        );
+      });
+
+      it('empezar a preparar no avisa a nadie', async () => {
+        const { service, notifications } = setup([
+          [orden()],
+          [{ id: 'orden-1' }],
+        ]);
+
+        await service.cambiarEstatus('orden-1', 'en_preparacion', cocina);
+        await avisoEnviado();
+
+        expect(notifications.sendToRoles).not.toHaveBeenCalled();
+      });
+
+      it('un cambio rechazado no avisa', async () => {
+        const { service, notifications } = setup([
+          [orden({ estatus: 'lista' })],
+          [],
+        ]);
+
+        await expect(
+          service.cambiarEstatus('orden-1', 'entregada', mesero),
+        ).rejects.toBeInstanceOf(ConflictException);
+        await avisoEnviado();
+
+        expect(notifications.sendToRoles).not.toHaveBeenCalled();
+      });
+
+      it('si el aviso falla, el cambio de estado se mantiene', async () => {
+        const { service, notifications } = setup([
+          [orden({ estatus: 'en_preparacion' })],
+          [{ id: 'orden-1' }],
+          [],
+          [{ numero: 'B01' }],
+        ]);
+        notifications.sendToRoles.mockRejectedValue(new Error('Expo caído'));
+
+        await expect(
+          service.cambiarEstatus('orden-1', 'lista', cocina),
+        ).resolves.toMatchObject({ success: true, estatus: 'lista' });
+        await avisoEnviado();
+      });
     });
 
     it('el mesero no puede marcar un pedido como listo → 403', async () => {

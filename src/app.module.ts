@@ -5,6 +5,9 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'; // 👈 AGR
 import { APP_GUARD, APP_PIPE } from '@nestjs/core'; // 👈 AGREGADO
 import { PagosModule } from './pagos/pagos.module';
 import { ReservationsModule } from './reservations/reservations.module';
+import { ReglasModule } from './reglas/reglas.module';
+import { SitioModule } from './sitio/sitio.module';
+import { SolicitudesFacturaModule } from './solicitudes-factura/solicitudes-factura.module';
 import { AuthModule } from './auth/auth.module';
 import { BackupsModule } from './database/features/backups/backups.module';
 import { ReportsModule } from './reports/reports.module';
@@ -44,7 +47,9 @@ import { validateEnv } from './common/config/env.validation';
     ThrottlerModule.forRoot([
       {
         ttl: 60000, // 1 minuto (en milisegundos)
-        limit: 40, // Máximo 40 peticiones por minuto por cada IP / Cliente
+        // Por IP. Todo el personal del restaurante sale por la misma IP: subirlo en producción con
+        // THROTTLE_LIMIT si hay 429 en hora pico (ver docs/rendimiento.md). Las pruebas de carga lo suben.
+        limit: Number(process.env.THROTTLE_LIMIT) || 40,
       },
     ]),
     DatabaseModule,
@@ -52,6 +57,9 @@ import { validateEnv } from './common/config/env.validation';
     AuthModule,
     PagosModule,
     ReservationsModule,
+    ReglasModule,
+    SitioModule,
+    SolicitudesFacturaModule,
     ScheduleModule.forRoot(),
     BackupsModule,
     ReportsModule,

@@ -16,7 +16,7 @@ function setup() {
     }),
     update: () => ({ set }),
   };
-  return { service: new ReservationsService(db as never), set };
+  return { service: new ReservationsService(db as never, {} as never), set };
 }
 
 describe('PATCH /reservations/:id: motivo de cancelación (Prioridad 3.3)', () => {

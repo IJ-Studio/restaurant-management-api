@@ -44,14 +44,23 @@ export class DeviceTokensService {
     return rows.map((row) => row.token);
   }
 
-  /** Tokens del personal activo con alguno de los roles (p. ej. avisar a cocina). */
+  /**
+   * Tokens del personal activo con alguno de los roles (p. ej. avisar a cocina). Excluye a
+   * quien desactivó las notificaciones en Privacidad (su última preferencia es `false`).
+   */
   async findTokensByRoles(roleIds: number[]): Promise<string[]> {
     if (roleIds.length === 0) return [];
     const rows = await this.db
       .select({ token: deviceTokens.token })
       .from(deviceTokens)
       .innerJoin(users, eq(users.id, deviceTokens.userId))
-      .where(and(inArray(users.roleId, roleIds), eq(users.isActive, true)));
+      .where(
+        and(
+          inArray(users.roleId, roleIds),
+          eq(users.isActive, true),
+          sql`coalesce((select c.otorgado from consentimientos c where c.user_id = ${users.id} and c.tipo = 'notificaciones_push' order by c.creado_en desc limit 1), true)`,
+        ),
+      );
     return rows.map((row) => row.token);
   }
 

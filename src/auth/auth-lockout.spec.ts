@@ -65,6 +65,7 @@ function buildService(db: unknown, passwordOk: boolean) {
     bcrypt as never,
     jwt as never,
     cache as never,
+    { issue: jest.fn().mockResolvedValue('refresco') } as never,
   );
   return { service, bcrypt, jwt };
 }

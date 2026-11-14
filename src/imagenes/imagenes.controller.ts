@@ -17,6 +17,7 @@ import { ROLES } from '../common/constants/roles';
 const CARPETAS = {
   platillos: 'ElQuijote/menu',
   promociones: 'ElQuijote/promociones',
+  landing: 'ElQuijote/landing',
 } as const;
 
 export class FirmaImagenDto {

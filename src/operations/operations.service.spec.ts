@@ -74,10 +74,11 @@ describe('utilidades', () => {
     expect(claseDeMetodo(null, null)).toBe('digital');
   });
 
-  it('el día va de la medianoche a la siguiente', () => {
-    const { inicio, fin } = rangoDeHoy(new Date(2026, 9, 28, 15, 30));
-    expect(new Date(inicio)).toEqual(new Date(2026, 9, 28));
-    expect(new Date(fin)).toEqual(new Date(2026, 9, 29));
+  it('el día va de la medianoche a la siguiente, en la hora del restaurante', () => {
+    // 20:30 del 28-oct en México = 02:30 UTC del 29: sigue siendo el 28.
+    const { inicio, fin } = rangoDeHoy(new Date('2026-10-29T02:30:00Z'));
+    expect(inicio).toBe('2026-10-28T06:00:00.000Z');
+    expect(fin).toBe('2026-10-29T06:00:00.000Z');
   });
 });
 

@@ -15,6 +15,7 @@ import { BackupsService } from './database/features/backups/backups.service';
 import { MetricsController } from './database/features/metrics/metrics.controller';
 import { MetricsService } from './database/features/metrics/metrics.service';
 import { PlatillosController } from './platillos/platillos.controller';
+import { ImportarCartaService } from './platillos/importar-carta.service';
 import { PlatillosService } from './platillos/platillos.service';
 import { ExportController } from './reports/export/export.controller';
 import { ExportService } from './reports/export/export.service';
@@ -29,6 +30,7 @@ const routes = [
   { method: 'GET', path: '/backups', ok: 200 },
   { method: 'GET', path: '/db-metrics/cpu', ok: 200 },
   { method: 'GET', path: '/platillos/schema', ok: 200 },
+  { method: 'GET', path: '/platillos/plantilla.csv', ok: 200 },
   { method: 'POST', path: '/import/excel', ok: 201 },
   { method: 'GET', path: '/export?type=dishes&format=xlsx', ok: 200 },
 ] as const;
@@ -54,8 +56,8 @@ describe('Rutas administrativas con rol', () => {
   beforeAll(async () => {
     adminToken = await sign('1', ROLES.ADMIN, 'tok-admin');
     meseroToken = await sign('3', ROLES.MESERO, 'tok-mesero');
-    await cache.set('user-1', 'tok-admin');
-    await cache.set('user-3', 'tok-mesero');
+    await cache.set('session-tok-admin', '1');
+    await cache.set('session-tok-mesero', '3');
 
     const moduleRef = await Test.createTestingModule({
       controllers: [
@@ -84,6 +86,10 @@ describe('Rutas administrativas con rol', () => {
         {
           provide: PlatillosService,
           useValue: { getSchema: () => ({}) },
+        },
+        {
+          provide: ImportarCartaService,
+          useValue: { plantillaCsv: () => 'nombre' },
         },
         {
           provide: ExportService,

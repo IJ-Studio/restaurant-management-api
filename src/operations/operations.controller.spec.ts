@@ -54,7 +54,7 @@ describe('OperationsController', () => {
         },
         { secret: SECRET, expiresIn: 60 },
       );
-      await cache.set(`user-${id}`, `tok-${id}`);
+      await cache.set(`session-tok-${id}`, id);
     }
     const moduleRef = await Test.createTestingModule({
       controllers: [OperationsController],

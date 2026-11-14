@@ -819,7 +819,10 @@ function bigintJsonReplacer(_: string, value: unknown) {
   return typeof value === 'bigint' ? value.toString() : value;
 }
 
-function parseCsv(text: string): { headers: string[]; rows: string[][] } {
+export function parseCsv(text: string): {
+  headers: string[];
+  rows: string[][];
+} {
   const grid = csvToGrid(text);
   const nonEmpty = grid.filter((r) => r.some((c) => c.trim() !== ''));
   if (nonEmpty.length === 0) return { headers: [], rows: [] };
@@ -858,6 +861,10 @@ function csvCell(value: unknown): string {
 }
 
 function csvToGrid(text: string): string[][] {
+  // El texto llega del cliente: un objeto con `length` enorme bloquearía el bucle.
+  if (typeof text !== 'string') {
+    throw new BadRequestException('El CSV debe ser texto.');
+  }
   const rows: string[][] = [];
   let currentRow: string[] = [];
   let current = '';

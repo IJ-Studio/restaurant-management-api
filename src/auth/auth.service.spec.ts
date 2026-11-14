@@ -45,15 +45,26 @@ function setup(rows: unknown[], passwordMatches: boolean) {
     signAsync: jest.fn().mockResolvedValue('jwt.firmado'),
   } as unknown as JwtService;
   const cacheSet = jest.fn();
-  const cache = { set: cacheSet } as unknown as CacheService;
+  const cacheDelete = jest.fn();
+  const cache = {
+    set: cacheSet,
+    delete: cacheDelete,
+  } as unknown as CacheService;
+  const refreshTokens = {
+    issue: jest.fn().mockResolvedValue('refresco-nuevo'),
+    consume: jest.fn().mockResolvedValue(7),
+    revoke: jest.fn().mockResolvedValue(undefined),
+    revokeAllForUser: jest.fn().mockResolvedValue(undefined),
+  };
   const service = new AuthService(
     db as never,
     { secret: 's', accessTokenTtl: 3600 },
     bcrypt,
     jwt,
     cache,
+    refreshTokens as never,
   );
-  return { service, compare, cacheSet };
+  return { service, compare, cacheSet, cacheDelete, refreshTokens };
 }
 
 describe('AuthService.SignIn', () => {
@@ -74,7 +85,11 @@ describe('AuthService.SignIn', () => {
     expect(JSON.stringify(result)).not.toContain('hashDeLaContrasena');
     expect(result.user).not.toHaveProperty('password');
     expect(result.user).not.toHaveProperty('loginAttempts');
-    expect(cacheSet).toHaveBeenCalledWith('user-7', expect.any(String), 3600);
+    expect(cacheSet).toHaveBeenCalledWith(
+      expect.stringMatching(/^session-/),
+      '7',
+      3600,
+    );
   });
 
   it.each([
@@ -106,6 +121,102 @@ describe('AuthService.SignIn', () => {
   });
 });
 
+describe('AuthService: sesión por dispositivo y refresco', () => {
+  it('el login entrega también un token de refresco', async () => {
+    const { service, refreshTokens } = setup([dbUser], true);
+
+    const result = await service.SignIn({
+      email: dbUser.email,
+      password: 'Pass#2026',
+    });
+
+    expect(result.refreshToken).toBe('refresco-nuevo');
+    expect(refreshTokens.issue).toHaveBeenCalledWith(7);
+  });
+
+  it('si no se puede emitir el refresco (migración sin aplicar), el login sigue funcionando', async () => {
+    const { service, refreshTokens } = setup([dbUser], true);
+    refreshTokens.issue.mockRejectedValue(
+      new Error('relation "refresh_tokens" does not exist'),
+    );
+
+    const result = await service.SignIn({
+      email: dbUser.email,
+      password: 'Pass#2026',
+    });
+
+    expect(result.accessToken).toBe('jwt.firmado');
+    expect(result.refreshToken).toBeUndefined();
+  });
+
+  it('refresh: gasta el token y abre una sesión nueva con otro refresco', async () => {
+    const { service, refreshTokens, cacheSet } = setup([dbUser], true);
+
+    const result = await service.refresh('refresco-viejo');
+
+    expect(refreshTokens.consume).toHaveBeenCalledWith('refresco-viejo');
+    expect(result).toMatchObject({
+      accessToken: 'jwt.firmado',
+      refreshToken: 'refresco-nuevo',
+      user: { id: 7 },
+    });
+    expect(result.user).not.toHaveProperty('password');
+    expect(cacheSet).toHaveBeenCalledWith(
+      expect.stringMatching(/^session-/),
+      '7',
+      3600,
+    );
+  });
+
+  it('refresh: token desconocido, caducado o ya usado → 401 y no abre sesión', async () => {
+    const { service, refreshTokens, cacheSet } = setup([dbUser], true);
+    refreshTokens.consume.mockResolvedValue(null);
+
+    await expect(service.refresh('robado')).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    expect(cacheSet).not.toHaveBeenCalled();
+  });
+
+  it('refresh: una cuenta desactivada no renueva su sesión', async () => {
+    const { service, refreshTokens } = setup(
+      [{ ...dbUser, isActive: false }],
+      true,
+    );
+
+    await expect(service.refresh('refresco')).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    expect(refreshTokens.issue).not.toHaveBeenCalled();
+  });
+
+  it('cerrar sesión borra solo la sesión de ese dispositivo y revoca su refresco', async () => {
+    const { service, cacheDelete, refreshTokens } = setup([dbUser], true);
+
+    await service.signOut(
+      { id: '7', email: dbUser.email, roleId: 3, tokenId: 'tok-celular' },
+      'refresco-celular',
+    );
+
+    expect(cacheDelete).toHaveBeenCalledWith('session-tok-celular');
+    expect(refreshTokens.revoke).toHaveBeenCalledWith('refresco-celular');
+    expect(refreshTokens.revokeAllForUser).not.toHaveBeenCalled();
+  });
+
+  it('revocar todo marca a la persona y anula todos sus refrescos', async () => {
+    const { service, cacheSet, refreshTokens } = setup([dbUser], true);
+
+    await service.revokeAllSessions(7);
+
+    expect(cacheSet).toHaveBeenCalledWith(
+      'revoked-7',
+      expect.any(Number),
+      3600,
+    );
+    expect(refreshTokens.revokeAllForUser).toHaveBeenCalledWith(7);
+  });
+});
+
 describe('AuthService.SignUp', () => {
   it('asigna el rol de cliente (5), no el de mesero (3)', async () => {
     const values = jest
@@ -126,6 +237,7 @@ describe('AuthService.SignUp', () => {
       bcrypt,
       {} as JwtService,
       {} as CacheService,
+      {} as never,
     );
 
     const result = await service.SignUp({
@@ -158,6 +270,7 @@ describe('AuthService.getCurrentUser', () => {
       {} as BcryptService,
       {} as JwtService,
       {} as CacheService,
+      {} as never,
     );
   }
 

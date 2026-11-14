@@ -28,7 +28,7 @@ describe('POST/DELETE /notifications/devices (HTTP)', () => {
 
   const sign = async (id: string, roleId: number) => {
     const tokenId = `tok-${id}`;
-    await cache.set(`user-${id}`, tokenId);
+    await cache.set(`session-${tokenId}`, id);
     return jwt.signAsync(
       { id, email: 'x@quijote.mx', roleId, tokenId },
       { secret: SECRET, expiresIn: 60 },

@@ -1,0 +1,59 @@
+# Pruebas de rendimiento y esfuerzo con k6 (api#80, #82, #84, #85, #86, #87).
+# Solo a mano y solo contra un entorno de pruebas: nunca contra producción. Los runners de GitHub
+# no representan la capacidad del servidor: los números sirven para comparar entre versiones.
+name: Rendimiento (k6)
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: URL del API de pruebas (HTTPS, nunca producción)
+        required: true
+      script:
+        description: Prueba a ejecutar
+        type: choice
+        options: [load, stress]
+        default: load
+      scenario:
+        description: 'Solo para load: s2, s3, s4 o todos'
+        default: todos
+      duration:
+        description: 'Solo para load: duración de cada escenario'
+        default: 5m
+
+permissions:
+  contents: read
+
+jobs:
+  k6:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Instalar k6 (versión fija, SHA-256 verificado)
+        env:
+          K6_VERSION: v1.8.2
+          K6_SHA256: 37620781d35406ebf402397a6c5cf4adb62d175cb052ff45325ae0b860527063
+        run: |
+          set -euo pipefail
+          FILE="k6-${K6_VERSION}-linux-amd64.tar.gz"
+          curl -sSfLO "https://github.com/grafana/k6/releases/download/${K6_VERSION}/${FILE}"
+          echo "${K6_SHA256}  ${FILE}" | sha256sum -c -
+          tar -xzf "$FILE" --strip-components=1 "k6-${K6_VERSION}-linux-amd64/k6"
+      - name: Ejecutar
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+          PASSWORD: ${{ secrets.PERF_PASSWORD }}
+          SCENARIO: ${{ inputs.scenario }}
+          DURATION: ${{ inputs.duration }}
+        run: |
+          case "$BASE_URL" in *api-restaurant-management.onrender.com*) echo "::error::No se prueba contra producción."; exit 1;; esac
+          mkdir -p reports/perf
+          ./k6 run --no-color --summary-export "reports/perf/${{ inputs.script }}.json" "perf/${{ inputs.script }}.js" | tee "reports/perf/${{ inputs.script }}.txt"
+      - name: Subir resultados
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-${{ inputs.script }}
+          path: reports/perf/
+          retention-days: 30
