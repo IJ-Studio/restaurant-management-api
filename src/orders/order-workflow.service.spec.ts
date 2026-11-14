@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 
 import { ROLES } from '../common/constants/roles';
-import { OrderWorkflowService } from './order-workflow.service';
+import { AVISOS, OrderWorkflowService } from './order-workflow.service';
 
 type Chain = Record<string, jest.Mock> & PromiseLike<unknown>;
 
@@ -204,6 +204,18 @@ describe('OrderWorkflowService', () => {
     });
 
     describe('avisos push al cambiar de manos (HU-07)', () => {
+      // api#76: lo que viaja por FCM/APNs se puede ver en la pantalla bloqueada y en los logs del proveedor.
+      it.each(Object.entries(AVISOS))(
+        'el aviso de «%s» solo nombra la mesa y va a roles de personal',
+        (_estatus, aviso) => {
+          if (!aviso) throw new Error('aviso vacío');
+          const texto = aviso.body('Mesa B01');
+          expect(texto.startsWith('Mesa B01')).toBe(true);
+          expect(texto.replace('Mesa B01', '')).not.toMatch(/\d|\$|@/);
+          expect(aviso.roles.every((rol) => rol !== ROLES.CLIENTE)).toBe(true);
+        },
+      );
+
       it('cocina marca listo → aviso a los meseros con la mesa y sin datos del cliente', async () => {
         const { service, notifications } = setup([
           [orden({ estatus: 'en_preparacion' })],
