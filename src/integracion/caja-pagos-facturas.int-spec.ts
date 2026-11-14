@@ -78,6 +78,8 @@ const sesiones: Record<string, string> = {};
 async function sesion(
   rol: 'admin' | 'cajero' | 'mesero' | 'cocina' | 'cliente',
 ) {
+  // Sesión que abrió sesiones.global.ts para todas las suites (límite de 5 logins por minuto).
+  sesiones[rol] ??= process.env[`INTEGRACION_TOKEN_${rol.toUpperCase()}`];
   if (!sesiones[rol]) {
     const r = await http('POST', '/auth/sign-in', undefined, {
       email: `${rol}@prueba.local`,

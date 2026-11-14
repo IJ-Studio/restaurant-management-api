@@ -1,0 +1,168 @@
+# DAST del API con OWASP ZAP (api#69, api#71, api#78). Nunca contra producción: escanea un API
+# levantado en el runner con PostgreSQL de pruebas y datos sintéticos (test/db/).
+#
+# - zap-baseline (cada PR): importa la especificación OpenAPI (/docs-json) y hace el escaneo pasivo
+#   sin sesión: cabeceras, configuración y lo que exponen las rutas públicas (menú, reservaciones).
+#   Bloquea el PR si hay alguna alerta High.
+# - zap-full (semanal, a mano y en un PR con la etiqueta zap-full): escaneo activo autenticado, una vez con token de admin y otra con el
+#   de mesero, sobre todas las rutas del OpenAPI. Bloquea con High; las Medium se documentan.
+#
+# Reglas aceptadas: .zap/rules.tsv. Hallazgos y decisiones: docs/seguridad-zap.md.
+name: ZAP
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, labeled]
+  schedule:
+    # Lunes 05:23 UTC (domingo en la noche en Huejutla).
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zap-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PGHOST: localhost
+  PGUSER: postgres
+  PGPASSWORD: postgres
+  PGDATABASE: quijote_local
+  LOCAL_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/quijote_local
+  API_URL: http://localhost:10000
+  ZAP_IMAGE: ghcr.io/zaproxy/zaproxy:stable
+
+jobs:
+  zap:
+    name: ${{ matrix.nombre }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - nombre: zap-baseline
+            modo: baseline
+            rol: ''
+          - nombre: zap-full-admin
+            modo: full
+            rol: admin
+          - nombre: zap-full-mesero
+            modo: full
+            rol: mesero
+    steps:
+      # El escaneo activo es largo: en los PR solo corre el baseline, salvo con la etiqueta zap-full.
+      - name: ¿Toca este escaneo?
+        id: toca
+        run: |
+          if [ "${{ matrix.modo }}" = "baseline" ] || [ "${{ github.event_name }}" != "pull_request" ] \
+             || [ "${{ contains(github.event.pull_request.labels.*.name, 'zap-full') }}" = "true" ]; then
+            echo "si=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "En los PR solo corre zap-baseline." >> "$GITHUB_STEP_SUMMARY"
+            echo "si=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.toca.outputs.si == 'true'
+      - uses: pnpm/action-setup@v6
+        if: steps.toca.outputs.si == 'true'
+        with:
+          version: 10
+      - uses: actions/setup-node@v7
+        if: steps.toca.outputs.si == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Instalar y compilar
+        if: steps.toca.outputs.si == 'true'
+        run: pnpm install --frozen-lockfile && pnpm run build
+
+      # Postgres con docker run (no como service) para arrancarlo con poco log: el escaneo provoca
+      # miles de errores esperados y el log del service tapaba el resultado de ZAP.
+      - name: Base de pruebas y API
+        if: steps.toca.outputs.si == 'true'
+        run: |
+          set -euo pipefail
+          docker run -d --name pg -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=quijote_local \
+            postgres:17 -c log_min_messages=fatal -c log_min_error_statement=panic > /dev/null
+          for _ in $(seq 1 30); do pg_isready -q -h localhost && break; sleep 1; done
+          CLAVE="Ci#$(openssl rand -hex 12)"; JWT="$(openssl rand -hex 32)"
+          echo "::add-mask::$CLAVE"; echo "::add-mask::$JWT"
+          echo "CLAVE_PRUEBAS=$CLAVE" >> "$GITHUB_ENV"
+          psql -v ON_ERROR_STOP=1 -q -f test/db/preparar.sql
+          psql -v ON_ERROR_STOP=1 -q -f test/db/esquema.sql
+          psql -v ON_ERROR_STOP=1 -q -v clave_pruebas="$CLAVE" -f test/db/semilla.sql
+          nohup env NODE_ENV=development PORT=10000 \
+            DATABASE_URL="$LOCAL_DATABASE_URL" DATABASE_SSL=false \
+            SUPABASE_URL=http://127.0.0.1:9 SUPABASE_SERVICE_ROLE_KEY=ci-sin-supabase \
+            JWT_SECRET="$JWT" JWT_ACCESS_TOKEN_TTL=7200 \
+            STRIPE_SECRET_KEY=sk_test_ci_sin_stripe STRIPE_WEBHOOK_SECRET=whsec_ci_sin_stripe \
+            FACTURAPI_TEST_KEY=sk_test_ci_sin_facturapi \
+            CORS_ORIGINS=http://localhost:3000 THROTTLE_LIMIT=100000 \
+            node dist/src/main.js > api.log 2>&1 &
+          for _ in $(seq 1 60); do curl -sf "$API_URL/docs-json" > /dev/null && exit 0; sleep 1; done
+          echo "El API no arrancó:"; tail -50 api.log; exit 1
+
+      - name: Token del rol
+        if: steps.toca.outputs.si == 'true' && matrix.rol != ''
+        run: |
+          set -euo pipefail
+          TOKEN=$(curl -sf -X POST "$API_URL/auth/sign-in" -H 'content-type: application/json' \
+            -d "{\"email\":\"${{ matrix.rol }}@prueba.local\",\"password\":\"$CLAVE_PRUEBAS\"}" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).accessToken))')
+          echo "::add-mask::$TOKEN"
+          echo "ZAP_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+      - name: OWASP ZAP
+        if: steps.toca.outputs.si == 'true'
+        run: |
+          set -uo pipefail
+          mkdir -p zap && chmod 777 zap && cp .zap/rules.tsv zap/rules.tsv
+          OPCIONES=(); SESION=()
+          if [ "${{ matrix.modo }}" = "baseline" ]; then
+            OPCIONES+=(-S)   # modo seguro: solo el escaneo pasivo
+          else
+            # Escaneo activo con la sesión del rol: ZAP pone la cabecera en cada petición a localhost.
+            SESION+=(-e "ZAP_AUTH_HEADER_VALUE=Bearer ${ZAP_TOKEN}" -e ZAP_AUTH_HEADER_SITE=localhost)
+            OPCIONES+=(-z "-config scanner.maxScanDurationInMins=25")
+          fi
+          docker run --rm --network host "${SESION[@]}" -v "$PWD/zap:/zap/wrk:rw" "$ZAP_IMAGE" \
+            zap-api-scan.py -t "$API_URL/docs-json" -f openapi -c rules.tsv -I \
+            -r "${{ matrix.nombre }}.html" -J "${{ matrix.nombre }}.json" -w "${{ matrix.nombre }}.md" \
+            "${OPCIONES[@]}"
+          echo "zap terminó con $?"
+
+      - name: Veredicto (cero High)
+        if: steps.toca.outputs.si == 'true'
+        run: |
+          set -o pipefail
+          node -e '
+            const fs = require("fs");
+            const [json, reglas] = process.argv.slice(1);
+            const ignoradas = new Set(fs.readFileSync(reglas, "utf8").split("\n")
+              .filter((l) => l && !l.startsWith("#")).map((l) => l.split("\t"))
+              .filter(([, accion]) => accion === "IGNORE").map(([id]) => id));
+            const alertas = JSON.parse(fs.readFileSync(json, "utf8")).site
+              .flatMap((s) => s.alerts ?? []).filter((a) => !ignoradas.has(String(a.pluginid)));
+            const riesgo = { 3: "High", 2: "Medium", 1: "Low", 0: "Informativa" };
+            const filas = alertas.sort((a, b) => b.riskcode - a.riskcode)
+              .map((a) => `| ${riesgo[a.riskcode]} | ${a.pluginid} | ${a.name} | ${a.count ?? a.instances?.length ?? ""} |`);
+            console.log(["### ${{ matrix.nombre }}", "", "| Riesgo | Regla | Alerta | Instancias |", "|---|---|---|---|", ...filas].join("\n"));
+            const altas = alertas.filter((a) => Number(a.riskcode) === 3);
+            if (altas.length) { console.error(`Hay ${altas.length} alertas High.`); process.exit(1); }
+          ' "zap/${{ matrix.nombre }}.json" zap/rules.tsv | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Subir reportes
+        if: always() && steps.toca.outputs.si == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.nombre }}-report
+          path: |
+            zap/
+            api.log
+          retention-days: 30
+          if-no-files-found: ignore
