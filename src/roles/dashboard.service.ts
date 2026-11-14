@@ -1,3 +1,4 @@
+import { rangoDeHoy } from '../operations/operations.service';
 import { Injectable, BadRequestException, Inject } from '@nestjs/common';
 import { DRIZZLE } from '../database/drizzle/constants';
 import type { DrizzleDB } from '../database/drizzle/drizzle.provider';
@@ -14,22 +15,13 @@ export class DashboardService {
   ) {}
 
   async getVentasPorHora() {
-    const hoy = new Date();
-    const inicioDia = new Date(
-      hoy.getFullYear(),
-      hoy.getMonth(),
-      hoy.getDate(),
-    ).toISOString();
-    const finDia = new Date(
-      hoy.getFullYear(),
-      hoy.getMonth(),
-      hoy.getDate() + 1,
-    ).toISOString();
+    // Día y horas en la zona del restaurante (el servidor y la base van en UTC).
+    const { inicio: inicioDia, fin: finDia } = rangoDeHoy();
 
     try {
       const rows = await this.db
         .select({
-          hora: sql<number>`EXTRACT(HOUR FROM ${ordenes.tiempoApertura})`.mapWith(
+          hora: sql<number>`EXTRACT(HOUR FROM ${ordenes.tiempoApertura} AT TIME ZONE 'America/Mexico_City')`.mapWith(
             Number,
           ),
           total: sql<number>`SUM(${ordenes.total})`.mapWith(Number),
@@ -38,8 +30,12 @@ export class DashboardService {
         .where(
           sql`${ordenes.tiempoApertura} >= ${inicioDia} AND ${ordenes.tiempoApertura} < ${finDia} AND ${ordenes.estatus} NOT IN ('cancelada')`,
         )
-        .groupBy(sql`EXTRACT(HOUR FROM ${ordenes.tiempoApertura})`)
-        .orderBy(sql`EXTRACT(HOUR FROM ${ordenes.tiempoApertura})`);
+        .groupBy(
+          sql`EXTRACT(HOUR FROM ${ordenes.tiempoApertura} AT TIME ZONE 'America/Mexico_City')`,
+        )
+        .orderBy(
+          sql`EXTRACT(HOUR FROM ${ordenes.tiempoApertura} AT TIME ZONE 'America/Mexico_City')`,
+        );
 
       const ventas: number[] = Array<number>(24).fill(0);
       for (const row of rows) {
@@ -59,17 +55,8 @@ export class DashboardService {
   async getAdminStats() {
     try {
       // Fechas límite del día actual (formato ISO)
-      const hoy = new Date();
-      const inicioDia = new Date(
-        hoy.getFullYear(),
-        hoy.getMonth(),
-        hoy.getDate(),
-      ).toISOString();
-      const finDia = new Date(
-        hoy.getFullYear(),
-        hoy.getMonth(),
-        hoy.getDate() + 1,
-      ).toISOString();
+      // Día y horas en la zona del restaurante (el servidor y la base van en UTC).
+      const { inicio: inicioDia, fin: finDia } = rangoDeHoy();
 
       // Ventas totales del día
       const { ventas, totalDia } = await this.getVentasPorHora();
