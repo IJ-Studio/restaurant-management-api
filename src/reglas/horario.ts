@@ -112,3 +112,16 @@ export function horarioDelDia(
   if (!apertura || !cierre) return null;
   return { apertura, cierre, cocinaCierre: base.cocinaCierre ?? cierre };
 }
+
+/** Inicio y fin (exclusivo) del día local de `fecha` en la zona del restaurante, como instantes UTC. */
+export function diaLocal(
+  fecha: Date,
+  zonaHoraria: string,
+): { inicio: Date; fin: Date } {
+  const inicio = instanteLocal(
+    momentoLocal(fecha, zonaHoraria).fecha,
+    '00:00',
+    zonaHoraria,
+  );
+  return { inicio, fin: new Date(inicio.getTime() + 24 * 60 * 60 * 1000) };
+}

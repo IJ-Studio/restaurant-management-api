@@ -16,7 +16,9 @@ import {
   platillos,
   clientes,
   mesas,
+  restaurante,
 } from '../../src/database/schema/public.schema';
+import { diaLocal } from '../reglas/horario';
 
 import { users } from '../../src/database/schema/public.schema';
 import { STAFF_ROLES } from '../common/constants/roles';
@@ -68,7 +70,9 @@ type OrdenReciente = {
   /** Hora de apertura en ISO 8601 (la app calcula tiempos de espera). */
   openedAt: string | null;
   /** Todos los platillos del pedido (cocina los necesita para preparar). */
-  items: Array<{ nombre: string; cantidad: number }>;
+  items: Array<{ nombre: string; cantidad: number; notas: string | null }>;
+  /** Nota general para cocina. */
+  notasCocina: string | null;
 };
 
 type ItemPedido = {
@@ -839,18 +843,33 @@ export class OrdersService {
   async getRecentOrdersForAdmin(): Promise<OrdenReciente[]> {
     const mesero = alias(users, 'mesero');
     try {
-      // Fechas límite del día de hoy
-      const hoy = new Date();
-      const inicioDia = new Date(
-        hoy.getFullYear(),
-        hoy.getMonth(),
-        hoy.getDate(),
-      ).toISOString();
-      const finDia = new Date(
-        hoy.getFullYear(),
-        hoy.getMonth(),
-        hoy.getDate() + 1,
-      ).toISOString();
+      // «Hoy» en la hora del restaurante, no la del servidor (Render corre en UTC: con la
+      // medianoche UTC, a las 18:00 de México desaparecían los pedidos abiertos antes).
+      const [config] = await this.db
+        .select({ zona: restaurante.zonaHoraria })
+        .from(restaurante)
+        .limit(1);
+      const zona = config?.zona || 'America/Mexico_City';
+      const { inicio, fin } = diaLocal(new Date(), zona);
+      const inicioDia = inicio.toISOString();
+      const finDia = fin.toISOString();
+
+      // El límite va sobre pedidos, no sobre filas de platillos (antes, 50 filas = pocas cuentas).
+      const activos = await this.db
+        .select({ id: ordenes.id })
+        .from(ordenes)
+        .where(
+          and(
+            // Activos = siguen en el restaurante: sin cancelados, completados ni pagados.
+            // "entregada" se queda porque falta cobrarla.
+            sql`${ordenes.estatus} NOT IN ('cancelada', 'completada', 'pagada')`,
+            sql`${ordenes.tiempoApertura} >= ${inicioDia}`,
+            sql`${ordenes.tiempoApertura} < ${finDia}`,
+          ),
+        )
+        .orderBy(desc(ordenes.tiempoApertura))
+        .limit(100);
+      if (activos.length === 0) return [];
 
       const rows = await this.db
         .select({
@@ -866,6 +885,8 @@ export class OrdersService {
           guests: ordenes.numComensales,
           item: platillos.nombre,
           cantidad: ordenItems.cantidad,
+          notas: ordenItems.notas,
+          notasCocina: ordenes.notasCocina,
           table: mesas.numero,
           tipo: ordenes.tipo,
           status: ordenes.estatus,
@@ -879,16 +900,12 @@ export class OrdersService {
         .leftJoin(ordenItems, eq(ordenes.id, ordenItems.ordenId))
         .leftJoin(platillos, eq(ordenItems.platilloId, platillos.id))
         .where(
-          and(
-            // Activos = siguen en el restaurante: sin cancelados, completados ni pagados.
-            // "entregada" se queda porque falta cobrarla.
-            sql`${ordenes.estatus} NOT IN ('cancelada', 'completada', 'pagada')`,
-            sql`${ordenes.tiempoApertura} >= ${inicioDia}`,
-            sql`${ordenes.tiempoApertura} < ${finDia}`,
+          inArray(
+            ordenes.id,
+            activos.map((a) => a.id),
           ),
         )
-        .orderBy(desc(ordenes.tiempoApertura))
-        .limit(50);
+        .orderBy(desc(ordenes.tiempoApertura));
 
       // Agrupar para no repetir órdenes por cada item
       const orderMap = new Map<string, OrdenReciente>();
@@ -903,6 +920,7 @@ export class OrdersService {
               ? new Date(row.time).toLocaleTimeString('es-MX', {
                   hour: '2-digit',
                   minute: '2-digit',
+                  timeZone: zona,
                 })
               : '—',
             item: row.item || '—',
@@ -915,12 +933,15 @@ export class OrdersService {
             total: Number(row.total ?? 0),
             openedAt: row.time ? new Date(row.time).toISOString() : null,
             items: [],
+            notasCocina: row.notasCocina ?? null,
           });
         }
         if (row.item) {
-          orderMap
-            .get(row.id)!
-            .items.push({ nombre: row.item, cantidad: row.cantidad ?? 1 });
+          orderMap.get(row.id)!.items.push({
+            nombre: row.item,
+            cantidad: row.cantidad ?? 1,
+            notas: row.notas ?? null,
+          });
         }
       }
 
