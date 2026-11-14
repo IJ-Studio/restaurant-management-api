@@ -4,7 +4,7 @@
 # - zap-baseline (cada PR): importa la especificación OpenAPI (/docs-json) y hace el escaneo pasivo
 #   sin sesión: cabeceras, configuración y lo que exponen las rutas públicas (menú, reservaciones).
 #   Bloquea el PR si hay alguna alerta High.
-# - zap-full (semanal y a mano): escaneo activo autenticado, una vez con token de admin y otra con el
+# - zap-full (semanal, a mano y en un PR con la etiqueta zap-full): escaneo activo autenticado, una vez con token de admin y otra con el
 #   de mesero, sobre todas las rutas del OpenAPI. Bloquea con High; las Medium se documentan.
 #
 # Reglas aceptadas: .zap/rules.tsv. Hallazgos y decisiones: docs/seguridad-zap.md.
@@ -13,6 +13,7 @@ name: ZAP
 on:
   pull_request:
     branches: [main, develop]
+    types: [opened, synchronize, reopened, labeled]
   schedule:
     # Lunes 05:23 UTC (domingo en la noche en Huejutla).
     - cron: '23 5 * * 1'
@@ -66,11 +67,12 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      # El escaneo activo es largo: en los PR solo corre el baseline.
+      # El escaneo activo es largo: en los PR solo corre el baseline, salvo con la etiqueta zap-full.
       - name: ¿Toca este escaneo?
         id: toca
         run: |
-          if [ "${{ matrix.modo }}" = "baseline" ] || [ "${{ github.event_name }}" != "pull_request" ]; then
+          if [ "${{ matrix.modo }}" = "baseline" ] || [ "${{ github.event_name }}" != "pull_request" ] \
+             || [ "${{ contains(github.event.pull_request.labels.*.name, 'zap-full') }}" = "true" ]; then
             echo "si=true" >> "$GITHUB_OUTPUT"
           else
             echo "En los PR solo corre zap-baseline." >> "$GITHUB_STEP_SUMMARY"
