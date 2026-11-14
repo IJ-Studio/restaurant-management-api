@@ -1,4 +1,5 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, HttpException } from '@nestjs/common';
+import Stripe from 'stripe';
 
 import { ROLES } from '../common/constants/roles';
 import { PagosService } from './pagos.service';
@@ -13,6 +14,7 @@ function setup(rowsQueue: unknown[][], eventsInserted: unknown[][] = []) {
     const rows = results.shift() ?? [];
     return Object.assign(Promise.resolve(rows), {
       limit: jest.fn().mockResolvedValue(rows),
+      for: jest.fn().mockResolvedValue(rows),
     });
   });
 
@@ -40,6 +42,7 @@ function setup(rowsQueue: unknown[][], eventsInserted: unknown[][] = []) {
     insert: () => ({ values: insertValues }),
     update: () => ({ set }),
     delete: del,
+    transaction: (fn: (tx: unknown) => unknown) => fn(db),
   };
   const service = new PagosService(db as never);
 
@@ -48,19 +51,22 @@ function setup(rowsQueue: unknown[][], eventsInserted: unknown[][] = []) {
     status: 'requires_confirmation',
   });
   const constructEvent = jest.fn();
+  const refund = jest.fn().mockResolvedValue({ id: 're_1' });
   (
     service as unknown as {
       stripe: {
         paymentIntents: { create: typeof create };
         webhooks: { constructEvent: typeof constructEvent };
+        refunds: { create: typeof refund };
       };
     }
   ).stripe = {
     paymentIntents: { create },
     webhooks: { constructEvent },
+    refunds: { create: refund },
   };
 
-  return { service, create, constructEvent, set, insertValues };
+  return { service, create, constructEvent, set, insertValues, refund };
 }
 
 describe('PagosService.crearIntentoPago (DT-16)', () => {
@@ -254,6 +260,46 @@ describe('PagosService.crearIntentoPago (DT-16)', () => {
   });
 });
 
+describe('PagosService.crearIntentoPago: tarjeta rechazada', () => {
+  it('fondos insuficientes → 402 con mensaje claro, sin el detalle de Stripe', async () => {
+    const orden = {
+      id: 'orden-1',
+      estatus: 'entregada',
+      total: '25.50',
+      clienteId: null,
+    };
+    const { service, create } = setup([[orden], []]);
+    create.mockRejectedValueOnce(
+      new Stripe.errors.StripeCardError({
+        type: 'card_error',
+        code: 'card_declined',
+        decline_code: 'insufficient_funds',
+        message: 'Your card has insufficient funds.',
+      }),
+    );
+
+    const error: unknown = await service
+      .crearIntentoPago(
+        { ordenId: 'orden-1', paymentMethodId: 'pm_x' },
+        1,
+        ROLES.CAJERO,
+      )
+      .catch((e: unknown) => e);
+
+    expect((error as HttpException).getStatus()).toBe(402);
+    expect((error as Error).message).toBe(
+      'La tarjeta no tiene fondos suficientes.',
+    );
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        confirm: true,
+        automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
+      }),
+      expect.anything(),
+    );
+  });
+});
+
 describe('PagosService.manejarWebhookStripe (DT-D10 / NH-11 / NH-12)', () => {
   const eventoExitoso = {
     id: 'evt-1',
@@ -301,11 +347,12 @@ describe('PagosService.manejarWebhookStripe (DT-D10 / NH-11 / NH-12)', () => {
     expect(set).not.toHaveBeenCalled();
   });
 
-  it('payment_intent.succeeded marca la orden como pagada una sola vez', async () => {
-    const orden = { id: 'orden-1', estatus: 'abierta' };
-    const metodo = { id: 3 };
-    const { service, constructEvent, set, insertValues } = setup(
-      [[orden], [metodo]],
+  const metodoStripe = { id: 12 };
+
+  it('payment_intent.succeeded registra el pago y cierra el pedido', async () => {
+    const orden = { id: 'orden-1', estatus: 'abierta', total: '116.00' };
+    const { service, constructEvent, set, insertValues, refund } = setup(
+      [[metodoStripe], [orden], []],
       [[{ eventId: 'evt-1' }]],
     );
     constructEvent.mockReturnValue(eventoExitoso);
@@ -313,19 +360,38 @@ describe('PagosService.manejarWebhookStripe (DT-D10 / NH-11 / NH-12)', () => {
     const result = await service.manejarWebhookStripe(Buffer.from(''), 'firma');
 
     expect(result).toEqual({ received: true });
-    expect(set).toHaveBeenCalledWith({ estatus: 'pagada' });
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({ estatus: 'pagada' }),
+    );
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({
         ordenId: 'orden-1',
+        monto: '116.00',
         idTransaccionPasarela: 'pi_1',
       }),
     );
+    expect(refund).not.toHaveBeenCalled();
   });
 
-  it('si la orden ya está pagada no duplica el pago', async () => {
-    const orden = { id: 'orden-1', estatus: 'pagada' };
-    const { service, constructEvent, set } = setup(
-      [[orden]],
+  it('el mismo intento ya registrado (otro evento) no duplica el pago', async () => {
+    const orden = { id: 'orden-1', estatus: 'pagada', total: '116.00' };
+    const { service, constructEvent, set, insertValues, refund } = setup(
+      [[metodoStripe], [orden], [{ intento: 'pi_1' }]],
+      [[{ eventId: 'evt-9' }]],
+    );
+    constructEvent.mockReturnValue(eventoExitoso);
+
+    await service.manejarWebhookStripe(Buffer.from(''), 'firma');
+
+    expect(set).not.toHaveBeenCalled();
+    expect(insertValues).toHaveBeenCalledTimes(1); // solo el evento
+    expect(refund).not.toHaveBeenCalled();
+  });
+
+  it('si el pedido ya se cobró en caja, no lo vuelve a cobrar: reembolsa el intento', async () => {
+    const orden = { id: 'orden-1', estatus: 'pagada', total: '116.00' };
+    const { service, constructEvent, set, refund } = setup(
+      [[metodoStripe], [orden], [{ intento: null }]],
       [[{ eventId: 'evt-1' }]],
     );
     constructEvent.mockReturnValue(eventoExitoso);
@@ -333,6 +399,25 @@ describe('PagosService.manejarWebhookStripe (DT-D10 / NH-11 / NH-12)', () => {
     await service.manejarWebhookStripe(Buffer.from(''), 'firma');
 
     expect(set).not.toHaveBeenCalled();
+    expect(refund).toHaveBeenCalledWith(
+      { payment_intent: 'pi_1', reason: 'duplicate' },
+      { idempotencyKey: 'cobro-doble-pi_1' },
+    );
+  });
+
+  it('un cobro menor al total (el pedido creció) se registra sin cerrar el pedido', async () => {
+    const orden = { id: 'orden-1', estatus: 'abierta', total: '150.00' };
+    const { service, constructEvent, set } = setup(
+      [[metodoStripe], [orden], []],
+      [[{ eventId: 'evt-1' }]],
+    );
+    constructEvent.mockReturnValue(eventoExitoso);
+
+    await service.manejarWebhookStripe(Buffer.from(''), 'firma');
+
+    expect(set).toHaveBeenCalledWith(
+      expect.not.objectContaining({ estatus: 'pagada' }),
+    );
   });
 
   it('payment_intent.payment_failed no actualiza la orden', async () => {

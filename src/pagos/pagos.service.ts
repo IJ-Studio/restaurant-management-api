@@ -5,6 +5,8 @@ import {
   NotFoundException,
   Inject,
   Logger,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { DRIZZLE } from '../database/drizzle/constants';
 import type { DrizzleDB } from '../database/drizzle/drizzle.provider';
@@ -33,6 +35,22 @@ import {
   CrearFacturaDto,
   GuardarPerfilFacturacionDto,
 } from './dto/pagos.dto';
+
+/** Rechazo de la tarjeta en palabras del cajero o del cliente (sin el detalle de Stripe). */
+export function mensajeRechazo(codigo?: string): string {
+  switch (codigo) {
+    case 'insufficient_funds':
+      return 'La tarjeta no tiene fondos suficientes.';
+    case 'expired_card':
+      return 'La tarjeta está vencida.';
+    case 'incorrect_cvc':
+      return 'El código de seguridad de la tarjeta es incorrecto.';
+    case 'authentication_required':
+      return 'El banco pide autenticar la tarjeta: cobra con la tarjeta presente.';
+    default:
+      return 'El banco rechazó la tarjeta. Prueba con otra o cobra en caja.';
+  }
+}
 
 @Injectable()
 export class PagosService {
@@ -574,21 +592,34 @@ export class PagosService {
     const metadata: Record<string, string> = { ordenId: dto.ordenId };
     if (clienteId) metadata.clienteId = clienteId;
 
-    const paymentIntent = await this.stripe.paymentIntents.create(
-      {
-        amount: montoEnCentavos,
-        currency: 'mxn',
-        customer: stripeCustomerId,
-        payment_method: paymentMethodId,
-        confirm: !!paymentMethodId,
-        automatic_payment_methods: paymentMethodId
-          ? undefined
-          : { enabled: true },
-        off_session: !!stripeCustomerId,
-        metadata,
-      },
-      { idempotencyKey },
-    );
+    let paymentIntent: Stripe.PaymentIntent;
+    try {
+      paymentIntent = await this.stripe.paymentIntents.create(
+        {
+          amount: montoEnCentavos,
+          currency: 'mxn',
+          customer: stripeCustomerId,
+          payment_method: paymentMethodId,
+          confirm: !!paymentMethodId,
+          // Con la tarjeta ya elegida se confirma aquí, sin página a la que regresar: Stripe
+          // exige entonces descartar los métodos con redirección.
+          automatic_payment_methods: paymentMethodId
+            ? { enabled: true, allow_redirects: 'never' }
+            : { enabled: true },
+          off_session: !!stripeCustomerId,
+          metadata,
+        },
+        { idempotencyKey },
+      );
+    } catch (error: unknown) {
+      if (error instanceof Stripe.errors.StripeCardError) {
+        throw new HttpException(
+          { message: mensajeRechazo(error.decline_code ?? error.code) },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+      throw error;
+    }
 
     return {
       clientSecret: paymentIntent.client_secret,
@@ -601,22 +632,6 @@ export class PagosService {
   private async marcarOrdenComoPagada(paymentIntent: Stripe.PaymentIntent) {
     const ordenId = paymentIntent.metadata?.ordenId;
     if (!ordenId) return;
-
-    const [orden] = await this.db
-      .select()
-      .from(ordenes)
-      .where(eq(ordenes.id, ordenId))
-      .limit(1);
-
-    if (!orden) {
-      this.logger.warn(
-        `Webhook de Stripe para una orden inexistente: ${ordenId}`,
-      );
-      return;
-    }
-
-    // Idempotencia por estatus: un reenvío del webhook no vuelve a insertar el pago.
-    if (orden.estatus === 'pagada') return;
 
     const [metodoStripe] = await this.db
       .select()
@@ -631,19 +646,65 @@ export class PagosService {
       return;
     }
 
-    await this.db
-      .update(ordenes)
-      .set({ estatus: 'pagada' })
-      .where(eq(ordenes.id, ordenId));
+    // La fila del pedido queda bloqueada: un cobro en caja o un segundo intento de pago que
+    // lleguen a la vez esperan, y solo uno de los dos registra el pago.
+    const resultado = await this.db.transaction(async (tx) => {
+      const [orden] = await tx
+        .select()
+        .from(ordenes)
+        .where(eq(ordenes.id, ordenId))
+        .for('update');
+      if (!orden) return 'sin-orden' as const;
 
-    await this.db.insert(pagos).values({
-      ordenId,
-      metodoPagoId: metodoStripe.id,
-      monto: (paymentIntent.amount / 100).toString(),
-      pasarela: 'stripe',
-      idTransaccionPasarela: paymentIntent.id,
-      estatus: 'completado',
+      const previos = await tx
+        .select({ intento: pagos.idTransaccionPasarela })
+        .from(pagos)
+        .where(
+          and(eq(pagos.ordenId, ordenId), eq(pagos.estatus, 'completado')),
+        );
+      if (previos.some((p) => p.intento === paymentIntent.id)) {
+        return 'ya-registrado' as const;
+      }
+      if (orden.estatus === 'pagada' || previos.length > 0) {
+        return 'cobro-doble' as const;
+      }
+
+      const ahora = new Date().toISOString();
+      const cubre =
+        paymentIntent.amount >= Math.round(Number(orden.total ?? 0) * 100);
+      await tx.insert(pagos).values({
+        ordenId,
+        metodoPagoId: metodoStripe.id,
+        monto: (paymentIntent.amount / 100).toFixed(2),
+        pasarela: 'stripe',
+        idTransaccionPasarela: paymentIntent.id,
+        estatus: 'completado',
+      });
+      await tx
+        .update(ordenes)
+        .set(
+          cubre
+            ? { estatus: 'pagada', tiempoCierre: ahora, actualizadoEn: ahora }
+            : { actualizadoEn: ahora },
+        )
+        .where(eq(ordenes.id, ordenId));
+      return 'registrado' as const;
     });
+
+    if (resultado === 'sin-orden') {
+      this.logger.warn(
+        `Webhook de Stripe para una orden inexistente: ${ordenId}`,
+      );
+    } else if (resultado === 'cobro-doble') {
+      // El pedido ya estaba cobrado (en caja o con otro intento): se devuelve este cobro.
+      this.logger.warn(
+        `Cobro doble del pedido ${ordenId} con ${paymentIntent.id}: se reembolsa.`,
+      );
+      await this.stripe.refunds.create(
+        { payment_intent: paymentIntent.id, reason: 'duplicate' },
+        { idempotencyKey: `cobro-doble-${paymentIntent.id}` },
+      );
+    }
   }
 
   async manejarWebhookStripe(rawBody: Buffer, signature: string) {
