@@ -33,13 +33,13 @@ const ESTATUS: EstatusSolicitudFactura[] = [
 export class SolicitudesFacturaController {
   constructor(private readonly servicio: SolicitudesFacturaService) {}
 
-  /** El cliente pide su factura (al pagar o después). */
+  /** El cliente pide su factura (al pagar o después); caja la pide por una cuenta en mesa. */
   @Post()
   solicitar(
     @Body(createStrictValidationPipe()) dto: CrearFacturaDto,
     @ActiveUser() user: ActiveUserData,
   ) {
-    return this.servicio.solicitar(dto, Number(user.id));
+    return this.servicio.solicitar(dto, Number(user.id), user.roleId);
   }
 
   @Get('orden/:ordenId')

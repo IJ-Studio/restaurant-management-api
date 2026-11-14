@@ -119,6 +119,7 @@ describe('SolicitudesFacturaService', () => {
         },
       ],
       [{ estatus: 'pagada' }],
+      [{ id: 1 }],
     ]);
 
     const resultado = await servicio.emitir(1, 99);
@@ -131,8 +132,10 @@ describe('SolicitudesFacturaService', () => {
         ordenId: 'o-1',
       },
       7,
+      { deCola: true },
     );
-    expect(updates[0]).toMatchObject({
+    expect(updates[0]).toMatchObject({ atendidaPor: 99 });
+    expect(updates[1]).toMatchObject({
       estatus: 'emitida',
       facturaId: 'fac-1',
       atendidaPor: 99,
@@ -165,6 +168,50 @@ describe('SolicitudesFacturaService', () => {
 
     await expect(servicio.emitir(1, 99)).rejects.toThrow(MENSAJES.sinPago);
     expect(pagos.crearFactura).not.toHaveBeenCalled();
+  });
+
+  const PENDIENTE = {
+    id: 1,
+    ordenId: 'o-1',
+    usuarioId: 7,
+    estatus: 'pendiente',
+    datos: {},
+  };
+
+  it('dos administradores a la vez: solo uno timbra, el otro recibe 409', async () => {
+    const { servicio, pagos } = setup([
+      [PENDIENTE],
+      [{ estatus: 'pagada' }],
+      [],
+    ]);
+
+    await expect(servicio.emitir(1, 98)).rejects.toThrow(MENSAJES.enCurso);
+    expect(pagos.crearFactura).not.toHaveBeenCalled();
+  });
+
+  it('si Facturapi rechaza los datos, la solicitud queda libre para corregir y reintentar', async () => {
+    const { servicio, pagos, updates } = setup([
+      [PENDIENTE],
+      [{ estatus: 'pagada' }],
+      [{ id: 1 }],
+    ]);
+    pagos.crearFactura.mockRejectedValueOnce(
+      new BadRequestException('RFC no registrado en el SAT'),
+    );
+
+    await expect(servicio.emitir(1, 99)).rejects.toThrow('RFC no registrado');
+    expect(updates[1]).toEqual({ atendidaPor: null, atendidaEn: null });
+  });
+
+  it('caja pide la factura de una cuenta en mesa (sin cliente registrado)', async () => {
+    const { servicio } = setup([
+      [{ id: 'o-1', clienteId: null }],
+      [{ id: 2, estatus: 'pendiente' }],
+    ]);
+
+    await expect(servicio.solicitar(DTO as never, 5, 2)).resolves.toMatchObject(
+      { id: 2, estatus: 'pendiente' },
+    );
   });
 
   it('no atiende dos veces la misma solicitud', async () => {

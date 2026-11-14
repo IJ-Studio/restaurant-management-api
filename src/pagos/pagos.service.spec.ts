@@ -1,8 +1,12 @@
 import { BadRequestException, HttpException } from '@nestjs/common';
 import Stripe from 'stripe';
 
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
+
 import { ROLES } from '../common/constants/roles';
-import { PagosService } from './pagos.service';
+import { CrearFacturaDto } from './dto/pagos.dto';
+import { formaDePagoSat, PagosService } from './pagos.service';
 
 process.env.STRIPE_SECRET_KEY = 'sk_test_falso';
 process.env.FACTURAPI_TEST_KEY = 'sk_test_falso';
@@ -38,7 +42,7 @@ function setup(rowsQueue: unknown[][], eventsInserted: unknown[][] = []) {
   const del = jest.fn().mockReturnValue({ where: deleteWhere });
 
   const db = {
-    select: () => ({ from: () => ({ where }) }),
+    select: () => ({ from: () => ({ where, leftJoin: () => ({ where }) }) }),
     insert: () => ({ values: insertValues }),
     update: () => ({ set }),
     delete: del,
@@ -66,7 +70,24 @@ function setup(rowsQueue: unknown[][], eventsInserted: unknown[][] = []) {
     refunds: { create: refund },
   };
 
-  return { service, create, constructEvent, set, insertValues, refund };
+  const facturar = jest
+    .fn()
+    .mockResolvedValue({ id: 'inv_1', uuid: 'UUID-1', total: 100.01 });
+  (
+    service as unknown as {
+      facturapi: { invoices: { create: typeof facturar } };
+    }
+  ).facturapi = { invoices: { create: facturar } };
+
+  return {
+    service,
+    create,
+    constructEvent,
+    set,
+    insertValues,
+    refund,
+    facturar,
+  };
 }
 
 describe('PagosService.crearIntentoPago (DT-16)', () => {
@@ -436,5 +457,98 @@ describe('PagosService.manejarWebhookStripe (DT-D10 / NH-11 / NH-12)', () => {
 
     expect(result).toEqual({ received: true });
     expect(set).not.toHaveBeenCalled();
+  });
+});
+
+describe('PagosService.crearFactura: el CFDI ampara lo cobrado', () => {
+  it('manda el total con IVA incluido, la forma del pago mayor y una llave de idempotencia', async () => {
+    const orden = {
+      id: 'o-1',
+      estatus: 'pagada',
+      total: '100.01',
+      clienteId: null,
+    };
+    const { service, facturar } = setup(
+      [
+        [orden],
+        [],
+        [
+          { monto: '33.34', nombre: 'EFECTIVO', tipo: 'efectivo' },
+          { monto: '66.67', nombre: 'Tarjeta débito', tipo: 'tarjeta' },
+        ],
+      ],
+      [[{ id: 'fac-1' }]],
+    );
+
+    await service.crearFactura(
+      {
+        ordenId: 'o-1',
+        rfc: 'EKU9003173C9',
+        razonSocial: 'ESCUELA KEMPER URGATE',
+        usoCfdi: 'G03',
+        regimenFiscal: '601',
+        codigoPostalFiscal: '42501',
+      },
+      5,
+      { deCola: true },
+    );
+
+    const [enviado] = facturar.mock.calls[0] as [
+      {
+        payment_form: string;
+        idempotency_key: string;
+        items: { product: { price: number; tax_included: boolean } }[];
+      },
+    ];
+    expect(enviado.payment_form).toBe('28');
+    expect(enviado.idempotency_key).toBe('factura-orden-o-1-0');
+    expect(enviado.items[0].product).toMatchObject({
+      price: 100.01,
+      tax_included: true,
+    });
+  });
+});
+
+describe('formaDePagoSat (CFDI)', () => {
+  it.each([
+    ['Efectivo', 'efectivo', '01'],
+    ['Tarjeta débito', 'tarjeta', '28'],
+    ['Tarjeta crédito', 'tarjeta', '04'],
+    ['TARJETA', 'tarjeta', '04'],
+    ['Transferencia', 'digital', '03'],
+    ['Mercado Pago', 'digital', '31'],
+    ['Tarjeta en línea (Stripe)', 'online', '31'],
+    ['', '', '99'],
+  ])('%s → %s', (nombre, tipo, clave) => {
+    expect(formaDePagoSat(nombre, tipo)).toBe(clave);
+  });
+});
+
+describe('CrearFacturaDto: catálogos del SAT', () => {
+  const validar = (datos: Record<string, unknown>) =>
+    validate(
+      plainToInstance(CrearFacturaDto, {
+        ordenId: '0b7c1f3e-8f9e-4c55-9d7e-2a6b1c3d4e5f',
+        rfc: 'xaxx010101000',
+        razonSocial: 'Público en general',
+        usoCfdi: 'g03',
+        regimenFiscal: '616',
+        codigoPostalFiscal: '43000',
+        ...datos,
+      }),
+    ).then((errores) => errores.map((e) => e.property));
+
+  it('acepta datos válidos (normaliza RFC y uso a mayúsculas)', async () => {
+    await expect(validar({})).resolves.toEqual([]);
+  });
+
+  it.each([
+    ['rfc', 'XAXX0101010'],
+    ['rfc', 'XAXX01010100$'],
+    ['usoCfdi', 'Z99'],
+    ['regimenFiscal', '699'],
+    ['codigoPostalFiscal', '4300A'],
+  ])('rechaza %s = %s', async (campo, valor) => {
+    await expect(validar({ [campo]: valor })).resolves.toContain(campo);
   });
 });

@@ -2,6 +2,7 @@ import {
   Injectable,
   Optional,
   BadRequestException,
+  ConflictException,
   NotFoundException,
   Inject,
   Logger,
@@ -22,9 +23,10 @@ import {
   facturas,
 } from '../database/schema/public.schema';
 import { stripeEvents } from '../database/schema/stripe-events.schema';
-import { eq, and } from 'drizzle-orm';
+import { solicitudesFactura } from '../database/schema/solicitudes-factura.schema';
+import { eq, and, sql } from 'drizzle-orm';
 import Stripe from 'stripe';
-import Facturapi, { type Invoice } from 'facturapi';
+import Facturapi, { InvoiceStatus, type Invoice } from 'facturapi';
 import { ROLES } from '../common/constants/roles';
 import { ReglasService } from '../reglas/reglas.service';
 import { ESTATUS_COBRABLES } from '../orders/order-workflow.service';
@@ -50,6 +52,20 @@ export function mensajeRechazo(codigo?: string): string {
     default:
       return 'El banco rechazó la tarjeta. Prueba con otra o cobra en caja.';
   }
+}
+
+/**
+ * Clave de forma de pago del SAT para un método de `metodos_pago`. Stripe y las billeteras
+ * digitales cobran como intermediarios (31); sin pagos registrados, «por definir» (99).
+ */
+export function formaDePagoSat(nombre: string, tipo: string): string {
+  const texto = `${nombre} ${tipo}`.toLowerCase();
+  if (/stripe|en l[ií]nea|online|mercado/.test(texto)) return '31';
+  if (/efectivo/.test(texto)) return '01';
+  if (/d[eé]bito/.test(texto)) return '28';
+  if (/tarjeta|cr[eé]dito/.test(texto)) return '04';
+  if (/transferencia/.test(texto)) return '03';
+  return '99';
 }
 
 @Injectable()
@@ -833,9 +849,15 @@ export class PagosService {
   // FACTURACIÓN (CFDI VÍA FACTURAPI)
   // ══════════════════════════════════════════════════════════════
 
-  async crearFactura(dto: CrearFacturaDto, usuarioId: number) {
-    const clienteId = await this.resolverClienteId(usuarioId);
-
+  /**
+   * Timbra la factura de una orden pagada. `deCola`: la emite el administrador desde la cola de
+   * solicitudes, que ya comprobó quién la pidió (el cliente dueño o el personal de caja).
+   */
+  async crearFactura(
+    dto: CrearFacturaDto,
+    usuarioId: number,
+    { deCola = false }: { deCola?: boolean } = {},
+  ) {
     const [orden] = await this.db
       .select()
       .from(ordenes)
@@ -845,7 +867,10 @@ export class PagosService {
     if (!orden) {
       throw new NotFoundException('La orden no existe.');
     }
-    if (orden.clienteId !== clienteId) {
+    const clienteId = deCola
+      ? (orden.clienteId ?? undefined)
+      : await this.resolverClienteId(usuarioId);
+    if (!deCola && orden.clienteId !== clienteId) {
       throw new BadRequestException('Esta orden no te pertenece.');
     }
     if (orden.estatus !== 'pagada') {
@@ -859,13 +884,12 @@ export class PagosService {
       throw new BadRequestException('El total de la orden no puede ser nulo.');
     }
 
-    const [facturaExistente] = await this.db
-      .select()
+    const previas = await this.db
+      .select({ estatus: facturas.estatus })
       .from(facturas)
-      .where(eq(facturas.ordenId, dto.ordenId))
-      .limit(1);
+      .where(eq(facturas.ordenId, dto.ordenId));
 
-    if (facturaExistente) {
+    if (previas.some((f) => f.estatus !== 'cancelada')) {
       throw new BadRequestException(
         'Esta orden ya tiene una factura generada.',
       );
@@ -882,7 +906,7 @@ export class PagosService {
       email?: string | null;
     };
 
-    if (dto.perfilFacturacionId) {
+    if (dto.perfilFacturacionId && clienteId) {
       const [perfil] = await this.db
         .select()
         .from(perfilesFacturacion)
@@ -943,13 +967,19 @@ export class PagosService {
             product: {
               description: `Pedido #${dto.ordenId.slice(0, 8).toUpperCase()} - Restaurante El Quijote`,
               product_key: '90101501', // "Servicios de restaurante" (catálogo SAT)
-              price: subtotal,
+              // Los precios de la carta ya incluyen IVA: Facturapi desglosa a partir del total,
+              // así el CFDI ampara exactamente lo cobrado (antes salía por el subtotal).
+              price: total,
+              tax_included: true,
               taxes: [{ type: 'IVA', rate: 0.16 }],
             },
           },
         ],
         use: datosFiscales.usoCfdi,
-        payment_form: '31', // "Intermediario pagos" (cobro con tarjeta en línea vía pasarela)
+        payment_form: await this.formaDePago(dto.ordenId),
+        // Un reintento o un doble clic devuelve la misma factura en lugar de timbrar otra.
+        // Tras cancelar una con errores, la llave cambia para poder timbrar la corregida.
+        idempotency_key: `factura-orden-${dto.ordenId}-${previas.length}`,
       });
     } catch (err: unknown) {
       console.error('Error de Facturapi al timbrar:', err);
@@ -961,7 +991,7 @@ export class PagosService {
 
     // Si mandó datos fiscales manuales y pidió guardarlos, crea el
     // perfil reusable para futuras facturas.
-    if (dto.guardarComoPerfil && !dto.perfilFacturacionId) {
+    if (dto.guardarComoPerfil && !dto.perfilFacturacionId && clienteId) {
       await this.db.insert(perfilesFacturacion).values({
         clienteId,
         rfc: datosFiscales.rfc,
@@ -991,6 +1021,88 @@ export class PagosService {
       .returning();
 
     return facturaGuardada;
+  }
+
+  /**
+   * Cancela un CFDI ante el SAT (vía Facturapi). Motivo 02: se emitió con errores y se volverá a
+   * emitir (la solicitud de la orden regresa a la cola para corregir los datos); 03: la operación
+   * no se llevó a cabo (por ejemplo, se reembolsó el pago).
+   */
+  async cancelarFactura(id: string, motivo: '02' | '03') {
+    const [factura] = await this.db
+      .select()
+      .from(facturas)
+      .where(eq(facturas.id, id))
+      .limit(1);
+    if (!factura) throw new NotFoundException('La factura no existe.');
+    if (factura.estatus === 'cancelada') {
+      throw new ConflictException('Esta factura ya está cancelada.');
+    }
+    if (!factura.facturapiInvoiceId) {
+      throw new BadRequestException(
+        'Esta factura no se timbró con Facturapi: cancélala en el portal del SAT.',
+      );
+    }
+
+    let respuesta: Invoice;
+    try {
+      respuesta = await this.facturapi.invoices.cancel(
+        factura.facturapiInvoiceId,
+        { motive: motivo },
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '';
+      throw new BadRequestException(
+        `No se pudo cancelar la factura: ${message || 'error desconocido de Facturapi'}`,
+      );
+    }
+
+    // Arriba de cierto monto el SAT pide que el receptor acepte: queda «pendiente» hasta entonces.
+    const cancelada = respuesta.status === InvoiceStatus.CANCELED;
+    if (cancelada) {
+      await this.db
+        .update(facturas)
+        .set({ estatus: 'cancelada', fechaCancelacion: sql`now()` })
+        .where(eq(facturas.id, id));
+      if (motivo === '02') {
+        await this.db
+          .update(solicitudesFactura)
+          .set({
+            estatus: 'pendiente',
+            facturaId: null,
+            atendidaPor: null,
+            atendidaEn: null,
+          })
+          .where(eq(solicitudesFactura.ordenId, factura.ordenId));
+      }
+    }
+    return {
+      id,
+      estatus: cancelada ? 'cancelada' : 'vigente',
+      cancelacion: respuesta.cancellation_status ?? null,
+    };
+  }
+
+  /**
+   * Forma de pago del SAT según el pago de mayor monto de la orden (en una cuenta dividida pagada
+   * con varios métodos, el CFDI lleva el que cubrió la mayor parte).
+   */
+  private async formaDePago(ordenId: string): Promise<string> {
+    const filas = await this.db
+      .select({
+        monto: pagos.monto,
+        nombre: metodosPago.nombre,
+        tipo: metodosPago.tipo,
+      })
+      .from(pagos)
+      .leftJoin(metodosPago, eq(pagos.metodoPagoId, metodosPago.id))
+      .where(and(eq(pagos.ordenId, ordenId), eq(pagos.estatus, 'completado')));
+    const mayor = filas.reduce<(typeof filas)[number] | undefined>(
+      (max, fila) =>
+        !max || Number(fila.monto) > Number(max.monto) ? fila : max,
+      undefined,
+    );
+    return formaDePagoSat(mayor?.nombre ?? '', mayor?.tipo ?? '');
   }
 
   async obtenerFacturaPorOrden(ordenId: string, usuarioId: number) {
