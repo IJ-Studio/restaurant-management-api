@@ -1,5 +1,5 @@
 import {
-  IsNumber,
+  ArrayMaxSize,
   IsString,
   IsNotEmpty,
   IsArray,
@@ -13,15 +13,20 @@ import {
 import { Type } from 'class-transformer';
 import { Texto, TextoNegocio } from '../../common/normalizacion/normalizar';
 
+// Cantidad por platillo: el tope de /reglas (pedidos.cantidadMaxPorPlatillo) también se revisa en el servicio.
+const CANTIDAD = { message: 'La cantidad debe ser un entero de 1 a 99.' };
+const PLATILLO = { message: 'El platillo no es válido.' };
+
 class OrderItemDto {
-  @IsNumber()
+  @IsInt(PLATILLO)
   @IsNotEmpty()
-  @Min(1)
+  @Min(1, PLATILLO)
   platilloId: number;
 
-  @IsNumber()
+  @IsInt(CANTIDAD)
   @IsNotEmpty()
-  @Min(1)
+  @Min(1, CANTIDAD)
+  @Max(99, CANTIDAD)
   cantidad: number;
 
   /** Indicación para cocina sobre este platillo ("sin cebolla"). */
@@ -41,23 +46,28 @@ export class CreateOrderMesaDto {
   @IsOptional()
   usuarioId?: number;
 
-  @IsNumber()
+  @IsInt(PLATILLO)
   @IsOptional()
-  @Min(1)
+  @Min(1, PLATILLO)
   platilloId?: number;
 
-  @IsNumber()
+  @IsInt(CANTIDAD)
   @IsOptional()
-  @Min(1)
+  @Min(1, CANTIDAD)
+  @Max(99, CANTIDAD)
   cantidad?: number;
 
   @Texto()
   @IsString()
   @IsOptional()
+  @MaxLength(20, { message: 'La mesa no es válida.' })
   mesa?: string;
 
   @IsArray()
   @IsOptional()
+  @ArrayMaxSize(100, {
+    message: 'Un pedido admite como máximo 100 platillos distintos.',
+  })
   @ValidateNested({ each: true })
   @Type(() => OrderItemDto)
   items?: OrderItemDto[];

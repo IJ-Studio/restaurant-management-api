@@ -14,6 +14,10 @@ import {
   TextoNegocio,
 } from '../../common/normalizacion/normalizar';
 
+// Id de Stripe (pm_…): nunca un número de tarjeta ni texto arbitrario que llegue a Stripe.
+const METODO_STRIPE = /^pm_[A-Za-z0-9_]{1,250}$/;
+const METODO_INVALIDO = { message: 'El método de pago no es válido.' };
+
 // Catálogos del SAT (CFDI 4.0): Facturapi los rechaza al timbrar, aquí se avisa antes.
 const RFC = /^[A-ZÑ&]{3,4}\d{6}[A-Z\d]{3}$/;
 const USO_CFDI = /^(G0[1-3]|I0[1-8]|D(0[1-9]|10)|S01|CP01|CN01)$/;
@@ -128,6 +132,7 @@ export class GuardarMetodoPagoDto {
   // Nunca es el número de tarjeta ni el CVC.
   @IsString()
   @IsNotEmpty()
+  @Matches(METODO_STRIPE, METODO_INVALIDO)
   paymentMethodId: string;
 
   @IsBoolean()
@@ -149,6 +154,7 @@ export class CrearIntentoPagoDto {
   // Stripe.js en el frontend, pero sin guardarla para el futuro).
   @IsString()
   @IsOptional()
+  @Matches(METODO_STRIPE, METODO_INVALIDO)
   paymentMethodId?: string;
 
   // Dirección a la que se envía este pedido (opcional: si ya se guardó

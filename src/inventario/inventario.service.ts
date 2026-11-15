@@ -158,6 +158,10 @@ export class InventarioService {
 
   async crearOrden(dto: OrdenCompraDto) {
     const items = dto.items ?? [];
+    // Mismas reglas y mensajes que el formulario (esquemaOrdenCompra); la edición sigue siendo parcial.
+    if (!dto.supplierId) throw new BadRequestException('Elige un proveedor.');
+    if (items.length === 0)
+      throw new BadRequestException('Añade al menos un producto.');
     const supplierName = await this.nombreProveedor(dto.supplierId);
     // Folio legible a partir del id (OC-00042), en la misma transacción que el alta.
     return this.db.transaction(async (tx) => {
