@@ -65,4 +65,37 @@ describe('validateEnv', () => {
     expect(message).toContain('JWT_SECRET');
     expect(message).not.toContain(secreto);
   });
+
+  describe('base de producción en desarrollo', () => {
+    const prod =
+      'postgresql://u:p@aws-1-us-east-2.pooler.supabase.com:6543/postgres';
+
+    it.each(['DATABASE_URL', 'DATABASE_MIGRATION_URL', 'DB_POOL_URL'])(
+      'se niega a arrancar en desarrollo con %s en Supabase',
+      (key) => {
+        expect(() =>
+          validateEnv({ ...base, NODE_ENV: 'development', [key]: prod }),
+        ).toThrow(`${key} apunta a la base de producción`);
+      },
+    );
+
+    it('el mensaje no incluye la URL', () => {
+      expect(() =>
+        validateEnv({ ...base, NODE_ENV: 'development', DATABASE_URL: prod }),
+      ).not.toThrow(/u:p@/);
+    });
+
+    it('arranca con ALLOW_PROD_DB=1, fuera de desarrollo o con la base local', () => {
+      const dev = { ...base, NODE_ENV: 'development', DATABASE_URL: prod };
+      expect(validateEnv({ ...dev, ALLOW_PROD_DB: '1' })).toBeDefined();
+      expect(validateEnv({ ...dev, NODE_ENV: 'production' })).toBeDefined();
+      expect(validateEnv({ ...dev, NODE_ENV: undefined })).toBeDefined();
+      expect(
+        validateEnv({
+          ...dev,
+          DATABASE_URL: 'postgresql://u:p@127.0.0.1:54329/quijote_local',
+        }),
+      ).toBeDefined();
+    });
+  });
 });
