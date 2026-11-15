@@ -10,6 +10,7 @@ const REQUIRED_KEYS = [
 ] as const;
 
 const MIN_JWT_SECRET_LENGTH = 32;
+const BD_PRODUCCION = /\.supabase\.(co|com)(:|\/|$)/i;
 
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0;
@@ -56,6 +57,25 @@ export function validateEnv(config: Env): Env {
     config.DATABASE_SSL !== 'false'
   ) {
     errors.push('DATABASE_SSL debe ser "true" o "false".');
+  }
+
+  // En desarrollo no se arranca contra Supabase (solo existe el de producción) salvo a propósito.
+  // Solo con NODE_ENV=development explícito: así no puede impedir el arranque en Render.
+  const bdRemota = [
+    'DATABASE_URL',
+    'DATABASE_MIGRATION_URL',
+    'DB_POOL_URL',
+  ].find(
+    (key) => isNonEmptyString(config[key]) && BD_PRODUCCION.test(config[key]),
+  );
+  if (
+    bdRemota &&
+    config.NODE_ENV === 'development' &&
+    config.ALLOW_PROD_DB !== '1'
+  ) {
+    errors.push(
+      `${bdRemota} apunta a la base de producción (Supabase) en desarrollo; usa la base local o define ALLOW_PROD_DB=1.`,
+    );
   }
 
   if (errors.length > 0) {
