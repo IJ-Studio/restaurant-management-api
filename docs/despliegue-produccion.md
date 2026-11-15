@@ -1,7 +1,27 @@
 # Despliegue a producción
 
-> **Ejecutado el 14-nov** (release #157, `develop` → `main`; Render en línea a las 00:20). Abajo, el
-> registro y, después, el plan original del 13-nov. Fusionar `develop` → `main` dispara Render.
+> **Último: 15-nov** (release #177, `develop` → `main`; Render en línea a las 18:05:39 UTC). Antes, el
+> 14-nov (#157). Fusionar `develop` → `main` dispara Render (auto-deploy por commit).
+
+## Registro del 15-nov
+
+1. Sin migraciones ni variables nuevas. Stripe del Sandbox: el usuario configuró en Render
+   `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET`, y el destino del webhook
+   `https://api-restaurant-management.onrender.com/pagos/webhook` con `payment_intent.succeeded` y
+   `payment_intent.payment_failed`. El MCP de Render no lista variables: se confirma porque el
+   despliegue del 15-nov 17:46 UTC (`service_updated`) arrancó, y `validateEnv` no arranca sin ellas.
+2. Versión de la API de Stripe: el SDK del lockfile (`stripe` 22.3.1) fija `2026-06-24.dahlia`, la
+   misma del destino. Si se actualiza el SDK, revisar que el destino use la misma versión.
+3. Release #177 con el CI en verde (#158–#164 y #169–#176). Despliegue `dep-dbsv84eq1p3s73f9hndg`
+   (`685d458`) en línea a las 18:05:39 UTC, sin errores ni avisos en los logs de arranque.
+4. Humo sin sesión: `/reglas` (con `campos`, `intervaloMin` 30 y `diasMaxAdelanto` 60), `/sitio`,
+   `/menu` (sin `precioCosto`) y `/reservations/horas` en 200; rutas protegidas y `refresh` falso
+   en 401 con mensaje.
+5. Humo con sesión: **no se pudo**; `SMOKE_USER` da 401 (el correo no existe en `users` de
+   producción). No se reintentó para no sumar intentos al bloqueo de la cuenta.
+6. En producción existe `metodos_pago` «Tarjeta en línea (Stripe)» (id 12, activo), que el webhook
+   necesita para registrar el pago (consulta de solo lectura).
+7. Reversa: «Rollback» en Render a `dep-dbsuvqbbc2fs73cl72v0` (`c643c16`, con las variables nuevas).
 
 ## Registro del 14-nov
 
