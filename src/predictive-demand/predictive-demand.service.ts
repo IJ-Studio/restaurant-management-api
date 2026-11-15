@@ -53,7 +53,8 @@ export class PredictiveDemandService {
   private async cargarDatos() {
     const ventasRaw = await this.db.execute(sql`
       select
-        date_trunc('day', o.creado_en)::date as fecha,
+        -- Día del restaurante: la base corre en UTC y desde las 18:00 locales caería en el día siguiente.
+        (o.creado_en at time zone 'America/Mexico_City')::date as fecha,
         oi.platillo_id as platillo_id,
         sum(oi.cantidad)::int as unidades
       from orden_items oi
