@@ -1,12 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { IsNotEmpty, MaxLength } from 'class-validator';
 import {
-  IsEmail,
-  IsNotEmpty,
-  Matches,
-  MaxLength,
-  MinLength,
-  IsString,
-} from 'class-validator';
+  ContrasenaNueva,
+  CorreoValido,
+  LIMITES,
+  NombrePersona,
+  TelefonoValido,
+} from '../../common/validacion/campos';
 
 import { Match } from '../../common/decorators/match.decorator';
 import {
@@ -34,9 +34,8 @@ export class SignUpDto {
     description: 'First name of user',
     maxLength: 50,
   })
-  @IsString()
   @IsNotEmpty()
-  @MaxLength(50)
+  @NombrePersona()
   readonly name!: string;
 
   @TextoNegocio({ obligatorio: true })
@@ -45,9 +44,8 @@ export class SignUpDto {
     description: 'Last name of user',
     maxLength: 50,
   })
-  @IsString()
   @IsNotEmpty()
-  @MaxLength(50)
+  @NombrePersona()
   readonly lastname!: string;
 
   @Telefono({ obligatorio: true })
@@ -56,11 +54,7 @@ export class SignUpDto {
     description:
       'Teléfono en formato internacional (E.164): "+" y de 10 a 15 dígitos, sin espacios',
   })
-  @IsString()
-  @Matches(/^\+[1-9]\d{9,14}$/, {
-    message:
-      'phone must be in international format: "+" followed by 10 to 15 digits',
-  })
+  @TelefonoValido()
   readonly phone!: string;
 
   @Correo({ obligatorio: true })
@@ -69,8 +63,7 @@ export class SignUpDto {
     description: 'Email of user',
     maxLength: 100,
   })
-  @IsEmail()
-  @MaxLength(100)
+  @CorreoValido()
   @IsNotEmpty()
   readonly email!: string;
 
@@ -81,15 +74,7 @@ export class SignUpDto {
     minLength: 8,
     maxLength: 64,
   })
-  @IsString()
-  @MinLength(8, { message: 'password too short' })
-  // Tope de 64: permite frases largas y queda lejos de los 72 bytes que bcrypt procesa.
-  @MaxLength(64, { message: 'password too long' })
-  @Matches(/[a-z]/, { message: 'password too weak: needs a lowercase letter' })
-  @Matches(/[A-Z]/, { message: 'password too weak: needs an uppercase letter' })
-  @Matches(/\d/, { message: 'password too weak: needs a number' })
-  // Cualquier carácter que no sea letra, número ni espacio (el web acepta ! @ # $ % & , . -).
-  @Matches(/[^A-Za-z0-9\s]/, { message: 'password too weak: needs a symbol' })
+  @ContrasenaNueva()
   @IsNotEmpty()
   readonly password!: string;
 
@@ -99,5 +84,6 @@ export class SignUpDto {
   })
   @Match('password')
   @IsNotEmpty()
+  @MaxLength(LIMITES.contrasena)
   readonly passwordConfirm!: string;
 }

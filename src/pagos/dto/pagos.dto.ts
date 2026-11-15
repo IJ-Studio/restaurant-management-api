@@ -1,4 +1,5 @@
 import {
+  MaxLength,
   IsString,
   IsNotEmpty,
   IsOptional,
@@ -8,6 +9,7 @@ import {
   Length,
   Matches,
 } from 'class-validator';
+import { LIMITES, TextoMax } from '../../common/validacion/campos';
 import {
   Correo,
   Texto,
@@ -33,26 +35,31 @@ export class CrearDireccionDto {
   @TextoNegocio()
   @IsString()
   @IsOptional()
+  @TextoMax(LIMITES.alias)
   alias?: string;
 
   @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsNotEmpty()
+  @TextoMax(LIMITES.lineaCorta)
   linea1: string;
 
   @TextoNegocio()
   @IsString()
   @IsOptional()
+  @TextoMax(LIMITES.lineaCorta)
   linea2?: string;
 
   @TextoNegocio()
   @IsString()
   @IsOptional()
+  @TextoMax(LIMITES.lineaMedia)
   colonia?: string;
 
   @TextoNegocio()
   @IsString()
   @IsOptional()
+  @TextoMax(LIMITES.referencias)
   referencias?: string;
 
   @Texto({ obligatorio: true })
@@ -65,11 +72,13 @@ export class CrearDireccionDto {
   @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsNotEmpty()
+  @TextoMax(LIMITES.lineaMedia)
   ciudad: string;
 
   @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsNotEmpty()
+  @TextoMax(LIMITES.lineaMedia)
   estado: string;
 
   @IsBoolean()
@@ -81,26 +90,31 @@ export class ActualizarDireccionDto {
   @TextoNegocio()
   @IsString()
   @IsOptional()
+  @TextoMax(LIMITES.alias)
   alias?: string;
 
   @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsOptional()
+  @TextoMax(LIMITES.lineaCorta)
   linea1?: string;
 
   @TextoNegocio()
   @IsString()
   @IsOptional()
+  @TextoMax(LIMITES.lineaCorta)
   linea2?: string;
 
   @TextoNegocio()
   @IsString()
   @IsOptional()
+  @TextoMax(LIMITES.lineaMedia)
   colonia?: string;
 
   @TextoNegocio()
   @IsString()
   @IsOptional()
+  @TextoMax(LIMITES.referencias)
   referencias?: string;
 
   @Texto({ obligatorio: true })
@@ -114,11 +128,13 @@ export class ActualizarDireccionDto {
   @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsOptional()
+  @TextoMax(LIMITES.lineaMedia)
   ciudad?: string;
 
   @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsOptional()
+  @TextoMax(LIMITES.lineaMedia)
   estado?: string;
 
   @IsBoolean()
@@ -148,6 +164,7 @@ export class CrearIntentoPagoDto {
   // Si el cliente eligió una tarjeta ya guardada.
   @IsUUID()
   @IsOptional()
+  @MaxLength(64)
   metodoPagoGuardadoId?: string;
 
   // Si el cliente está pagando con una tarjeta nueva (ya tokenizada por
@@ -173,6 +190,7 @@ export class CrearFacturaDto {
   // este ID y el resto de los campos fiscales se vuelve opcional.
   @IsUUID()
   @IsOptional()
+  @MaxLength(64)
   perfilFacturacionId?: string;
 
   @TextoNegocio({ obligatorio: true })
@@ -188,6 +206,7 @@ export class CrearFacturaDto {
   @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsOptional()
+  @TextoMax(LIMITES.razonSocial)
   razonSocial?: string;
 
   @TextoNegocio({ obligatorio: true })
@@ -211,6 +230,9 @@ export class CrearFacturaDto {
   @Correo()
   @IsString()
   @IsOptional()
+  @MaxLength(LIMITES.correo, {
+    message: 'Escribe un correo válido, como nombre@dominio.com.',
+  })
   email?: string;
 
   // Si manda datos fiscales manuales (sin perfilFacturacionId) y quiere
@@ -233,6 +255,7 @@ export class GuardarPerfilFacturacionDto {
   @TextoNegocio({ obligatorio: true })
   @IsString()
   @IsNotEmpty()
+  @TextoMax(LIMITES.razonSocial)
   razonSocial: string;
 
   @TextoNegocio({ obligatorio: true })
@@ -255,6 +278,9 @@ export class GuardarPerfilFacturacionDto {
   @Correo()
   @IsString()
   @IsOptional()
+  @MaxLength(LIMITES.correo, {
+    message: 'Escribe un correo válido, como nombre@dominio.com.',
+  })
   email?: string;
 
   @IsBoolean()

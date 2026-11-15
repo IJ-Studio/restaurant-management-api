@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { eq, gte } from 'drizzle-orm';
 
+import { CAMPOS_PUBLICOS } from '../common/validacion/campos';
 import { DRIZZLE } from '../database/drizzle/constants';
 import type { DrizzleDB } from '../database/drizzle/drizzle.provider';
 import {
@@ -48,6 +49,7 @@ export interface Reglas {
   pedidos: { cantidadMaxPorPlatillo: number };
   horario: DiaHorario[];
   diasEspeciales: DiaEspecial[];
+  campos: typeof CAMPOS_PUBLICOS;
 }
 
 // Los mensajes son los mismos que muestra la app antes de enviar: el cliente y el servidor dicen lo mismo.
@@ -119,6 +121,7 @@ export class ReglasService {
         apertura: e.apertura ?? null,
         cierre: e.cierre ?? null,
       })),
+      campos: CAMPOS_PUBLICOS,
     };
   }
 
