@@ -24,7 +24,7 @@ import {
   users,
 } from '../database/schema/public.schema';
 import { aPesos, type Calculo } from '../common/calculo';
-import { diaLocal } from '../reglas/horario';
+import { diaLocal, momentoLocal } from '../reglas/horario';
 import type {
   CloseCashDto,
   CreateIncidentDto,
@@ -645,7 +645,14 @@ export function construirResumen({
     c.total += monto;
     c.pagos += 1;
     porCajero.set(quien, c);
-    if (pago.creadoEn) porHora[new Date(pago.creadoEn).getHours()] += monto;
+    // Hora del restaurante, no la del servidor (UTC en Render).
+    if (pago.creadoEn)
+      porHora[
+        Math.floor(
+          momentoLocal(new Date(pago.creadoEn), 'America/Mexico_City').minutos /
+            60,
+        )
+      ] += monto;
   }
 
   const porMesero = new Map<
