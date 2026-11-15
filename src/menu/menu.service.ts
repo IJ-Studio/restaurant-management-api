@@ -4,7 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { eq, type InferSelectModel } from 'drizzle-orm';
+import { eq, getTableColumns, type InferSelectModel } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 
 // 1. Importamos el Token correcto desde tus constantes
@@ -12,6 +12,16 @@ import { DRIZZLE } from '../database/drizzle/constants';
 // 2. Importamos tus tablas de Drizzle mapeadas
 import * as schema from '../database/schema/public.schema';
 import { CreateMenuOrderDto } from './dto/create-menu-order.dto';
+
+// La carta es pública: el costo del platillo es dato interno del negocio y no sale por aquí.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const { precioCosto: _costo, ...COLUMNAS_PUBLICAS } = getTableColumns(
+  schema.platillos,
+);
+type PlatilloPublico = Omit<
+  InferSelectModel<typeof schema.platillos>,
+  'precioCosto'
+>;
 
 @Injectable()
 export class MenuService {
@@ -27,11 +37,11 @@ export class MenuService {
     try {
       if (categoriaId) {
         return await this.db
-          .select()
+          .select(COLUMNAS_PUBLICAS)
           .from(schema.platillos)
           .where(eq(schema.platillos.categoriaId, categoriaId));
       }
-      return await this.db.select().from(schema.platillos);
+      return await this.db.select(COLUMNAS_PUBLICAS).from(schema.platillos);
     } catch (error) {
       console.error('Error al obtener platillos públicos:', error);
       throw new BadRequestException('No se pudieron recuperar los platillos.');
@@ -48,7 +58,7 @@ export class MenuService {
       const rows = await this.db
         .select({
           categoria: schema.categoriasMenu,
-          platillo: schema.platillos,
+          platillo: COLUMNAS_PUBLICAS,
         })
         .from(schema.categoriasMenu)
         .leftJoin(
@@ -60,7 +70,7 @@ export class MenuService {
       type CategoriaConPlatillos = InferSelectModel<
         typeof schema.categoriasMenu
       > & {
-        platillos: InferSelectModel<typeof schema.platillos>[];
+        platillos: PlatilloPublico[];
       };
       const categoriasMap = new Map<number, CategoriaConPlatillos>();
 
@@ -96,7 +106,7 @@ export class MenuService {
   async getPlatilloById(id: number) {
     try {
       const [platillo] = await this.db
-        .select()
+        .select(COLUMNAS_PUBLICAS)
         .from(schema.platillos)
         .where(eq(schema.platillos.id, id));
 
