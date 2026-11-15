@@ -14,7 +14,10 @@ import {
 import { ReservationsService } from './reservations.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
-import { AvailabilityQueryDto } from './dto/availability-query.dto';
+import {
+  AvailabilityQueryDto,
+  HorasQueryDto,
+} from './dto/availability-query.dto';
 import { Public } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guards';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -52,6 +55,16 @@ export class ReservationsController {
       mesasOcupadas: result.occupied,
       hayDisponibilidad: result.available.length > 0,
     };
+  }
+
+  /** Horas del día con su estado y motivo (DV-06): lo que se ofrece es lo que se acepta. */
+  @Public()
+  @Get('horas')
+  async getHoras(@Query() query: HorasQueryDto) {
+    return this.reservationsService.horasDelDia(
+      query.fecha,
+      query.numComensales,
+    );
   }
 
   @Public()

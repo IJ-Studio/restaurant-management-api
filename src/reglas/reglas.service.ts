@@ -21,7 +21,14 @@ import {
 
 /** Valores por defecto; el administrador puede cambiarlos con la clave `reglas_operacion` de `system_settings`. */
 export const REGLAS_POR_DEFECTO = {
-  reservas: { anticipacionMin: 60, margenCierreMin: 30, comensalesMax: 50 },
+  reservas: {
+    anticipacionMin: 60,
+    margenCierreMin: 30,
+    comensalesMax: 50,
+    // Horas ofrecidas cada 30 min y reservas hasta 60 días adelante (DV-06).
+    intervaloMin: 30,
+    diasMaxAdelanto: 60,
+  },
   pedidos: { cantidadMaxPorPlatillo: 99 },
 };
 
@@ -35,6 +42,8 @@ export interface Reglas {
     margenCierreMin: number;
     comensalesMax: number;
     duracionMin: number;
+    intervaloMin: number;
+    diasMaxAdelanto: number;
   };
   pedidos: { cantidadMaxPorPlatillo: number };
   horario: DiaHorario[];
@@ -48,6 +57,8 @@ export const MENSAJES = {
   anticipacion: (min: number) =>
     `Las reservaciones se hacen con al menos ${min >= 60 && min % 60 === 0 ? `${min / 60} ${min === 60 ? 'hora' : 'horas'}` : `${min} minutos`} de anticipación.`,
   cerrado: 'El restaurante está cerrado ese día.',
+  fueraDePlazo: (dias: number) =>
+    `Las reservaciones se aceptan con hasta ${dias} días de anticipación.`,
   fueraDeHorario: (apertura: string, cierre: string, margen: number) =>
     `Reservaciones de ${hhmm(apertura)} a ${hhmm(cierre)}, al menos ${margen} minutos antes del cierre.`,
   comensales: (max: number) => `El número de personas debe ser de 1 a ${max}.`,
@@ -138,6 +149,15 @@ export class ReglasService {
     if (fecha.getTime() - ahora.getTime() < anticipacionMin * 60_000) {
       throw new BadRequestException(MENSAJES.anticipacion(anticipacionMin));
     }
+    const { diasMaxAdelanto } = reglas.reservas;
+    if (
+      diasEntre(
+        momentoLocal(ahora, reglas.zonaHoraria).fecha,
+        momentoLocal(fecha, reglas.zonaHoraria).fecha,
+      ) > diasMaxAdelanto
+    ) {
+      throw new BadRequestException(MENSAJES.fueraDePlazo(diasMaxAdelanto));
+    }
 
     const momento = momentoLocal(fecha, reglas.zonaHoraria);
     const dia = horarioDelDia(momento, reglas.horario, reglas.diasEspeciales);
@@ -168,3 +188,10 @@ export class ReglasService {
     }
   }
 }
+
+/** Días de calendario de `desde` a `hasta` («2026-11-15»), sin depender de la zona del servidor. */
+export const diasEntre = (desde: string, hasta: string): number =>
+  Math.round(
+    (Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) /
+      86_400_000,
+  );

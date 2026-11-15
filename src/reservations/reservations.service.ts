@@ -27,13 +27,25 @@ import {
   ilike,
   type SQL,
 } from 'drizzle-orm';
-import { ReglasService } from '../reglas/reglas.service';
-import { instanteLocal } from '../reglas/horario';
+import { diasEntre, ReglasService } from '../reglas/reglas.service';
+import {
+  aMinutos,
+  horarioDelDia,
+  instanteLocal,
+  momentoLocal,
+} from '../reglas/horario';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
 
 /** Una reserva en estos estados ya no ocupa la mesa. */
 const ESTATUS_QUE_LIBERAN = ['cancelada', 'completada', 'no_show'];
+
+export interface HorasDelDia {
+  fecha: string;
+  /** Si el día entero no se puede elegir: «Cerrado», «Ya pasó» o «Fuera de plazo». */
+  motivo: string | null;
+  horas: { hora: string; disponible: boolean; motivo: string | null }[];
+}
 
 export interface MesaConEstado {
   id: number;
@@ -141,6 +153,110 @@ export class ReservationsService {
         };
       return { ...t, estado: 'disponible' as const, motivo: null };
     });
+  }
+
+  /**
+   * Horas del día para reservar (cada `intervaloMin`), todas visibles: las que no se pueden elegir
+   * traen su motivo (DV-06, DV-07, DV-13). Misma regla de solape que `estadoMesas`, calculada en
+   * memoria con dos consultas para no hacer un viaje a la base por hora.
+   */
+  async horasDelDia(
+    fecha: string,
+    numComensales: number,
+    ahora = new Date(),
+  ): Promise<HorasDelDia> {
+    const reglas = await this.reglas.obtener(ahora);
+    const zona = reglas.zonaHoraria;
+    const { anticipacionMin, margenCierreMin, intervaloMin, diasMaxAdelanto } =
+      reglas.reservas;
+    const duracionMin = reglas.reservas.duracionMin;
+    const mediodia = instanteLocal(fecha, '12:00', zona);
+    if (isNaN(mediodia.getTime()))
+      throw new BadRequestException('Esa fecha no existe.');
+    const momento = momentoLocal(mediodia, zona);
+    if (momento.fecha !== fecha)
+      throw new BadRequestException('Esa fecha no existe.');
+
+    const hoy = momentoLocal(ahora, zona).fecha;
+    const adelanto = diasEntre(hoy, fecha);
+    const dia = horarioDelDia(momento, reglas.horario, reglas.diasEspeciales);
+    const motivoDia =
+      adelanto < 0
+        ? 'Ya pasó'
+        : adelanto > diasMaxAdelanto
+          ? 'Fuera de plazo'
+          : !dia
+            ? 'Cerrado'
+            : null;
+    if (!dia || motivoDia) return { fecha, motivo: motivoDia, horas: [] };
+
+    const primera = aMinutos(dia.apertura);
+    const ultima = aMinutos(dia.cierre) - margenCierreMin;
+    const inicios: { hora: string; instante: Date }[] = [];
+    for (let m = primera; m <= ultima; m += intervaloMin) {
+      const hora = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+      inicios.push({ hora, instante: instanteLocal(fecha, hora, zona) });
+    }
+    if (inicios.length === 0) return { fecha, motivo: 'Cerrado', horas: [] };
+
+    const aptas = (
+      await this.db
+        .select({ id: mesas.id, capacidad: mesas.capacidad })
+        .from(mesas)
+        .where(eq(mesas.activa, true))
+    ).filter((t) => t.capacidad >= numComensales);
+    const desde = inicios[0].instante;
+    const hasta = new Date(
+      inicios[inicios.length - 1].instante.getTime() + duracionMin * 60_000,
+    );
+    const reservas = (
+      await this.db
+        .select({
+          mesaId: reservaciones.mesaId,
+          fechaHora: reservaciones.fechaHora,
+          duracionMin: reservaciones.duracionMin,
+        })
+        .from(reservaciones)
+        .where(
+          and(
+            lt(reservaciones.fechaHora, hasta.toISOString()),
+            // Una reserva dura como mucho 240 min (AvailabilityQueryDto): basta con mirar desde antes.
+            gt(
+              reservaciones.fechaHora,
+              new Date(desde.getTime() - 240 * 60_000).toISOString(),
+            ),
+            notInArray(reservaciones.estatus, ESTATUS_QUE_LIBERAN),
+          ),
+        )
+    ).map((r) => {
+      const inicio = new Date(r.fechaHora).getTime();
+      return {
+        mesaId: r.mesaId,
+        inicio,
+        fin: inicio + (r.duracionMin ?? duracionMin) * 60_000,
+      };
+    });
+
+    const horas = inicios.map(({ hora, instante }) => {
+      const t = instante.getTime();
+      if (t - ahora.getTime() < anticipacionMin * 60_000)
+        return {
+          hora,
+          disponible: false,
+          motivo: `Con menos de ${anticipacionMin % 60 === 0 ? `${anticipacionMin / 60} h` : `${anticipacionMin} min`}`,
+        };
+      const fin = t + duracionMin * 60_000;
+      const libre = aptas.some(
+        (m) =>
+          !reservas.some(
+            (r) => r.mesaId === m.id && r.inicio < fin && r.fin > t,
+          ),
+      );
+      return libre
+        ? { hora, disponible: true, motivo: null }
+        : { hora, disponible: false, motivo: 'Sin disponibilidad' };
+    });
+    return { fecha, motivo: null, horas };
   }
 
   async getAvailableTables(
