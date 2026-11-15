@@ -1,5 +1,7 @@
 import { instanteLocal } from '../reglas/horario';
+import { MENSAJES } from '../reglas/reglas.service';
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -54,8 +56,16 @@ export class ReservationsController {
 
   @Public()
   @Get('map')
-  async getTableMap(@Query('fechaHora') fechaHora?: string) {
-    return await this.reservationsService.getTableMap(fechaHora);
+  async getTableMap(
+    @Query('fechaHora') fechaHora?: string,
+    @Query('numComensales') numComensales?: string,
+  ) {
+    // Sin comensales, el plano de siempre (cualquier mesa vale para 1).
+    const personas = numComensales === undefined ? 1 : Number(numComensales);
+    if (!Number.isInteger(personas) || personas < 1 || personas > 50) {
+      throw new BadRequestException(MENSAJES.comensales(50));
+    }
+    return await this.reservationsService.getTableMap(fechaHora, personas);
   }
 
   @Public()
