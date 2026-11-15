@@ -1,14 +1,19 @@
 import {
   IsString,
-  IsEmail,
   IsInt,
   Min,
   Max,
   IsOptional,
   IsDateString,
   Length,
-  Matches,
 } from 'class-validator';
+import {
+  CorreoValido,
+  LIMITES,
+  NombrePersona,
+  TelefonoValido,
+  TextoMax,
+} from '../../common/validacion/campos';
 import {
   Correo,
   Telefono,
@@ -17,17 +22,19 @@ import {
 
 export class CreateReservationDto {
   @TextoNegocio({ obligatorio: true })
-  @IsString({ message: 'El nombre es obligatorio' })
-  @Length(2, 150, { message: 'El nombre debe tener entre 2 y 150 caracteres' })
+  @NombrePersona(
+    2,
+    LIMITES.nombreCompleto,
+    'Escribe el nombre de quien reserva: solo letras, espacios, guion o apóstrofo (2 a 120).',
+  )
   clienteNombre: string;
 
   @Telefono({ obligatorio: true })
-  @IsString({ message: 'El teléfono es obligatorio' })
-  @Matches(/^[0-9+\-\s()]{8,20}$/, { message: 'Teléfono inválido' })
+  @TelefonoValido()
   clienteTelefono: string;
 
   @Correo()
-  @IsEmail({}, { message: 'Email inválido' })
+  @CorreoValido()
   clienteEmail: string;
 
   @IsDateString({}, { message: 'Fecha inválida' })
@@ -51,9 +58,11 @@ export class CreateReservationDto {
   @TextoNegocio()
   @IsOptional()
   @IsString()
+  @TextoMax(LIMITES.ocasion)
   ocasion?: string;
 
   @IsOptional()
   @IsString()
+  @TextoMax(20)
   canal?: string; // 'web', 'telefono', etc. (por defecto 'web')
 }

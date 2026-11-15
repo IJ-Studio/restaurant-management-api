@@ -10,6 +10,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+import { TextoMax } from '../../common/validacion/campos';
 
 export class MenuOrderItemDto {
   @ApiProperty({ example: 12 })
@@ -40,5 +41,6 @@ export class CreateMenuOrderDto {
   @ApiPropertyOptional({ example: 'mesa' })
   @IsOptional()
   @IsString()
+  @TextoMax(20)
   readonly tipoPedido?: string;
 }

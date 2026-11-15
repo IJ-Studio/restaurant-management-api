@@ -80,20 +80,44 @@ describe('SignUpDto con validación estricta', () => {
       ['teléfono demasiado corto', webPayload({ phone: '+52551234' })],
       ['teléfono demasiado largo', webPayload({ phone: '+5255123456789012' })],
       ['teléfono que no es string', webPayload({ phone: 5512345678 })],
-      ['nombre de 51 caracteres', webPayload({ name: 'a'.repeat(51) })],
-      ['apellido de 51 caracteres', webPayload({ lastname: 'a'.repeat(51) })],
+      // DV-03: 2 a 60 letras; sin dígitos ni símbolos fuera de espacio, guion y apóstrofo.
+      ['nombre de 61 caracteres', webPayload({ name: 'a'.repeat(61) })],
+      ['apellido de 61 caracteres', webPayload({ lastname: 'a'.repeat(61) })],
+      ['nombre de 1 letra', webPayload({ name: 'A' })],
+      ['nombre con dígitos', webPayload({ name: 'Ana2' })],
+      ['nombre con símbolos', webPayload({ name: 'Ana<script>' })],
+      ['guion al final', webPayload({ lastname: 'López-' })],
+      ['teléfono de 9 dígitos', webPayload({ phone: '+52771123456' })],
+      [
+        'contraseña sin símbolo',
+        webPayload({ password: 'Quijote2026', passwordConfirm: 'Quijote2026' }),
+      ],
       ['nombre vacío', webPayload({ name: '' })],
       ['email inválido', webPayload({ email: 'no-es-correo' })],
       [
-        'email de 101 caracteres',
-        webPayload({ email: `${'a'.repeat(60)}@${'b'.repeat(37)}.mx` }),
+        'email de 255 caracteres',
+        webPayload({
+          email: `${'a'.repeat(60)}@${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(63)}.mx`,
+        }),
       ],
     ])('%s', async (_caso, body) => {
       await expect(validate(body)).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('el email de 101 caracteres del caso anterior mide justo 101', () => {
-      expect(`${'a'.repeat(60)}@${'b'.repeat(37)}.mx`).toHaveLength(101);
+    it('el email de 255 caracteres del caso anterior mide justo 255', () => {
+      expect(
+        `${'a'.repeat(60)}@${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(63)}.mx`,
+      ).toHaveLength(255);
+    });
+
+    it.each([
+      ['María de los Ángeles', 'O’Higgins Núñez'],
+      ['Jean-Luc', "D'Artagnan"],
+      ['Zoë', 'Müller-Ñandú'],
+    ])('acepta nombres reales: %s %s', async (name, lastname) => {
+      await expect(
+        validate(webPayload({ name, lastname })),
+      ).resolves.toBeDefined();
     });
 
     it.each([

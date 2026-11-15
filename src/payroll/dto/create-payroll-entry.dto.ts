@@ -7,6 +7,7 @@ import {
   IsString,
   Min,
 } from 'class-validator';
+import { LIMITES, TextoMax } from '../../common/validacion/campos';
 import { TextoNegocio } from '../../common/normalizacion/normalizar';
 
 export class CreatePayrollEntryDto {
@@ -14,12 +15,14 @@ export class CreatePayrollEntryDto {
   @ApiProperty({ example: 'Mesero 4' })
   @IsString()
   @IsNotEmpty()
+  @TextoMax(LIMITES.lineaMedia)
   readonly role!: string;
 
   @TextoNegocio({ obligatorio: true })
   @ApiProperty({ example: 'Carlos' })
   @IsString()
   @IsNotEmpty()
+  @TextoMax(LIMITES.lineaMedia)
   readonly name!: string;
 
   @ApiProperty({ example: 1200 })
@@ -36,5 +39,6 @@ export class CreatePayrollEntryDto {
   @ApiProperty({ example: 'Servicio', required: false })
   @IsOptional()
   @IsString()
+  @TextoMax(60)
   readonly department?: string;
 }

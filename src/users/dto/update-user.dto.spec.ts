@@ -58,8 +58,8 @@ describe('UpdateUserDto con pipe de lista blanca', () => {
     );
   });
 
-  it('rechaza un nombre de más de 50 caracteres', async () => {
-    await expect(validate({ name: 'x'.repeat(51) })).rejects.toBeInstanceOf(
+  it('rechaza un nombre de más de 60 caracteres', async () => {
+    await expect(validate({ name: 'x'.repeat(61) })).rejects.toBeInstanceOf(
       BadRequestException,
     );
   });

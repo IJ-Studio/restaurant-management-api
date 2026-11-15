@@ -142,6 +142,10 @@ export class ProveedorDto {
   @IsArray()
   @ArrayMaxSize(200)
   @IsString({ each: true })
+  @MaxLength(150, {
+    each: true,
+    message: 'Cada producto admite como máximo 150 caracteres.',
+  })
   readonly products?: string[];
 
   @TextoNegocio()

@@ -1,12 +1,17 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
-  IsEmail,
+  IsBoolean,
   IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
-  MinLength,
 } from 'class-validator';
+import {
+  ContrasenaNueva,
+  CorreoValido,
+  NombrePersona,
+  TelefonoValido,
+} from '../../common/validacion/campos';
 
 import { CREATABLE_ROLES } from '../../common/constants/roles';
 import {
@@ -19,26 +24,29 @@ export class CreateUserDto {
   @TextoNegocio({ obligatorio: true })
   @ApiProperty({ example: 'Juan' })
   @IsNotEmpty()
+  @NombrePersona()
   readonly name!: string;
 
   @TextoNegocio({ obligatorio: true })
   @ApiProperty({ example: 'Pérez' })
   @IsNotEmpty()
+  @NombrePersona()
   readonly lastname!: string;
 
   @Telefono({ obligatorio: true })
   @ApiProperty({ example: '+34612345678' })
   @IsNotEmpty()
+  @TelefonoValido()
   readonly phone!: string;
 
   @Correo({ obligatorio: true })
   @ApiProperty({ example: 'juan@example.com' })
-  @IsEmail()
+  @CorreoValido()
   @IsNotEmpty()
   readonly email!: string;
 
   @ApiProperty({ example: 'Pass#2026' })
-  @MinLength(8)
+  @ContrasenaNueva()
   @IsNotEmpty()
   readonly password!: string;
 
@@ -53,5 +61,6 @@ export class CreateUserDto {
 
   @ApiProperty({ example: false })
   @IsOptional()
+  @IsBoolean()
   readonly verified?: boolean;
 }

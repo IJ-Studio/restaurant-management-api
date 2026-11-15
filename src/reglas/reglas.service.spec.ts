@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { CAMPOS_PUBLICOS } from '../common/validacion/campos';
 
 import {
   desfaseUtcMin,
@@ -29,6 +30,7 @@ const reglas = (overrides: Partial<Reglas> = {}): Reglas => ({
     diasMaxAdelanto: 60,
   },
   pedidos: { cantidadMaxPorPlatillo: 99 },
+  campos: CAMPOS_PUBLICOS,
   horario: semana,
   diasEspeciales: [],
   ...overrides,
