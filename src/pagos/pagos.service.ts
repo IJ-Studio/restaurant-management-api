@@ -2,9 +2,12 @@ import {
   Injectable,
   Optional,
   BadRequestException,
+  ConflictException,
   NotFoundException,
   Inject,
   Logger,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { DRIZZLE } from '../database/drizzle/constants';
 import type { DrizzleDB } from '../database/drizzle/drizzle.provider';
@@ -18,11 +21,13 @@ import {
   ordenes,
   pagos,
   facturas,
+  reembolsos,
 } from '../database/schema/public.schema';
 import { stripeEvents } from '../database/schema/stripe-events.schema';
-import { eq, and } from 'drizzle-orm';
+import { solicitudesFactura } from '../database/schema/solicitudes-factura.schema';
+import { eq, and, sql } from 'drizzle-orm';
 import Stripe from 'stripe';
-import Facturapi, { type Invoice } from 'facturapi';
+import Facturapi, { InvoiceStatus, type Invoice } from 'facturapi';
 import { ROLES } from '../common/constants/roles';
 import { ReglasService } from '../reglas/reglas.service';
 import { ESTATUS_COBRABLES } from '../orders/order-workflow.service';
@@ -32,7 +37,38 @@ import {
   CrearIntentoPagoDto,
   CrearFacturaDto,
   GuardarPerfilFacturacionDto,
+  ReembolsarPagoDto,
 } from './dto/pagos.dto';
+
+/** Rechazo de la tarjeta en palabras del cajero o del cliente (sin el detalle de Stripe). */
+export function mensajeRechazo(codigo?: string): string {
+  switch (codigo) {
+    case 'insufficient_funds':
+      return 'La tarjeta no tiene fondos suficientes.';
+    case 'expired_card':
+      return 'La tarjeta está vencida.';
+    case 'incorrect_cvc':
+      return 'El código de seguridad de la tarjeta es incorrecto.';
+    case 'authentication_required':
+      return 'El banco pide autenticar la tarjeta: cobra con la tarjeta presente.';
+    default:
+      return 'El banco rechazó la tarjeta. Prueba con otra o cobra en caja.';
+  }
+}
+
+/**
+ * Clave de forma de pago del SAT para un método de `metodos_pago`. Stripe y las billeteras
+ * digitales cobran como intermediarios (31); sin pagos registrados, «por definir» (99).
+ */
+export function formaDePagoSat(nombre: string, tipo: string): string {
+  const texto = `${nombre} ${tipo}`.toLowerCase();
+  if (/stripe|en l[ií]nea|online|mercado/.test(texto)) return '31';
+  if (/efectivo/.test(texto)) return '01';
+  if (/d[eé]bito/.test(texto)) return '28';
+  if (/tarjeta|cr[eé]dito/.test(texto)) return '04';
+  if (/transferencia/.test(texto)) return '03';
+  return '99';
+}
 
 @Injectable()
 export class PagosService {
@@ -468,7 +504,9 @@ export class PagosService {
       const previos = await this.db
         .select({ id: pagos.id })
         .from(pagos)
-        .where(eq(pagos.ordenId, orden.id));
+        .where(
+          and(eq(pagos.ordenId, orden.id), eq(pagos.estatus, 'completado')),
+        );
       if (previos.length > 0) {
         throw new BadRequestException(
           'Este pedido ya tiene pagos en caja: cobra lo que falta en caja.',
@@ -574,21 +612,34 @@ export class PagosService {
     const metadata: Record<string, string> = { ordenId: dto.ordenId };
     if (clienteId) metadata.clienteId = clienteId;
 
-    const paymentIntent = await this.stripe.paymentIntents.create(
-      {
-        amount: montoEnCentavos,
-        currency: 'mxn',
-        customer: stripeCustomerId,
-        payment_method: paymentMethodId,
-        confirm: !!paymentMethodId,
-        automatic_payment_methods: paymentMethodId
-          ? undefined
-          : { enabled: true },
-        off_session: !!stripeCustomerId,
-        metadata,
-      },
-      { idempotencyKey },
-    );
+    let paymentIntent: Stripe.PaymentIntent;
+    try {
+      paymentIntent = await this.stripe.paymentIntents.create(
+        {
+          amount: montoEnCentavos,
+          currency: 'mxn',
+          customer: stripeCustomerId,
+          payment_method: paymentMethodId,
+          confirm: !!paymentMethodId,
+          // Con la tarjeta ya elegida se confirma aquí, sin página a la que regresar: Stripe
+          // exige entonces descartar los métodos con redirección.
+          automatic_payment_methods: paymentMethodId
+            ? { enabled: true, allow_redirects: 'never' }
+            : { enabled: true },
+          off_session: !!stripeCustomerId,
+          metadata,
+        },
+        { idempotencyKey },
+      );
+    } catch (error: unknown) {
+      if (error instanceof Stripe.errors.StripeCardError) {
+        throw new HttpException(
+          { message: mensajeRechazo(error.decline_code ?? error.code) },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+      throw error;
+    }
 
     return {
       clientSecret: paymentIntent.client_secret,
@@ -601,22 +652,6 @@ export class PagosService {
   private async marcarOrdenComoPagada(paymentIntent: Stripe.PaymentIntent) {
     const ordenId = paymentIntent.metadata?.ordenId;
     if (!ordenId) return;
-
-    const [orden] = await this.db
-      .select()
-      .from(ordenes)
-      .where(eq(ordenes.id, ordenId))
-      .limit(1);
-
-    if (!orden) {
-      this.logger.warn(
-        `Webhook de Stripe para una orden inexistente: ${ordenId}`,
-      );
-      return;
-    }
-
-    // Idempotencia por estatus: un reenvío del webhook no vuelve a insertar el pago.
-    if (orden.estatus === 'pagada') return;
 
     const [metodoStripe] = await this.db
       .select()
@@ -631,19 +666,65 @@ export class PagosService {
       return;
     }
 
-    await this.db
-      .update(ordenes)
-      .set({ estatus: 'pagada' })
-      .where(eq(ordenes.id, ordenId));
+    // La fila del pedido queda bloqueada: un cobro en caja o un segundo intento de pago que
+    // lleguen a la vez esperan, y solo uno de los dos registra el pago.
+    const resultado = await this.db.transaction(async (tx) => {
+      const [orden] = await tx
+        .select()
+        .from(ordenes)
+        .where(eq(ordenes.id, ordenId))
+        .for('update');
+      if (!orden) return 'sin-orden' as const;
 
-    await this.db.insert(pagos).values({
-      ordenId,
-      metodoPagoId: metodoStripe.id,
-      monto: (paymentIntent.amount / 100).toString(),
-      pasarela: 'stripe',
-      idTransaccionPasarela: paymentIntent.id,
-      estatus: 'completado',
+      const previos = await tx
+        .select({ intento: pagos.idTransaccionPasarela })
+        .from(pagos)
+        .where(
+          and(eq(pagos.ordenId, ordenId), eq(pagos.estatus, 'completado')),
+        );
+      if (previos.some((p) => p.intento === paymentIntent.id)) {
+        return 'ya-registrado' as const;
+      }
+      if (orden.estatus === 'pagada' || previos.length > 0) {
+        return 'cobro-doble' as const;
+      }
+
+      const ahora = new Date().toISOString();
+      const cubre =
+        paymentIntent.amount >= Math.round(Number(orden.total ?? 0) * 100);
+      await tx.insert(pagos).values({
+        ordenId,
+        metodoPagoId: metodoStripe.id,
+        monto: (paymentIntent.amount / 100).toFixed(2),
+        pasarela: 'stripe',
+        idTransaccionPasarela: paymentIntent.id,
+        estatus: 'completado',
+      });
+      await tx
+        .update(ordenes)
+        .set(
+          cubre
+            ? { estatus: 'pagada', tiempoCierre: ahora, actualizadoEn: ahora }
+            : { actualizadoEn: ahora },
+        )
+        .where(eq(ordenes.id, ordenId));
+      return 'registrado' as const;
     });
+
+    if (resultado === 'sin-orden') {
+      this.logger.warn(
+        `Webhook de Stripe para una orden inexistente: ${ordenId}`,
+      );
+    } else if (resultado === 'cobro-doble') {
+      // El pedido ya estaba cobrado (en caja o con otro intento): se devuelve este cobro.
+      this.logger.warn(
+        `Cobro doble del pedido ${ordenId} con ${paymentIntent.id}: se reembolsa.`,
+      );
+      await this.stripe.refunds.create(
+        { payment_intent: paymentIntent.id, reason: 'duplicate' },
+        { idempotencyKey: `cobro-doble-${paymentIntent.id}` },
+      );
+    }
   }
 
   async manejarWebhookStripe(rawBody: Buffer, signature: string) {
@@ -690,6 +771,106 @@ export class PagosService {
     }
 
     return { received: true };
+  }
+
+  /**
+   * Reembolso o reversa de un pago (solo administración). Un cobro de Stripe se devuelve en
+   * Stripe; uno de caja solo se registra (el dinero se devuelve en mostrador o en la terminal).
+   * El pago deja de contar en lo pagado y en el corte; si la orden tiene una factura vigente,
+   * primero hay que cancelarla.
+   */
+  async reembolsarPago(
+    pagoId: number,
+    dto: ReembolsarPagoDto,
+    adminId: number,
+  ) {
+    return await this.db.transaction(async (tx) => {
+      const [pago] = await tx
+        .select()
+        .from(pagos)
+        .where(eq(pagos.id, pagoId))
+        .for('update');
+      if (!pago) throw new NotFoundException('El pago no existe.');
+      if (pago.estatus !== 'completado') {
+        throw new ConflictException('Este pago ya se reembolsó.');
+      }
+      const vigentes = await tx
+        .select({ id: facturas.id })
+        .from(facturas)
+        .where(
+          and(
+            eq(facturas.ordenId, pago.ordenId),
+            eq(facturas.estatus, 'vigente'),
+          ),
+        );
+      if (vigentes.length > 0) {
+        throw new ConflictException(
+          'La orden tiene una factura vigente: cancélala primero (motivo 03).',
+        );
+      }
+
+      const montoCents =
+        Math.round(Number(pago.monto) * 100) +
+        Math.round(Number(pago.propina ?? 0) * 100);
+      let referencia: string | null = null;
+      if (pago.pasarela === 'stripe' && pago.idTransaccionPasarela) {
+        // Misma llave en un reintento: Stripe devuelve el mismo reembolso, no otro.
+        const reembolso = await this.stripe.refunds.create(
+          { payment_intent: pago.idTransaccionPasarela, amount: montoCents },
+          { idempotencyKey: `reembolso-pago-${pagoId}` },
+        );
+        referencia = reembolso.id;
+      }
+
+      await tx
+        .update(pagos)
+        .set({ estatus: 'reembolsado' })
+        .where(eq(pagos.id, pagoId));
+      await tx.insert(reembolsos).values({
+        pagoId,
+        monto: (montoCents / 100).toFixed(2),
+        motivo: dto.motivo,
+        aprobadoPor: adminId,
+        metodoDevolucion: referencia ? 'stripe' : 'caja',
+        referencia,
+      });
+
+      const [orden] = await tx
+        .select({ estatus: ordenes.estatus, propina: ordenes.propina })
+        .from(ordenes)
+        .where(eq(ordenes.id, pago.ordenId))
+        .for('update');
+      const ahora = new Date().toISOString();
+      const propina = (
+        Math.max(
+          0,
+          Math.round(Number(orden?.propina ?? 0) * 100) -
+            Math.round(Number(pago.propina ?? 0) * 100),
+        ) / 100
+      ).toFixed(2);
+      let estatus = orden?.estatus ?? null;
+      if (dto.cancelarPedido) estatus = 'cancelada';
+      else if (estatus === 'pagada') estatus = 'entregada';
+      await tx
+        .update(ordenes)
+        .set({
+          estatus: estatus ?? undefined,
+          propina,
+          actualizadoEn: ahora,
+          ...(estatus === 'pagada' ? {} : { tiempoCierre: null }),
+          ...(dto.cancelarPedido ? { motivoCancelacion: dto.motivo } : {}),
+        })
+        .where(eq(ordenes.id, pago.ordenId));
+
+      return {
+        pagoId,
+        ordenId: pago.ordenId,
+        monto: (montoCents / 100).toFixed(2),
+        devolucion: referencia ? 'stripe' : 'caja',
+        referencia,
+        estatusOrden: estatus,
+      };
+    });
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -772,9 +953,15 @@ export class PagosService {
   // FACTURACIÓN (CFDI VÍA FACTURAPI)
   // ══════════════════════════════════════════════════════════════
 
-  async crearFactura(dto: CrearFacturaDto, usuarioId: number) {
-    const clienteId = await this.resolverClienteId(usuarioId);
-
+  /**
+   * Timbra la factura de una orden pagada. `deCola`: la emite el administrador desde la cola de
+   * solicitudes, que ya comprobó quién la pidió (el cliente dueño o el personal de caja).
+   */
+  async crearFactura(
+    dto: CrearFacturaDto,
+    usuarioId: number,
+    { deCola = false }: { deCola?: boolean } = {},
+  ) {
     const [orden] = await this.db
       .select()
       .from(ordenes)
@@ -784,7 +971,10 @@ export class PagosService {
     if (!orden) {
       throw new NotFoundException('La orden no existe.');
     }
-    if (orden.clienteId !== clienteId) {
+    const clienteId = deCola
+      ? (orden.clienteId ?? undefined)
+      : await this.resolverClienteId(usuarioId);
+    if (!deCola && orden.clienteId !== clienteId) {
       throw new BadRequestException('Esta orden no te pertenece.');
     }
     if (orden.estatus !== 'pagada') {
@@ -798,13 +988,12 @@ export class PagosService {
       throw new BadRequestException('El total de la orden no puede ser nulo.');
     }
 
-    const [facturaExistente] = await this.db
-      .select()
+    const previas = await this.db
+      .select({ estatus: facturas.estatus })
       .from(facturas)
-      .where(eq(facturas.ordenId, dto.ordenId))
-      .limit(1);
+      .where(eq(facturas.ordenId, dto.ordenId));
 
-    if (facturaExistente) {
+    if (previas.some((f) => f.estatus !== 'cancelada')) {
       throw new BadRequestException(
         'Esta orden ya tiene una factura generada.',
       );
@@ -821,7 +1010,7 @@ export class PagosService {
       email?: string | null;
     };
 
-    if (dto.perfilFacturacionId) {
+    if (dto.perfilFacturacionId && clienteId) {
       const [perfil] = await this.db
         .select()
         .from(perfilesFacturacion)
@@ -882,13 +1071,19 @@ export class PagosService {
             product: {
               description: `Pedido #${dto.ordenId.slice(0, 8).toUpperCase()} - Restaurante El Quijote`,
               product_key: '90101501', // "Servicios de restaurante" (catálogo SAT)
-              price: subtotal,
+              // Los precios de la carta ya incluyen IVA: Facturapi desglosa a partir del total,
+              // así el CFDI ampara exactamente lo cobrado (antes salía por el subtotal).
+              price: total,
+              tax_included: true,
               taxes: [{ type: 'IVA', rate: 0.16 }],
             },
           },
         ],
         use: datosFiscales.usoCfdi,
-        payment_form: '31', // "Intermediario pagos" (cobro con tarjeta en línea vía pasarela)
+        payment_form: await this.formaDePago(dto.ordenId),
+        // Un reintento o un doble clic devuelve la misma factura en lugar de timbrar otra.
+        // Tras cancelar una con errores, la llave cambia para poder timbrar la corregida.
+        idempotency_key: `factura-orden-${dto.ordenId}-${previas.length}`,
       });
     } catch (err: unknown) {
       console.error('Error de Facturapi al timbrar:', err);
@@ -900,7 +1095,7 @@ export class PagosService {
 
     // Si mandó datos fiscales manuales y pidió guardarlos, crea el
     // perfil reusable para futuras facturas.
-    if (dto.guardarComoPerfil && !dto.perfilFacturacionId) {
+    if (dto.guardarComoPerfil && !dto.perfilFacturacionId && clienteId) {
       await this.db.insert(perfilesFacturacion).values({
         clienteId,
         rfc: datosFiscales.rfc,
@@ -930,6 +1125,88 @@ export class PagosService {
       .returning();
 
     return facturaGuardada;
+  }
+
+  /**
+   * Cancela un CFDI ante el SAT (vía Facturapi). Motivo 02: se emitió con errores y se volverá a
+   * emitir (la solicitud de la orden regresa a la cola para corregir los datos); 03: la operación
+   * no se llevó a cabo (por ejemplo, se reembolsó el pago).
+   */
+  async cancelarFactura(id: string, motivo: '02' | '03') {
+    const [factura] = await this.db
+      .select()
+      .from(facturas)
+      .where(eq(facturas.id, id))
+      .limit(1);
+    if (!factura) throw new NotFoundException('La factura no existe.');
+    if (factura.estatus === 'cancelada') {
+      throw new ConflictException('Esta factura ya está cancelada.');
+    }
+    if (!factura.facturapiInvoiceId) {
+      throw new BadRequestException(
+        'Esta factura no se timbró con Facturapi: cancélala en el portal del SAT.',
+      );
+    }
+
+    let respuesta: Invoice;
+    try {
+      respuesta = await this.facturapi.invoices.cancel(
+        factura.facturapiInvoiceId,
+        { motive: motivo },
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '';
+      throw new BadRequestException(
+        `No se pudo cancelar la factura: ${message || 'error desconocido de Facturapi'}`,
+      );
+    }
+
+    // Arriba de cierto monto el SAT pide que el receptor acepte: queda «pendiente» hasta entonces.
+    const cancelada = respuesta.status === InvoiceStatus.CANCELED;
+    if (cancelada) {
+      await this.db
+        .update(facturas)
+        .set({ estatus: 'cancelada', fechaCancelacion: sql`now()` })
+        .where(eq(facturas.id, id));
+      if (motivo === '02') {
+        await this.db
+          .update(solicitudesFactura)
+          .set({
+            estatus: 'pendiente',
+            facturaId: null,
+            atendidaPor: null,
+            atendidaEn: null,
+          })
+          .where(eq(solicitudesFactura.ordenId, factura.ordenId));
+      }
+    }
+    return {
+      id,
+      estatus: cancelada ? 'cancelada' : 'vigente',
+      cancelacion: respuesta.cancellation_status ?? null,
+    };
+  }
+
+  /**
+   * Forma de pago del SAT según el pago de mayor monto de la orden (en una cuenta dividida pagada
+   * con varios métodos, el CFDI lleva el que cubrió la mayor parte).
+   */
+  private async formaDePago(ordenId: string): Promise<string> {
+    const filas = await this.db
+      .select({
+        monto: pagos.monto,
+        nombre: metodosPago.nombre,
+        tipo: metodosPago.tipo,
+      })
+      .from(pagos)
+      .leftJoin(metodosPago, eq(pagos.metodoPagoId, metodosPago.id))
+      .where(and(eq(pagos.ordenId, ordenId), eq(pagos.estatus, 'completado')));
+    const mayor = filas.reduce<(typeof filas)[number] | undefined>(
+      (max, fila) =>
+        !max || Number(fila.monto) > Number(max.monto) ? fila : max,
+      undefined,
+    );
+    return formaDePagoSat(mayor?.nombre ?? '', mayor?.tipo ?? '');
   }
 
   async obtenerFacturaPorOrden(ordenId: string, usuarioId: number) {

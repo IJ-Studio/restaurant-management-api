@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { eq, gte } from 'drizzle-orm';
 
+import { CAMPOS_PUBLICOS } from '../common/validacion/campos';
 import { DRIZZLE } from '../database/drizzle/constants';
 import type { DrizzleDB } from '../database/drizzle/drizzle.provider';
 import {
@@ -21,7 +22,14 @@ import {
 
 /** Valores por defecto; el administrador puede cambiarlos con la clave `reglas_operacion` de `system_settings`. */
 export const REGLAS_POR_DEFECTO = {
-  reservas: { anticipacionMin: 60, margenCierreMin: 30, comensalesMax: 50 },
+  reservas: {
+    anticipacionMin: 60,
+    margenCierreMin: 30,
+    comensalesMax: 50,
+    // Horas ofrecidas cada 30 min y reservas hasta 60 días adelante (DV-06).
+    intervaloMin: 30,
+    diasMaxAdelanto: 60,
+  },
   pedidos: { cantidadMaxPorPlatillo: 99 },
 };
 
@@ -35,10 +43,13 @@ export interface Reglas {
     margenCierreMin: number;
     comensalesMax: number;
     duracionMin: number;
+    intervaloMin: number;
+    diasMaxAdelanto: number;
   };
   pedidos: { cantidadMaxPorPlatillo: number };
   horario: DiaHorario[];
   diasEspeciales: DiaEspecial[];
+  campos: typeof CAMPOS_PUBLICOS;
 }
 
 // Los mensajes son los mismos que muestra la app antes de enviar: el cliente y el servidor dicen lo mismo.
@@ -48,6 +59,8 @@ export const MENSAJES = {
   anticipacion: (min: number) =>
     `Las reservaciones se hacen con al menos ${min >= 60 && min % 60 === 0 ? `${min / 60} ${min === 60 ? 'hora' : 'horas'}` : `${min} minutos`} de anticipación.`,
   cerrado: 'El restaurante está cerrado ese día.',
+  fueraDePlazo: (dias: number) =>
+    `Las reservaciones se aceptan con hasta ${dias} días de anticipación.`,
   fueraDeHorario: (apertura: string, cierre: string, margen: number) =>
     `Reservaciones de ${hhmm(apertura)} a ${hhmm(cierre)}, al menos ${margen} minutos antes del cierre.`,
   comensales: (max: number) => `El número de personas debe ser de 1 a ${max}.`,
@@ -62,16 +75,20 @@ export class ReglasService {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
 
   async obtener(ahora = new Date()): Promise<Reglas> {
-    const [config] = await this.db.select().from(restaurante).limit(1);
+    // En paralelo: Render y Supabase están en regiones distintas y cada consulta es un viaje (~200 ms).
+    const [[config], [ajuste], semana] = await Promise.all([
+      this.db.select().from(restaurante).limit(1),
+      this.db
+        .select({ value: systemSettings.value })
+        .from(systemSettings)
+        .where(eq(systemSettings.key, 'reglas_operacion'))
+        .limit(1),
+      this.db.select().from(horarios),
+    ]);
     const zonaHoraria = config?.zonaHoraria || 'America/Mexico_City';
-    const [ajuste] = await this.db
-      .select({ value: systemSettings.value })
-      .from(systemSettings)
-      .where(eq(systemSettings.key, 'reglas_operacion'))
-      .limit(1);
     const propio = (ajuste?.value ?? {}) as Partial<typeof REGLAS_POR_DEFECTO>;
 
-    const semana = await this.db.select().from(horarios);
+    // Los días especiales dependen de la fecha local, que depende de la zona del restaurante.
     const especiales = await this.db
       .select()
       .from(horariosEspeciales)
@@ -104,6 +121,7 @@ export class ReglasService {
         apertura: e.apertura ?? null,
         cierre: e.cierre ?? null,
       })),
+      campos: CAMPOS_PUBLICOS,
     };
   }
 
@@ -133,6 +151,15 @@ export class ReglasService {
       throw new BadRequestException(MENSAJES.pasada);
     if (fecha.getTime() - ahora.getTime() < anticipacionMin * 60_000) {
       throw new BadRequestException(MENSAJES.anticipacion(anticipacionMin));
+    }
+    const { diasMaxAdelanto } = reglas.reservas;
+    if (
+      diasEntre(
+        momentoLocal(ahora, reglas.zonaHoraria).fecha,
+        momentoLocal(fecha, reglas.zonaHoraria).fecha,
+      ) > diasMaxAdelanto
+    ) {
+      throw new BadRequestException(MENSAJES.fueraDePlazo(diasMaxAdelanto));
     }
 
     const momento = momentoLocal(fecha, reglas.zonaHoraria);
@@ -164,3 +191,10 @@ export class ReglasService {
     }
   }
 }
+
+/** Días de calendario de `desde` a `hasta` («2026-11-15»), sin depender de la zona del servidor. */
+export const diasEntre = (desde: string, hasta: string): number =>
+  Math.round(
+    (Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) /
+      86_400_000,
+  );

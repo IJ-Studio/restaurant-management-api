@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { CAMPOS_PUBLICOS } from '../common/validacion/campos';
 
 import {
   desfaseUtcMin,
@@ -25,8 +26,11 @@ const reglas = (overrides: Partial<Reglas> = {}): Reglas => ({
     margenCierreMin: 30,
     comensalesMax: 50,
     duracionMin: 90,
+    intervaloMin: 30,
+    diasMaxAdelanto: 60,
   },
   pedidos: { cantidadMaxPorPlatillo: 99 },
+  campos: CAMPOS_PUBLICOS,
   horario: semana,
   diasEspeciales: [],
   ...overrides,
@@ -97,6 +101,18 @@ describe('horarioDelDia', () => {
 });
 
 describe('ReglasService.validarReserva', () => {
+  it('acepta el día 60 y rechaza el 61 (horizonte de /reglas)', async () => {
+    // AHORA = 13-nov 12:00 en México; el 12-ene es el día 60.
+    await expect(
+      setup().validarReserva(enMexico('2027-01-12T20:00:00'), 2, AHORA),
+    ).resolves.toBeUndefined();
+    await expect(
+      setup().validarReserva(enMexico('2027-01-13T20:00:00'), 2, AHORA),
+    ).rejects.toThrow(
+      'Las reservaciones se aceptan con hasta 60 días de anticipación.',
+    );
+  });
+
   const rechaza = (promesa: Promise<void>, mensaje: string) =>
     expect(promesa).rejects.toThrow(new BadRequestException(mensaje));
 
@@ -156,6 +172,8 @@ describe('ReglasService.validarReserva', () => {
           margenCierreMin: 30,
           comensalesMax: 50,
           duracionMin: 90,
+          intervaloMin: 30,
+          diasMaxAdelanto: 60,
         },
       }),
     );

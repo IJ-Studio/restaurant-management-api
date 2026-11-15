@@ -419,7 +419,7 @@ describe('resumen del día', () => {
           ordenId: 'a',
           monto: '200.00',
           propina: '20.00',
-          creadoEn: new Date(2026, 9, 28, 14, 10).toISOString(),
+          creadoEn: '2026-10-28T20:10:00.000Z',
           metodo: 'Efectivo',
           tipo: 'efectivo',
           cajeroId: 2,
@@ -431,7 +431,7 @@ describe('resumen del día', () => {
           ordenId: 'a',
           monto: '100.00',
           propina: null,
-          creadoEn: new Date(2026, 9, 28, 14, 40).toISOString(),
+          creadoEn: '2026-10-28T20:40:00.000Z',
           metodo: 'Tarjeta débito',
           tipo: 'tarjeta',
           cajeroId: 2,
@@ -556,6 +556,30 @@ describe('resumen del día', () => {
       valor: 200,
       origen: 'Efectivo',
     });
+  });
+
+  it('reparte las ventas por la hora del restaurante, no por la del servidor', () => {
+    const pago = (creadoEn: string) => ({
+      ordenId: 'o1',
+      monto: '100.00',
+      propina: '0',
+      metodo: 'Efectivo',
+      cajeroNombre: null,
+      cajeroApellido: null,
+      creadoEn,
+    });
+    const resumen = construirResumen({
+      // 21:30 y 23:59 en México son ya el día siguiente en UTC.
+      pagosHoy: [pago('2026-11-15T03:30:00Z'), pago('2026-11-15T05:59:00Z')],
+      ordenesHoy: [],
+      top: [],
+      incidencias: [],
+      mermas: [],
+      cajas: [],
+    } as never);
+    expect(resumen.porHora[21]).toBe(100);
+    expect(resumen.porHora[23]).toBe(100);
+    expect(resumen.porHora[3]).toBe(0);
   });
 
   it('sin ventas no divide entre cero', () => {

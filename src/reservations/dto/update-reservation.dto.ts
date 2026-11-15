@@ -8,6 +8,7 @@ import {
   IsBoolean,
   MaxLength,
 } from 'class-validator';
+import { LIMITES, TextoMax } from '../../common/validacion/campos';
 import { TextoNegocio } from '../../common/normalizacion/normalizar';
 
 export class UpdateReservationDto {
@@ -21,6 +22,7 @@ export class UpdateReservationDto {
   @TextoNegocio()
   @IsOptional()
   @IsString()
+  @TextoMax(LIMITES.notas)
   notas?: string;
 
   /** Obligatorio cuando `estatus` es `cancelada` (lo comprueba el servicio). */

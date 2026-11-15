@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsEmail, MaxLength, MinLength, IsNotEmpty } from 'class-validator';
+import {} from '../../common/validacion/campos';
 import { Correo } from '../../common/normalizacion/normalizar';
 
 export class SignInDto {
@@ -21,5 +22,6 @@ export class SignInDto {
   })
   @MinLength(8)
   @IsNotEmpty()
+  @MaxLength(128, { message: 'Correo o contraseña incorrectos.' })
   readonly password!: string;
 }

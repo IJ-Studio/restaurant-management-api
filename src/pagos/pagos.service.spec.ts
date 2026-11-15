@@ -1,7 +1,12 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, HttpException } from '@nestjs/common';
+import Stripe from 'stripe';
+
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 
 import { ROLES } from '../common/constants/roles';
-import { PagosService } from './pagos.service';
+import { CrearFacturaDto } from './dto/pagos.dto';
+import { formaDePagoSat, PagosService } from './pagos.service';
 
 process.env.STRIPE_SECRET_KEY = 'sk_test_falso';
 process.env.FACTURAPI_TEST_KEY = 'sk_test_falso';
@@ -13,6 +18,7 @@ function setup(rowsQueue: unknown[][], eventsInserted: unknown[][] = []) {
     const rows = results.shift() ?? [];
     return Object.assign(Promise.resolve(rows), {
       limit: jest.fn().mockResolvedValue(rows),
+      for: jest.fn().mockResolvedValue(rows),
     });
   });
 
@@ -36,10 +42,11 @@ function setup(rowsQueue: unknown[][], eventsInserted: unknown[][] = []) {
   const del = jest.fn().mockReturnValue({ where: deleteWhere });
 
   const db = {
-    select: () => ({ from: () => ({ where }) }),
+    select: () => ({ from: () => ({ where, leftJoin: () => ({ where }) }) }),
     insert: () => ({ values: insertValues }),
     update: () => ({ set }),
     delete: del,
+    transaction: (fn: (tx: unknown) => unknown) => fn(db),
   };
   const service = new PagosService(db as never);
 
@@ -48,19 +55,39 @@ function setup(rowsQueue: unknown[][], eventsInserted: unknown[][] = []) {
     status: 'requires_confirmation',
   });
   const constructEvent = jest.fn();
+  const refund = jest.fn().mockResolvedValue({ id: 're_1' });
   (
     service as unknown as {
       stripe: {
         paymentIntents: { create: typeof create };
         webhooks: { constructEvent: typeof constructEvent };
+        refunds: { create: typeof refund };
       };
     }
   ).stripe = {
     paymentIntents: { create },
     webhooks: { constructEvent },
+    refunds: { create: refund },
   };
 
-  return { service, create, constructEvent, set, insertValues };
+  const facturar = jest
+    .fn()
+    .mockResolvedValue({ id: 'inv_1', uuid: 'UUID-1', total: 100.01 });
+  (
+    service as unknown as {
+      facturapi: { invoices: { create: typeof facturar } };
+    }
+  ).facturapi = { invoices: { create: facturar } };
+
+  return {
+    service,
+    create,
+    constructEvent,
+    set,
+    insertValues,
+    refund,
+    facturar,
+  };
 }
 
 describe('PagosService.crearIntentoPago (DT-16)', () => {
@@ -254,6 +281,46 @@ describe('PagosService.crearIntentoPago (DT-16)', () => {
   });
 });
 
+describe('PagosService.crearIntentoPago: tarjeta rechazada', () => {
+  it('fondos insuficientes → 402 con mensaje claro, sin el detalle de Stripe', async () => {
+    const orden = {
+      id: 'orden-1',
+      estatus: 'entregada',
+      total: '25.50',
+      clienteId: null,
+    };
+    const { service, create } = setup([[orden], []]);
+    create.mockRejectedValueOnce(
+      new Stripe.errors.StripeCardError({
+        type: 'card_error',
+        code: 'card_declined',
+        decline_code: 'insufficient_funds',
+        message: 'Your card has insufficient funds.',
+      }),
+    );
+
+    const error: unknown = await service
+      .crearIntentoPago(
+        { ordenId: 'orden-1', paymentMethodId: 'pm_x' },
+        1,
+        ROLES.CAJERO,
+      )
+      .catch((e: unknown) => e);
+
+    expect((error as HttpException).getStatus()).toBe(402);
+    expect((error as Error).message).toBe(
+      'La tarjeta no tiene fondos suficientes.',
+    );
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        confirm: true,
+        automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
+      }),
+      expect.anything(),
+    );
+  });
+});
+
 describe('PagosService.manejarWebhookStripe (DT-D10 / NH-11 / NH-12)', () => {
   const eventoExitoso = {
     id: 'evt-1',
@@ -301,11 +368,12 @@ describe('PagosService.manejarWebhookStripe (DT-D10 / NH-11 / NH-12)', () => {
     expect(set).not.toHaveBeenCalled();
   });
 
-  it('payment_intent.succeeded marca la orden como pagada una sola vez', async () => {
-    const orden = { id: 'orden-1', estatus: 'abierta' };
-    const metodo = { id: 3 };
-    const { service, constructEvent, set, insertValues } = setup(
-      [[orden], [metodo]],
+  const metodoStripe = { id: 12 };
+
+  it('payment_intent.succeeded registra el pago y cierra el pedido', async () => {
+    const orden = { id: 'orden-1', estatus: 'abierta', total: '116.00' };
+    const { service, constructEvent, set, insertValues, refund } = setup(
+      [[metodoStripe], [orden], []],
       [[{ eventId: 'evt-1' }]],
     );
     constructEvent.mockReturnValue(eventoExitoso);
@@ -313,19 +381,38 @@ describe('PagosService.manejarWebhookStripe (DT-D10 / NH-11 / NH-12)', () => {
     const result = await service.manejarWebhookStripe(Buffer.from(''), 'firma');
 
     expect(result).toEqual({ received: true });
-    expect(set).toHaveBeenCalledWith({ estatus: 'pagada' });
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({ estatus: 'pagada' }),
+    );
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({
         ordenId: 'orden-1',
+        monto: '116.00',
         idTransaccionPasarela: 'pi_1',
       }),
     );
+    expect(refund).not.toHaveBeenCalled();
   });
 
-  it('si la orden ya está pagada no duplica el pago', async () => {
-    const orden = { id: 'orden-1', estatus: 'pagada' };
-    const { service, constructEvent, set } = setup(
-      [[orden]],
+  it('el mismo intento ya registrado (otro evento) no duplica el pago', async () => {
+    const orden = { id: 'orden-1', estatus: 'pagada', total: '116.00' };
+    const { service, constructEvent, set, insertValues, refund } = setup(
+      [[metodoStripe], [orden], [{ intento: 'pi_1' }]],
+      [[{ eventId: 'evt-9' }]],
+    );
+    constructEvent.mockReturnValue(eventoExitoso);
+
+    await service.manejarWebhookStripe(Buffer.from(''), 'firma');
+
+    expect(set).not.toHaveBeenCalled();
+    expect(insertValues).toHaveBeenCalledTimes(1); // solo el evento
+    expect(refund).not.toHaveBeenCalled();
+  });
+
+  it('si el pedido ya se cobró en caja, no lo vuelve a cobrar: reembolsa el intento', async () => {
+    const orden = { id: 'orden-1', estatus: 'pagada', total: '116.00' };
+    const { service, constructEvent, set, refund } = setup(
+      [[metodoStripe], [orden], [{ intento: null }]],
       [[{ eventId: 'evt-1' }]],
     );
     constructEvent.mockReturnValue(eventoExitoso);
@@ -333,6 +420,25 @@ describe('PagosService.manejarWebhookStripe (DT-D10 / NH-11 / NH-12)', () => {
     await service.manejarWebhookStripe(Buffer.from(''), 'firma');
 
     expect(set).not.toHaveBeenCalled();
+    expect(refund).toHaveBeenCalledWith(
+      { payment_intent: 'pi_1', reason: 'duplicate' },
+      { idempotencyKey: 'cobro-doble-pi_1' },
+    );
+  });
+
+  it('un cobro menor al total (el pedido creció) se registra sin cerrar el pedido', async () => {
+    const orden = { id: 'orden-1', estatus: 'abierta', total: '150.00' };
+    const { service, constructEvent, set } = setup(
+      [[metodoStripe], [orden], []],
+      [[{ eventId: 'evt-1' }]],
+    );
+    constructEvent.mockReturnValue(eventoExitoso);
+
+    await service.manejarWebhookStripe(Buffer.from(''), 'firma');
+
+    expect(set).toHaveBeenCalledWith(
+      expect.not.objectContaining({ estatus: 'pagada' }),
+    );
   });
 
   it('payment_intent.payment_failed no actualiza la orden', async () => {
@@ -351,5 +457,192 @@ describe('PagosService.manejarWebhookStripe (DT-D10 / NH-11 / NH-12)', () => {
 
     expect(result).toEqual({ received: true });
     expect(set).not.toHaveBeenCalled();
+  });
+});
+
+describe('PagosService.crearFactura: el CFDI ampara lo cobrado', () => {
+  it('manda el total con IVA incluido, la forma del pago mayor y una llave de idempotencia', async () => {
+    const orden = {
+      id: 'o-1',
+      estatus: 'pagada',
+      total: '100.01',
+      clienteId: null,
+    };
+    const { service, facturar } = setup(
+      [
+        [orden],
+        [],
+        [
+          { monto: '33.34', nombre: 'EFECTIVO', tipo: 'efectivo' },
+          { monto: '66.67', nombre: 'Tarjeta débito', tipo: 'tarjeta' },
+        ],
+      ],
+      [[{ id: 'fac-1' }]],
+    );
+
+    await service.crearFactura(
+      {
+        ordenId: 'o-1',
+        rfc: 'EKU9003173C9',
+        razonSocial: 'ESCUELA KEMPER URGATE',
+        usoCfdi: 'G03',
+        regimenFiscal: '601',
+        codigoPostalFiscal: '42501',
+      },
+      5,
+      { deCola: true },
+    );
+
+    const [enviado] = facturar.mock.calls[0] as [
+      {
+        payment_form: string;
+        idempotency_key: string;
+        items: { product: { price: number; tax_included: boolean } }[];
+      },
+    ];
+    expect(enviado.payment_form).toBe('28');
+    expect(enviado.idempotency_key).toBe('factura-orden-o-1-0');
+    expect(enviado.items[0].product).toMatchObject({
+      price: 100.01,
+      tax_included: true,
+    });
+  });
+});
+
+describe('formaDePagoSat (CFDI)', () => {
+  it.each([
+    ['Efectivo', 'efectivo', '01'],
+    ['Tarjeta débito', 'tarjeta', '28'],
+    ['Tarjeta crédito', 'tarjeta', '04'],
+    ['TARJETA', 'tarjeta', '04'],
+    ['Transferencia', 'digital', '03'],
+    ['Mercado Pago', 'digital', '31'],
+    ['Tarjeta en línea (Stripe)', 'online', '31'],
+    ['', '', '99'],
+  ])('%s → %s', (nombre, tipo, clave) => {
+    expect(formaDePagoSat(nombre, tipo)).toBe(clave);
+  });
+});
+
+describe('CrearFacturaDto: catálogos del SAT', () => {
+  const validar = (datos: Record<string, unknown>) =>
+    validate(
+      plainToInstance(CrearFacturaDto, {
+        ordenId: '0b7c1f3e-8f9e-4c55-9d7e-2a6b1c3d4e5f',
+        rfc: 'xaxx010101000',
+        razonSocial: 'Público en general',
+        usoCfdi: 'g03',
+        regimenFiscal: '616',
+        codigoPostalFiscal: '43000',
+        ...datos,
+      }),
+    ).then((errores) => errores.map((e) => e.property));
+
+  it('acepta datos válidos (normaliza RFC y uso a mayúsculas)', async () => {
+    await expect(validar({})).resolves.toEqual([]);
+  });
+
+  it.each([
+    ['rfc', 'XAXX0101010'],
+    ['rfc', 'XAXX01010100$'],
+    ['usoCfdi', 'Z99'],
+    ['regimenFiscal', '699'],
+    ['codigoPostalFiscal', '4300A'],
+  ])('rechaza %s = %s', async (campo, valor) => {
+    await expect(validar({ [campo]: valor })).resolves.toContain(campo);
+  });
+});
+
+describe('PagosService.reembolsarPago', () => {
+  const pagoStripe = {
+    id: 40,
+    ordenId: 'orden-1',
+    monto: '116.00',
+    propina: '0.00',
+    estatus: 'completado',
+    pasarela: 'stripe',
+    idTransaccionPasarela: 'pi_9',
+  };
+  const pagoCaja = {
+    ...pagoStripe,
+    id: 41,
+    monto: '50.00',
+    propina: '5.00',
+    pasarela: null,
+    idTransaccionPasarela: null,
+  };
+  const motivo = { motivo: 'Cobro equivocado' };
+
+  it('un cobro de Stripe se reembolsa en Stripe y el pedido vuelve a cobrarse', async () => {
+    const { service, set, refund } = setup([
+      [pagoStripe],
+      [],
+      [{ estatus: 'pagada', propina: '0.00' }],
+    ]);
+
+    const r = await service.reembolsarPago(40, motivo, 1);
+
+    expect(refund).toHaveBeenCalledWith(
+      { payment_intent: 'pi_9', amount: 11600 },
+      { idempotencyKey: `reembolso-pago-${pagoStripe.id}` },
+    );
+    expect(set).toHaveBeenCalledWith({ estatus: 'reembolsado' });
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({ estatus: 'entregada', tiempoCierre: null }),
+    );
+    expect(r).toMatchObject({ devolucion: 'stripe', monto: '116.00' });
+  });
+
+  it('un pago de caja solo se registra (monto + propina) y descuenta la propina del pedido', async () => {
+    const { service, set, refund } = setup([
+      [pagoCaja],
+      [],
+      [{ estatus: 'para_cobrar', propina: '5.00' }],
+    ]);
+
+    const r = await service.reembolsarPago(41, motivo, 1);
+
+    expect(refund).not.toHaveBeenCalled();
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({ estatus: 'para_cobrar', propina: '0.00' }),
+    );
+    expect(r).toMatchObject({ devolucion: 'caja', monto: '55.00' });
+  });
+
+  it('con cancelarPedido el pedido queda cancelado con el motivo', async () => {
+    const { service, set } = setup([
+      [pagoStripe],
+      [],
+      [{ estatus: 'pagada', propina: '0.00' }],
+    ]);
+
+    await service.reembolsarPago(40, { ...motivo, cancelarPedido: true }, 1);
+
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        estatus: 'cancelada',
+        motivoCancelacion: 'Cobro equivocado',
+      }),
+    );
+  });
+
+  it('no reembolsa dos veces el mismo pago', async () => {
+    const { service, refund } = setup([
+      [{ ...pagoStripe, estatus: 'reembolsado' }],
+    ]);
+
+    await expect(service.reembolsarPago(40, motivo, 1)).rejects.toThrow(
+      'Este pago ya se reembolsó.',
+    );
+    expect(refund).not.toHaveBeenCalled();
+  });
+
+  it('con una factura vigente pide cancelarla primero', async () => {
+    const { service, refund } = setup([[pagoStripe], [{ id: 'fac-1' }]]);
+
+    await expect(service.reembolsarPago(40, motivo, 1)).rejects.toThrow(
+      /factura vigente/,
+    );
+    expect(refund).not.toHaveBeenCalled();
   });
 });

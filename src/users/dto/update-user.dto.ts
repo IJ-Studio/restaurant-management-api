@@ -1,11 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  Matches,
-  MaxLength,
-} from 'class-validator';
+import { IsNotEmpty, IsOptional } from 'class-validator';
+import { NombrePersona, TelefonoValido } from '../../common/validacion/campos';
 import { Telefono, TextoNegocio } from '../../common/normalizacion/normalizar';
 
 /**
@@ -16,17 +11,15 @@ export class UpdateUserDto {
   @TextoNegocio({ obligatorio: true })
   @ApiPropertyOptional({ example: 'Ana', maxLength: 50 })
   @IsOptional()
-  @IsString()
   @IsNotEmpty()
-  @MaxLength(50)
+  @NombrePersona()
   readonly name?: string;
 
   @TextoNegocio({ obligatorio: true })
   @ApiPropertyOptional({ example: 'López', maxLength: 50 })
   @IsOptional()
-  @IsString()
   @IsNotEmpty()
-  @MaxLength(50)
+  @NombrePersona()
   readonly lastname?: string;
 
   @Telefono({ obligatorio: true })
@@ -36,10 +29,6 @@ export class UpdateUserDto {
       'Teléfono en formato internacional (E.164): "+" y de 10 a 15 dígitos, sin espacios',
   })
   @IsOptional()
-  @IsString()
-  @Matches(/^\+[1-9]\d{9,14}$/, {
-    message:
-      'phone must be in international format: "+" followed by 10 to 15 digits',
-  })
+  @TelefonoValido()
   readonly phone?: string;
 }

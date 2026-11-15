@@ -47,7 +47,7 @@ describe('AllExceptionsFilter', () => {
         statusCode: 400,
         code: 'VALIDATION_ERROR',
         message: 'Datos inválidos.',
-        details: ['name should not be empty', 'phone must be a string'],
+        details: ['«name» es obligatorio.', '«phone» debe ser texto.'],
         requestId: 'req-1',
       }),
     );
@@ -125,5 +125,80 @@ describe('AllExceptionsFilter', () => {
 
     expect(status).toHaveBeenCalledWith(429);
     expect(setHeader).toHaveBeenCalledWith('Retry-After', '60');
+  });
+
+  describe('datos imposibles nunca dan 500', () => {
+    // Drizzle envuelve el error de Postgres en `cause`.
+    const pg = (code: string) =>
+      Object.assign(new Error('Failed query'), { cause: { code } });
+
+    it.each([
+      ['22P02', 'id «abc» en una columna entera'],
+      ['22003', 'número fuera de rango'],
+      ['22021', 'byte nulo en un texto'],
+      ['22001', 'texto más largo que la columna'],
+      ['22007', 'fecha con formato imposible'],
+    ])('Postgres %s (%s) → 400', (code) => {
+      const { host, status, json } = createHost();
+      filter.catch(pg(code), host);
+      expect(status).toHaveBeenCalledWith(400);
+      expect(bodyOf(json).code).toBe('VALIDATION_ERROR');
+      expect(String(bodyOf(json).message)).not.toContain('Failed query');
+    });
+
+    it('23502 (falta un dato obligatorio) → 400', () => {
+      const { host, status, json } = createHost();
+      filter.catch(pg('23502'), host);
+      expect(status).toHaveBeenCalledWith(400);
+      expect(bodyOf(json).message).toBe('Falta un dato obligatorio.');
+    });
+
+    it('Stripe: método inválido → 400 y tarjeta rechazada → 402', () => {
+      const a = createHost();
+      filter.catch(
+        Object.assign(new Error("No such PaymentMethod: 'x'"), {
+          type: 'StripeInvalidRequestError',
+        }),
+        a.host,
+      );
+      expect(a.status).toHaveBeenCalledWith(400);
+      expect(String(bodyOf(a.json).message)).not.toContain('PaymentMethod');
+      const b = createHost();
+      filter.catch(
+        Object.assign(new Error('card_declined'), { type: 'StripeCardError' }),
+        b.host,
+      );
+      expect(b.status).toHaveBeenCalledWith(402);
+    });
+  });
+
+  it('429 en español', () => {
+    const { host, json } = createHost();
+    filter.catch(
+      new HttpException('ThrottlerException: Too Many Requests', 429),
+      host,
+    );
+    expect(bodyOf(json).message).toBe(
+      'Demasiados intentos seguidos. Espera un minuto y vuelve a intentarlo.',
+    );
+  });
+
+  it('traduce el campo extra y los mensajes por defecto de class-validator', () => {
+    const { host, json } = createHost();
+    filter.catch(
+      new BadRequestException({
+        message: [
+          'property rol should not exist',
+          'cantidad must not be greater than 99',
+          'Mensaje propio en español',
+        ],
+      }),
+      host,
+    );
+    expect(bodyOf(json).details).toEqual([
+      'El campo «rol» no está permitido.',
+      '«cantidad» no puede ser mayor que 99.',
+      'Mensaje propio en español',
+    ]);
   });
 });
