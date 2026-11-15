@@ -78,3 +78,21 @@ describe('inventario del administrador', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 });
+
+describe('crearOrden: mismas reglas que el formulario', () => {
+  const service = new InventarioService({} as never);
+
+  it('sin proveedor: 400 «Elige un proveedor.»', async () => {
+    await expect(
+      service.crearOrden({
+        items: [{ productName: 'Tomate', quantity: 1 }],
+      } as never),
+    ).rejects.toThrow('Elige un proveedor.');
+  });
+
+  it('sin productos: 400 «Añade al menos un producto.»', async () => {
+    await expect(
+      service.crearOrden({ supplierId: 1, items: [] }),
+    ).rejects.toThrow('Añade al menos un producto.');
+  });
+});

@@ -7,7 +7,7 @@ import {
 } from 'class-validator';
 
 export function Match(property: string, validatorOptions?: ValidationOptions) {
-  return (object: any, propertyName: string) => {
+  return (object: object, propertyName: string) => {
     registerDecorator({
       target: object.constructor,
       propertyName,
@@ -20,18 +20,19 @@ export function Match(property: string, validatorOptions?: ValidationOptions) {
 
 @ValidatorConstraint({ name: 'Match' })
 export class MatchConstraint implements ValidatorConstraintInterface {
-  validate(value: any, validationArguments?: ValidationArguments) {
-    const [relatedPropertyName] = validationArguments?.constraints || [];
-    const relatedValue = (validationArguments?.object as any)[
-      relatedPropertyName
-    ];
+  validate(value: unknown, validationArguments?: ValidationArguments) {
+    const [relatedPropertyName] = (validationArguments?.constraints ??
+      []) as string[];
+    const relatedValue = (
+      validationArguments?.object as Record<string, unknown> | undefined
+    )?.[relatedPropertyName];
     return value === relatedValue;
   }
   defaultMessage(validationArguments?: ValidationArguments): string {
-    return (
-      validationArguments?.property +
-      ' must match ' +
-      validationArguments?.constraints[0]
-    );
+    // Hoy solo se usa para confirmar la contraseña; el texto es el del formulario de registro.
+    const [otra] = (validationArguments?.constraints ?? []) as string[];
+    return otra === 'password'
+      ? 'Las contraseñas no coinciden.'
+      : `«${validationArguments?.property}» debe coincidir con «${otra}».`;
   }
 }

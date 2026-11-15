@@ -9,6 +9,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 
+import { traducirDetalle } from './mensajes-validacion';
 import { getPgErrorCode } from '../database/pg-errors';
 
 export type ErrorResponse = {
@@ -109,6 +110,28 @@ export class AllExceptionsFilter implements ExceptionFilter {
       };
     }
 
+    // Datos con formato o tamaño imposibles para la columna (id «abc», número fuera de rango, byte
+    // nulo, texto más largo que la columna): es un error de quien llama, no del servidor.
+    if (pgCode?.startsWith('22')) {
+      return {
+        status: HttpStatus.BAD_REQUEST,
+        code: 'VALIDATION_ERROR',
+        message:
+          'Algún dato no tiene un formato o un tamaño válido (por ejemplo, un identificador o un número fuera de rango).',
+      };
+    }
+
+    if (pgCode === '23502') {
+      return {
+        status: HttpStatus.BAD_REQUEST,
+        code: 'VALIDATION_ERROR',
+        message: 'Falta un dato obligatorio.',
+      };
+    }
+
+    const stripe = stripeError(exception);
+    if (stripe) return stripe;
+
     if (exception instanceof HttpException) {
       return this.normalizeHttpException(exception);
     }
@@ -132,11 +155,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
       const rawMessage = (response as { message?: unknown }).message;
 
       if (Array.isArray(rawMessage)) {
-        details = rawMessage.map((item) => String(item));
+        details = rawMessage.map((item) => traducirDetalle(String(item)));
         message = 'Datos inválidos.';
       } else if (typeof rawMessage === 'string') {
         message = rawMessage;
       }
+    }
+
+    if (status === 429) {
+      message =
+        'Demasiados intentos seguidos. Espera un minuto y vuelve a intentarlo.';
     }
 
     return {
@@ -146,4 +174,25 @@ export class AllExceptionsFilter implements ExceptionFilter {
       ...(details ? { details } : {}),
     };
   }
+}
+
+/** Errores del SDK de Stripe: un dato de pago inválido o una tarjeta rechazada no son un 500. */
+function stripeError(exception: unknown): NormalizedError | null {
+  const tipo =
+    typeof exception === 'object' && exception !== null && 'type' in exception
+      ? (exception as { type?: unknown }).type
+      : undefined;
+  if (tipo === 'StripeCardError')
+    return {
+      status: HttpStatus.PAYMENT_REQUIRED,
+      code: 'PAYMENT_DECLINED',
+      message: 'La tarjeta fue rechazada. Prueba con otra tarjeta.',
+    };
+  if (tipo === 'StripeInvalidRequestError')
+    return {
+      status: HttpStatus.BAD_REQUEST,
+      code: 'VALIDATION_ERROR',
+      message: 'El método de pago no es válido. Revísalo e inténtalo de nuevo.',
+    };
+  return null;
 }
