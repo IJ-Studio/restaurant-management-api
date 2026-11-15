@@ -29,7 +29,7 @@ export const TELEFONO_E164 = /^(?:\+52\d{10}|\+(?!52)[1-9]\d{7,14})$/;
 export const MENSAJES_CAMPOS = {
   nombre: (min: number, max: number) =>
     `Escribe el nombre: solo letras, espacios, guion o apóstrofo (${min} a ${max}).`,
-  correo: 'Escribe un correo válido, como nombre@dominio.com.',
+  correo: 'Ingresa un correo electrónico válido.',
   telefono:
     'Escribe un teléfono válido: 10 dígitos en México o de 6 a 12 con otra lada.',
   maximo: (max: number) => `Máximo ${max} caracteres.`,

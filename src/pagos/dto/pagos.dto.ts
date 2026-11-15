@@ -231,7 +231,7 @@ export class CrearFacturaDto {
   @IsString()
   @IsOptional()
   @MaxLength(LIMITES.correo, {
-    message: 'Escribe un correo válido, como nombre@dominio.com.',
+    message: 'Ingresa un correo electrónico válido.',
   })
   email?: string;
 
@@ -279,7 +279,7 @@ export class GuardarPerfilFacturacionDto {
   @IsString()
   @IsOptional()
   @MaxLength(LIMITES.correo, {
-    message: 'Escribe un correo válido, como nombre@dominio.com.',
+    message: 'Ingresa un correo electrónico válido.',
   })
   email?: string;
 
