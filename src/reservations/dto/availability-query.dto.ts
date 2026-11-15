@@ -32,3 +32,15 @@ export class AvailabilityQueryDto {
   @Type(() => Number)
   duracionMin?: number;
 }
+
+/** `GET /reservations/horas`: horas de un día del restaurante para N personas. */
+export class HorasQueryDto {
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Elige una fecha válida.' })
+  fecha: string;
+
+  @Type(() => Number)
+  @IsInt({ message: 'El número de personas debe ser de 1 a 50.' })
+  @Min(1, { message: 'El número de personas debe ser de 1 a 50.' })
+  @Max(50, { message: 'El número de personas debe ser de 1 a 50.' })
+  numComensales: number;
+}

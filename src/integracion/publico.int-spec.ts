@@ -39,8 +39,19 @@ async function http(
 
 interface Reglas {
   utcOffsetMin: number;
-  reservas: { duracionMin: number; anticipacionMin: number };
-  horario: { dia: number; apertura: string; cerrado: boolean }[];
+  reservas: {
+    duracionMin: number;
+    anticipacionMin: number;
+    margenCierreMin: number;
+    intervaloMin: number;
+    diasMaxAdelanto: number;
+  };
+  horario: {
+    dia: number;
+    apertura: string;
+    cierre: string;
+    cerrado: boolean;
+  }[];
   diasEspeciales: { fecha: string }[];
 }
 interface Mesa {
@@ -53,7 +64,7 @@ interface Mesa {
 describeLocal('endpoints públicos contra el API local', () => {
   let reglas: Reglas;
   let cliente: string;
-  // Un día abierto lejano, distinto en cada corrida, para no chocar con datos anteriores.
+  // Un día abierto dentro del horizonte de reservas (60 días), distinto en cada corrida.
   let fecha: string;
   let apertura: number;
 
@@ -90,7 +101,7 @@ describeLocal('endpoints públicos contra el API local', () => {
   beforeAll(async () => {
     reglas = (await http('GET', '/reglas')).body as unknown as Reglas;
     const especiales = new Set(reglas.diasEspeciales.map((d) => d.fecha));
-    for (let n = 30 + Math.floor(Math.random() * 300); ; n++) {
+    for (let n = 7 + Math.floor(Math.random() * 45); ; n++) {
       const d = new Date(Date.now() + n * 86_400_000);
       const f = d.toISOString().slice(0, 10);
       const dia = reglas.horario.find(
@@ -249,4 +260,93 @@ describeLocal('endpoints públicos contra el API local', () => {
       expect([a.status, b.status].sort()).toEqual([201, 409]);
     });
   });
+
+  describe('horas del día con su motivo (GET /reservations/horas)', () => {
+    interface Horas {
+      fecha: string;
+      motivo: string | null;
+      horas: { hora: string; disponible: boolean; motivo: string | null }[];
+    }
+    const horas = async (f: string, n = 2) =>
+      (await http('GET', `/reservations/horas?fecha=${f}&numComensales=${n}`))
+        .body as unknown as Horas;
+    const enDias = (n: number) =>
+      new Date(Date.now() + reglas.utcOffsetMin * 60_000 + n * 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+
+    it('un día abierto ofrece todas sus horas cada intervalo, hasta el cierre menos el margen', async () => {
+      const r = await horas(fecha);
+      const dia = reglas.horario.find(
+        (h) => h.dia === new Date(`${fecha}T12:00:00Z`).getUTCDay(),
+      )!;
+      const [ch, cm] = dia.cierre.split(':').map(Number);
+      const ultima = ch * 60 + cm - reglas.reservas.margenCierreMin;
+      expect(r.motivo).toBeNull();
+      expect(r.horas[0].hora).toBe(hora(0));
+      expect(r.horas).toHaveLength(
+        Math.floor((ultima - apertura) / reglas.reservas.intervaloMin) + 1,
+      );
+    });
+
+    it('una hora sin mesas aptas libres sale «Sin disponibilidad» y su reserva da 409', async () => {
+      const grandes = (await plano(hora(300), 1))
+        .filter((m) => m.estado === 'disponible')
+        .sort((x, y) => y.capacidad - x.capacidad);
+      const n = grandes[0].capacidad;
+      for (const m of grandes.filter((x) => x.capacidad >= n))
+        expect((await reservar(hora(300), m.id, n)).status).toBe(201);
+      const r = await horas(fecha, n);
+      const enLaHora = r.horas.find((h) => h.hora === hora(300))!;
+      expect(enLaHora).toEqual({
+        hora: hora(300),
+        disponible: false,
+        motivo: 'Sin disponibilidad',
+      });
+      // Media hora antes también se cruza; al terminar la duración vuelve a haber lugar.
+      expect(r.horas.find((h) => h.hora === hora(270))!.disponible).toBe(false);
+      const libre = r.horas.find(
+        (h) => h.hora === hora(300 + reglas.reservas.duracionMin),
+      );
+      if (libre) expect(libre.disponible).toBe(true);
+      expect((await reservar(hora(300), undefined, n)).status).toBe(409);
+    });
+
+    it('hoy: lo que queda a menos de la anticipación sale bloqueado con su motivo', async () => {
+      const r = await horas(enDias(0));
+      const limite = Date.now() + reglas.reservas.anticipacionMin * 60_000;
+      for (const h of r.horas) {
+        const t =
+          Date.parse(`${enDias(0)}T${h.hora}:00Z`) -
+          reglas.utcOffsetMin * 60_000;
+        if (t < limite) expect(h.motivo).toBe('Con menos de 1 h');
+      }
+    });
+
+    it('fuera del horizonte y en el pasado, el día entero sale con su motivo', async () => {
+      expect(
+        (await horas(enDias(reglas.reservas.diasMaxAdelanto + 1))).motivo,
+      ).toBe('Fuera de plazo');
+      expect((await horas(enDias(-1))).motivo).toBe('Ya pasó');
+      const r = await reservar(hora(60), undefined);
+      expect(r.status).toBe(201);
+    });
+
+    it.each([
+      ['2026-02-30', 2],
+      ['2026-13-01', 2],
+      ['ayer', 2],
+      [fechaFija(), 0],
+      [fechaFija(), 51],
+    ])('fecha %s con %s personas: 400', async (f, n) => {
+      expect(
+        (await http('GET', `/reservations/horas?fecha=${f}&numComensales=${n}`))
+          .status,
+      ).toBe(400);
+    });
+  });
 });
+
+function fechaFija() {
+  return '2030-06-15';
+}
