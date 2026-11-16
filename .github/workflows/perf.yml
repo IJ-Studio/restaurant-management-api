@@ -52,7 +52,7 @@ jobs:
           ./k6 run --no-color --summary-export "reports/perf/${{ inputs.script }}.json" "perf/${{ inputs.script }}.js" | tee "reports/perf/${{ inputs.script }}.txt"
       - name: Subir resultados
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: perf-${{ inputs.script }}
           path: reports/perf/
